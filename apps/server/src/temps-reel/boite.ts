@@ -1,13 +1,18 @@
 import { DurableObject } from "cloudflare:workers";
 import {
   FERMETURE_SESSION,
+  LIMITES_GROUPE,
   conversationDirecte,
+  conversationGroupe,
+  estGroupe,
+  idGroupe,
   schemaClient,
   type Entree,
   type Message,
   type MessageClient,
   type MessageServeur,
 } from "@unichat/shared";
+import { membresDe } from "../lib/groupes";
 import type { Bindings } from "../types";
 
 /** Ce que chaque connexion garde avec elle, même après une mise en veille de l'objet. */
@@ -24,14 +29,25 @@ const TRENTE_JOURS = 30 * 24 * 60 * 60 * 1000;
 const TAILLE_LOT = 500;
 const ENVOIS_MAX = 20;
 const FENETRE_ENVOIS = 10 * 1000;
+/** Membres d'un groupe gardés en mémoire : « écrit… » ne relit pas la base à chaque frappe. */
+const DUREE_CACHE_MEMBRES = 10 * 1000;
+/** Accusés de remise envoyés par passage : on reste sous la limite de sous-requêtes. */
+const ACCUSES_PAR_PASSAGE = 40;
+
+function conversationDe(e: NouvelleEntree): string {
+  if (e.type === "message") return e.message.conversation;
+  if (e.type === "groupe") return e.evenement.conversation;
+  return e.conversation;
+}
 
 /**
  * Boîte aux lettres d'un utilisateur : un Durable Object par personne.
  *
  * Elle tient les WebSocket de ses appareils et un journal numéroté (messages
- * reçus et envoyés, accusés de remise et de lecture). Chaque appareil indique
- * jusqu'où il a reçu ; ce que tous ont reçu est effacé. Le serveur ne garde
- * donc les messages que le temps de les remettre, 30 jours au plus.
+ * reçus et envoyés, accusés, réactions, suppressions, événements de groupe).
+ * Chaque appareil indique jusqu'où il a reçu ; ce que tous ont reçu est
+ * effacé. Le serveur ne garde donc les messages que le temps de les remettre,
+ * 30 jours au plus.
  *
  * Les connexions utilisent l'API d'hibernation : un appareil connecté mais
  * silencieux ne consomme rien.
@@ -40,6 +56,7 @@ export class Boite extends DurableObject<Bindings> {
   private readonly sql: SqlStorage;
   private readonly envoisRecents = new Map<string, number[]>();
   private readonly destinatairesConnus = new Set<string>();
+  private readonly membresConnus = new Map<string, { ids: string[]; expire: number }>();
 
   constructor(ctx: DurableObjectState, env: Bindings) {
     super(ctx, env);
@@ -122,6 +139,7 @@ export class Boite extends DurableObject<Bindings> {
   }
 
   private async traiter(ws: WebSocket, attache: Attache, m: MessageClient): Promise<void> {
+    const moi = attache.utilisateurId;
     switch (m.t) {
       case "bonjour":
         return this.bonjour(ws, attache, m.depuis);
@@ -131,21 +149,49 @@ export class Boite extends DurableObject<Bindings> {
         return this.envoyerMessage(ws, attache, m);
       case "lu": {
         const maintenant = Date.now();
-        const conversation = conversationDirecte(attache.utilisateurId, m.avec);
-        if (m.avec !== attache.utilisateurId) {
-          await this.boite(m.avec).recevoir({ type: "accuse", conversation, ids: m.ids, etat: "lu", par: attache.utilisateurId, le: maintenant });
+        // L'auteur ne fait confiance à cet accusé que pour ses propres messages
+        // de cette discussion (vérifié par son application).
+        if (m.auteur !== moi) {
+          await this.boite(m.auteur).recevoir({
+            type: "accuse",
+            conversation: m.conversation,
+            ids: m.ids,
+            etat: "lu",
+            par: moi,
+            le: maintenant,
+          });
         }
-        this.ajouter({ type: "lu", conversation, ids: m.ids, le: maintenant });
+        this.ajouter({ type: "lu", conversation: m.conversation, ids: m.ids, le: maintenant });
         return;
       }
-      case "ecrit":
-        if (m.a !== attache.utilisateurId) await this.boite(m.a).signalerEcriture(attache.utilisateurId);
+      case "ecrit": {
+        const autres = await this.participants(m.conversation, moi);
+        if (!autres) return;
+        await Promise.allSettled(autres.map((id) => this.boite(id).signalerEcriture(moi, m.conversation)));
         return;
+      }
       case "presence": {
-        const etat = m.de === attache.utilisateurId ? await this.presence() : await this.boite(m.de).presence();
+        const etat = m.de === moi ? await this.presence() : await this.boite(m.de).presence();
         this.envoyer(ws, { t: "presence", de: m.de, ...etat });
         return;
       }
+      case "reagir":
+        return this.partager(ws, moi, m.conversation, {
+          type: "reaction",
+          conversation: m.conversation,
+          message: m.message,
+          par: moi,
+          code: m.code,
+          le: Date.now(),
+        });
+      case "supprimer":
+        return this.partager(ws, moi, m.conversation, {
+          type: "suppression",
+          conversation: m.conversation,
+          message: m.message,
+          par: moi,
+          le: Date.now(),
+        });
     }
   }
 
@@ -180,27 +226,40 @@ export class Boite extends DurableObject<Bindings> {
 
     // Premier appareil à recevoir un message : l'expéditeur voit « remis ».
     const aRemettre = this.sql
-      .exec<{ message_id: string; expediteur: string; conversation: string }>(
-        `SELECT message_id, expediteur, conversation FROM journal
-         WHERE seq <= ? AND type = 'message' AND remis_envoye = 0 AND expediteur <> ?`,
+      .exec<{ seq: number; message_id: string; expediteur: string; conversation: string }>(
+        `SELECT seq, message_id, expediteur, conversation FROM journal
+         WHERE seq <= ? AND type = 'message' AND remis_envoye = 0 AND expediteur <> ?
+         ORDER BY seq`,
         jusqua,
         attache.utilisateurId,
       )
       .toArray();
-    this.sql.exec("UPDATE journal SET remis_envoye = 1 WHERE seq <= ? AND type = 'message' AND remis_envoye = 0", jusqua);
-    const parExpediteur = new Map<string, { conversation: string; ids: string[] }>();
+    const groupes = new Map<string, { expediteur: string; conversation: string; ids: string[]; seqs: number[] }>();
     for (const l of aRemettre) {
-      const groupe = parExpediteur.get(l.expediteur) ?? { conversation: l.conversation, ids: [] };
+      const cle = `${l.expediteur}|${l.conversation}`;
+      const groupe = groupes.get(cle) ?? { expediteur: l.expediteur, conversation: l.conversation, ids: [], seqs: [] };
       groupe.ids.push(l.message_id);
-      parExpediteur.set(l.expediteur, groupe);
+      groupe.seqs.push(l.seq);
+      groupes.set(cle, groupe);
     }
-    for (const [expediteur, groupe] of parExpediteur) {
+    // Au-delà, les accusés partiront au passage suivant.
+    for (const groupe of [...groupes.values()].slice(0, ACCUSES_PAR_PASSAGE)) {
       try {
-        await this.boite(expediteur).recevoir({ type: "accuse", ...groupe, etat: "remis", par: attache.utilisateurId, le: maintenant });
+        await this.boite(groupe.expediteur).recevoir({
+          type: "accuse",
+          conversation: groupe.conversation,
+          ids: groupe.ids,
+          etat: "remis",
+          par: attache.utilisateurId,
+          le: maintenant,
+        });
+        for (const seq of groupe.seqs) this.sql.exec("UPDATE journal SET remis_envoye = 1 WHERE seq = ?", seq);
       } catch (erreur) {
         console.warn("accusé de remise non transmis", String(erreur));
       }
     }
+    // Mes propres messages n'appellent pas d'accusé.
+    this.sql.exec("UPDATE journal SET remis_envoye = 1 WHERE seq <= ? AND type = 'message' AND expediteur = ?", jusqua, attache.utilisateurId);
     this.nettoyer(maintenant);
   }
 
@@ -215,41 +274,100 @@ export class Boite extends DurableObject<Bindings> {
       this.envoyer(ws, { t: "refuse", id: m.id, message: "Vous envoyez trop de messages. Patientez quelques secondes." });
       return;
     }
+
+    let conversation: string;
+    let destinataires: string[];
+    if (m.groupe) {
+      conversation = conversationGroupe(m.groupe);
+      const autres = await this.participants(conversation, moi);
+      if (!autres) {
+        this.envoyer(ws, { t: "refuse", id: m.id, message: "Vous ne faites pas partie de ce groupe." });
+        return;
+      }
+      destinataires = autres;
+    } else {
+      const a = m.a!;
+      conversation = conversationDirecte(moi, a);
+      if (a !== moi && !(await this.destinataireExiste(a))) {
+        this.envoyer(ws, { t: "refuse", id: m.id, message: "Cette personne n'existe pas ou plus sur UniChat." });
+        return;
+      }
+      destinataires = a === moi ? [] : [a];
+    }
+
     // Renvoi après une coupure : déjà accepté, on confirme sans redistribuer.
     const deja = this.sql
       .exec<{ contenu: string }>("SELECT contenu FROM journal WHERE message_id = ? AND type = 'message' AND expediteur = ?", m.id, moi)
       .toArray()[0];
     if (deja) {
       const { message } = JSON.parse(deja.contenu) as { message: Message };
-      this.envoyer(ws, { t: "accepte", id: m.id, le: message.le });
+      this.envoyer(ws, { t: "accepte", id: m.id, le: message.le, destinataires: destinataires.length });
       return;
     }
-    if (m.a !== moi && !(await this.destinataireExiste(m.a))) {
-      this.envoyer(ws, { t: "refuse", id: m.id, message: "Cette personne n'existe pas ou plus sur UniChat." });
-      return;
-    }
+
     const message: Message = {
       id: m.id,
-      conversation: conversationDirecte(moi, m.a),
+      conversation,
       de: moi,
-      a: m.a,
+      a: m.groupe ?? m.a!,
       texte: m.texte.trim(),
       le: maintenant,
+      ...(m.reponseA ? { reponseA: m.reponseA } : {}),
     };
-    if (m.a !== moi) await this.boite(m.a).recevoir({ type: "message", message });
+    await this.distribuer(destinataires, { type: "message", message });
     // Copie dans ma propre boîte : mes autres appareils voient ce que j'envoie.
     this.ajouter({ type: "message", message });
-    this.envoyer(ws, { t: "accepte", id: m.id, le: maintenant });
+    this.envoyer(ws, { t: "accepte", id: m.id, le: maintenant, destinataires: destinataires.length });
   }
 
-  // --- Appels des autres boîtes (RPC) -----------------------------------------
+  /** Réaction ou suppression : transmise à chaque participant et à mes autres appareils. */
+  private async partager(ws: WebSocket, moi: string, conversation: string, entree: NouvelleEntree): Promise<void> {
+    const autres = await this.participants(conversation, moi);
+    if (!autres) {
+      this.envoyer(ws, { t: "refuse", message: "Vous ne faites pas partie de cette discussion." });
+      return;
+    }
+    await this.distribuer(autres, entree);
+    this.ajouter(entree);
+  }
+
+  /**
+   * Les autres participants d'une discussion, ou null si je n'en fais pas
+   * partie. Un groupe est vérifié dans la base : un ancien membre ne peut plus
+   * y écrire.
+   */
+  private async participants(conversation: string, moi: string): Promise<string[] | null> {
+    if (estGroupe(conversation)) {
+      const groupeId = idGroupe(conversation);
+      const connu = this.membresConnus.get(groupeId);
+      let ids: string[];
+      if (connu && connu.expire > Date.now()) ids = connu.ids;
+      else {
+        ids = (await membresDe(this.env.DB, groupeId)).map((membre) => membre.id);
+        this.membresConnus.set(groupeId, { ids, expire: Date.now() + DUREE_CACHE_MEMBRES });
+      }
+      if (!ids.includes(moi)) return null;
+      return ids.filter((id) => id !== moi).slice(0, LIMITES_GROUPE.membres);
+    }
+    const [, x, y] = conversation.split(":");
+    if (x !== moi && y !== moi) return null;
+    const autre = x === moi ? y! : x!;
+    return autre === moi ? [] : [autre];
+  }
+
+  private async distribuer(destinataires: string[], entree: NouvelleEntree): Promise<void> {
+    const resultats = await Promise.allSettled(destinataires.map((id) => this.boite(id).recevoir(entree)));
+    for (const r of resultats) if (r.status === "rejected") console.warn("remise impossible", String(r.reason));
+  }
+
+  // --- Appels des autres boîtes et du serveur (RPC) -------------------------------
 
   async recevoir(entree: NouvelleEntree): Promise<void> {
     this.ajouter(entree);
   }
 
-  async signalerEcriture(de: string): Promise<void> {
-    this.diffuser({ t: "ecrit", de });
+  async signalerEcriture(de: string, conversation: string): Promise<void> {
+    this.diffuser({ t: "ecrit", de, conversation });
   }
 
   async presence(): Promise<{ enLigne: boolean; vuLe: number | null }> {
@@ -297,7 +415,7 @@ export class Boite extends DurableObject<Bindings> {
         JSON.stringify(e),
         message?.de ?? null,
         message?.id ?? null,
-        e.type === "message" ? e.message.conversation : e.conversation,
+        conversationDe(e),
         Date.now(),
       )
       .one();

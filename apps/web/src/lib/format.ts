@@ -70,6 +70,42 @@ export function vuLe(le: number, maintenant = Date.now()): string {
   return `vu le ${jourMois.format(new Date(le))} à ${heure.format(new Date(le))}`;
 }
 
+/** « Bob », « Bob et Lova », « Bob, Lova et Hery ». */
+export function enumeration(noms: string[]): string {
+  if (noms.length <= 1) return noms[0] ?? "";
+  return `${noms.slice(0, -1).join(", ")} et ${noms[noms.length - 1]}`;
+}
+
+/** Ligne système d'un groupe : « Ana a ajouté Bob et Lova ». `nom` donne « Vous » pour soi. */
+export function texteEvenement(
+  ev: { action: string; par: string; cibles: string[]; nom?: string },
+  nom: (id: string) => string,
+): string {
+  const qui = nom(ev.par);
+  const noms = ev.cibles.map(nom);
+  // « Ana vous a ajouté », « Ana a ajouté Bob et vous » : le pronom suit la grammaire.
+  const seulementMoi = noms.length === 1 && noms[0] === "Vous";
+  const cibles = enumeration(noms.map((n) => (n === "Vous" ? "vous" : n)));
+  const verbe = (participe: string) =>
+    seulementMoi ? `${qui} vous a ${participe}` : `${qui} ${qui === "Vous" ? "avez" : "a"} ${participe} ${cibles}`;
+  switch (ev.action) {
+    case "creation":
+      return `${qui} ${qui === "Vous" ? "avez" : "a"} créé le groupe « ${ev.nom ?? ""} »`;
+    case "ajout":
+      return verbe("ajouté");
+    case "retrait":
+      return verbe("retiré");
+    case "depart":
+      return `${qui} ${qui === "Vous" ? "êtes parti du groupe" : "est parti du groupe"}`;
+    case "renommage":
+      return `${qui} ${qui === "Vous" ? "avez" : "a"} renommé le groupe en « ${ev.nom ?? ""} »`;
+    case "description":
+      return `${qui} ${qui === "Vous" ? "avez" : "a"} modifié la description du groupe`;
+    default:
+      return "Le groupe a changé";
+  }
+}
+
 export function initiales(nom: string): string {
   return nom
     .split(/\s+/)

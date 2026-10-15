@@ -221,6 +221,13 @@
 .stagger-5 { animation-delay: 150ms; }
 .stagger-6 { animation-delay: 180ms; }
 
+/* Message rejoint depuis une citation : bref surlignage pour le repérer. */
+@keyframes surbrillance {
+  0%, 30% { background-color: color-mix(in srgb, var(--primaire) 18%, transparent); }
+  100% { background-color: transparent; }
+}
+.surbrillance { animation: surbrillance 1.2s ease-out; }
+
 /* Barre de l'écran de chargement : elle avance tant que l'application se
    prépare (indicateur d'état, d'où sa durée plus longue). */
 .barre-chargement {

@@ -3,6 +3,7 @@ import type {
   CarteProfil,
   ErreurApiCorps,
   EvenementSecurite,
+  Groupe,
   MajProfil,
   Moi,
 } from "@unichat/shared";
@@ -74,6 +75,18 @@ export const api = {
   alertesVues: () => appel<void>("/securite/alertes/vues", { method: "POST" }),
 
   deconnexion: () => appel<void>("/auth/deconnexion", { method: "POST" }),
+
+  groupes: () => appel<{ groupes: { id: string; nom: string }[] }>("/groupes"),
+  groupe: (id: string) => appel<Groupe>(`/groupes/${encodeURIComponent(id)}`),
+  creerGroupe: (nom: string, membres: string[]) => appel<Groupe>("/groupes", json("POST", { nom, membres })),
+  majGroupe: (id: string, changements: { nom?: string; description?: string }) =>
+    appel<Groupe>(`/groupes/${encodeURIComponent(id)}`, json("PATCH", changements)),
+  ajouterMembres: (id: string, membres: string[]) =>
+    appel<Groupe>(`/groupes/${encodeURIComponent(id)}/membres`, json("POST", { membres })),
+  retirerMembre: (id: string, membre: string) =>
+    appel<void>(`/groupes/${encodeURIComponent(id)}/membres/${encodeURIComponent(membre)}`, { method: "DELETE" }),
+  nommerAdmin: (id: string, membre: string) =>
+    appel<Groupe>(`/groupes/${encodeURIComponent(id)}/admins/${encodeURIComponent(membre)}`, { method: "POST" }),
 };
 
 export function urlPhoto(id: string, version: string, taille: "petite" | "grande"): string {

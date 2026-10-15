@@ -7,6 +7,11 @@ import { z } from "zod";
  */
 
 export const LIMITE_TEXTE = 4096;
+export const LIMITE_EXTRAIT = 200;
+/** Délai pendant lequel on peut supprimer un message pour tout le monde. */
+export const DELAI_SUPPRESSION = 48 * 60 * 60 * 1000;
+
+// --- Discussions -----------------------------------------------------------------
 
 /** Discussion à deux : identifiant stable, quel que soit l'ordre des participants. */
 export function conversationDirecte(a: string, b: string): string {
@@ -14,18 +19,57 @@ export function conversationDirecte(a: string, b: string): string {
   return `d:${x}:${y}`;
 }
 
+export const conversationGroupe = (groupeId: string) => `g:${groupeId}`;
+export const estGroupe = (conversation: string) => conversation.startsWith("g:");
+export const idGroupe = (conversation: string) => conversation.slice(2);
+
 export function autreParticipant(conversation: string, moi: string): string {
   const [, x, y] = conversation.split(":");
   return x === moi ? y! : x!;
+}
+
+const UUID = "[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}";
+const motifConversation = new RegExp(`^(d:${UUID}:${UUID}|g:${UUID})$`, "i");
+
+// --- Réactions -----------------------------------------------------------------------
+
+/**
+ * Réactions d'UniChat : des pictogrammes, pas des emoji. Le code voyage, chaque
+ * application l'affiche avec son propre dessin.
+ */
+export const REACTIONS = ["pouce", "coeur", "rire", "bravo", "triste", "merci"] as const;
+export type Reaction = (typeof REACTIONS)[number];
+
+// --- Contenus ------------------------------------------------------------------------
+
+/** Citation du message auquel on répond : copiée, pour rester lisible même si l'original manque. */
+export interface Citation {
+  id: string;
+  de: string;
+  extrait: string;
 }
 
 export interface Message {
   id: string;
   conversation: string;
   de: string;
+  /** Destinataire : une personne, ou le groupe. */
   a: string;
   texte: string;
   /** Heure du serveur à l'acceptation du message. */
+  le: number;
+  reponseA?: Citation;
+}
+
+export type ActionGroupe = "creation" | "ajout" | "retrait" | "depart" | "renommage" | "description";
+
+export interface EvenementGroupe {
+  id: string;
+  conversation: string;
+  action: ActionGroupe;
+  par: string;
+  cibles: string[];
+  nom?: string;
   le: number;
 }
 
@@ -36,35 +80,51 @@ export type Entree =
   | { seq: number; type: "message"; message: Message }
   | { seq: number; type: "accuse"; conversation: string; ids: string[]; etat: EtatRemise; par: string; le: number }
   /** Messages lus sur un autre de mes appareils : les compteurs se mettent à jour partout. */
-  | { seq: number; type: "lu"; conversation: string; ids: string[]; le: number };
+  | { seq: number; type: "lu"; conversation: string; ids: string[]; le: number }
+  | { seq: number; type: "reaction"; conversation: string; message: string; par: string; code: Reaction | null; le: number }
+  | { seq: number; type: "suppression"; conversation: string; message: string; par: string; le: number }
+  | { seq: number; type: "groupe"; evenement: EvenementGroupe };
+
+// --- Messages des applications -----------------------------------------------------
 
 const uuid = z.string().uuid();
+const conversation = z.string().regex(motifConversation, "Discussion invalide.");
 
 export const schemaClient = z.discriminatedUnion("t", [
   /** Ouverture : l'appareil indique le dernier numéro reçu (null : appareil neuf). */
   z.object({ t: z.literal("bonjour"), depuis: z.number().int().nonnegative().nullable() }),
   z.object({ t: z.literal("recu"), jusqua: z.number().int().nonnegative() }),
-  z.object({
-    t: z.literal("envoyer"),
-    id: uuid,
-    a: uuid,
-    texte: z
-      .string()
-      .max(LIMITE_TEXTE, `${LIMITE_TEXTE} caractères au maximum.`)
-      .refine((t) => t.trim().length > 0, "Message vide."),
-  }),
-  z.object({ t: z.literal("lu"), avec: uuid, ids: z.array(uuid).min(1).max(500) }),
-  z.object({ t: z.literal("ecrit"), a: uuid }),
+  z
+    .object({
+      t: z.literal("envoyer"),
+      id: uuid,
+      a: uuid.optional(),
+      groupe: uuid.optional(),
+      texte: z
+        .string()
+        .max(LIMITE_TEXTE, `${LIMITE_TEXTE} caractères au maximum.`)
+        .refine((t) => t.trim().length > 0, "Message vide."),
+      reponseA: z.object({ id: uuid, de: uuid, extrait: z.string().max(LIMITE_EXTRAIT) }).optional(),
+    })
+    .refine((m) => Boolean(m.a) !== Boolean(m.groupe), "Destinataire manquant."),
+  /** Messages lus, groupés par auteur : c'est lui qui verra « lu ». */
+  z.object({ t: z.literal("lu"), conversation, auteur: uuid, ids: z.array(uuid).min(1).max(500) }),
+  z.object({ t: z.literal("ecrit"), conversation }),
   z.object({ t: z.literal("presence"), de: uuid }),
+  z.object({ t: z.literal("reagir"), conversation, message: uuid, code: z.enum(REACTIONS).nullable() }),
+  z.object({ t: z.literal("supprimer"), conversation, message: uuid }),
 ]);
 export type MessageClient = z.infer<typeof schemaClient>;
+
+// --- Messages du serveur ------------------------------------------------------------
 
 export type MessageServeur =
   | { t: "lot"; entrees: Entree[]; fin: boolean }
   | { t: "entree"; entree: Entree }
-  | { t: "accepte"; id: string; le: number }
+  /** `destinataires` : nombre de personnes qui doivent recevoir le message (groupe). */
+  | { t: "accepte"; id: string; le: number; destinataires: number }
   | { t: "refuse"; id?: string; message: string }
-  | { t: "ecrit"; de: string }
+  | { t: "ecrit"; de: string; conversation: string }
   | { t: "presence"; de: string; enLigne: boolean; vuLe: number | null };
 
 /** Code de fermeture : la session de l'appareil n'est plus valable. */

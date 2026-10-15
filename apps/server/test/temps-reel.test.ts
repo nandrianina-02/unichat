@@ -58,7 +58,7 @@ describe("temps réel", () => {
     expect(remis.entree).toMatchObject({ ids: [id], par: bob.id });
 
     // Bob ouvre la discussion : Ana voit « lu ».
-    wsBob.envoyer({ t: "lu", avec: ana.id, ids: [id] });
+    wsBob.envoyer({ t: "lu", conversation: conversationDirecte(ana.id, bob.id), auteur: ana.id, ids: [id] });
     const lu = await wsAna.attendre(estEntree("accuse", (e) => e.type === "accuse" && e.etat === "lu"));
     expect(lu.entree).toMatchObject({ ids: [id], par: bob.id });
   });
@@ -155,7 +155,7 @@ describe("temps réel", () => {
     const bob = await personne(t, "bob");
     const wsAna = await ouvrir(ana.appareil);
     const wsBob = await ouvrir(bob.appareil);
-    wsAna.envoyer({ t: "ecrit", a: bob.id });
+    wsAna.envoyer({ t: "ecrit", conversation: conversationDirecte(ana.id, bob.id) });
     const ecrit = await wsBob.attendre((m): m is Extract<MessageServeur, { t: "ecrit" }> => m.t === "ecrit");
     expect(ecrit.de).toBe(ana.id);
 

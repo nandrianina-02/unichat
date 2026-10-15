@@ -1,3 +1,4 @@
+import { autreParticipant, conversationDirecte, conversationGroupe, estGroupe, idGroupe } from "@unichat/shared";
 import clsx from "clsx";
 import { MessageSquareText, Settings } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
@@ -14,6 +15,7 @@ import { Appareils } from "../panneaux/Appareils";
 import { Compte } from "../panneaux/Compte";
 import { ChoixVisibilite, Confidentialite } from "../panneaux/Confidentialite";
 import { Discussions } from "../panneaux/Discussions";
+import { NouveauGroupe } from "../panneaux/NouveauGroupe";
 import { NouvelleDiscussion } from "../panneaux/NouvelleDiscussion";
 import { Parametres } from "../panneaux/Parametres";
 import { Profil } from "../panneaux/Profil";
@@ -22,12 +24,12 @@ import type { Vue } from "../panneaux/vues";
 import { Accueil } from "../vues/Accueil";
 import { Discussion } from "../vues/Discussion";
 import { FicheContact } from "../vues/FicheContact";
+import { InfosGroupe } from "../vues/InfosGroupe";
 
 /** Ce qu'affiche la zone principale. */
 type Principal =
   | { type: "accueil" }
-  | { type: "discussion"; avec: string; infos: boolean }
-  | { type: "fiche"; id: string };
+  | { type: "discussion"; conversation: string; infos: boolean };
 
 const ACCUEIL: Principal = { type: "accueil" };
 
@@ -46,7 +48,14 @@ export function Application() {
   const [deconnexion, setDeconnexion] = useState(false);
   const [invitation] = useState(invitationEnAttente);
 
-  const ouvrirDiscussion = useCallback((avec: string) => setPrincipal({ type: "discussion", avec, infos: false }), []);
+  const ouvrirDiscussion = useCallback(
+    (conversation: string) => setPrincipal({ type: "discussion", conversation, infos: false }),
+    [],
+  );
+  const ouvrirPersonne = useCallback(
+    (id: string) => ouvrirDiscussion(conversationDirecte(moi.id, id)),
+    [moi.id, ouvrirDiscussion],
+  );
 
   // Un clic sur une notification ramène à la discussion concernée.
   useEffect(() => {
@@ -85,9 +94,21 @@ export function Application() {
             onRetour={retour}
             onOuvrir={(id) => {
               toutFermer();
-              ouvrirDiscussion(id);
+              ouvrirPersonne(id);
             }}
             invitation={invitation}
+            onNouveauGroupe={() => ouvrir("nouveau-groupe")}
+          />
+        );
+      case "nouveau-groupe":
+        return (
+          <NouveauGroupe
+            onRetour={retour}
+            onCree={(groupe) => {
+              messagerie.retenirGroupe(groupe);
+              toutFermer();
+              ouvrirDiscussion(conversationGroupe(groupe.id));
+            }}
           />
         );
       case "parametres":
@@ -113,7 +134,7 @@ export function Application() {
     }
   }
 
-  const selection = principal.type === "discussion" ? principal.avec : principal.type === "fiche" ? principal.id : null;
+  const selection = principal.type === "discussion" ? principal.conversation : null;
 
   return (
     <div className="flex h-full overflow-hidden bg-fond">
@@ -141,6 +162,7 @@ export function Application() {
         <Discussions
           selection={selection}
           onOuvrir={ouvrirDiscussion}
+          onOuvrirPersonne={ouvrirPersonne}
           onNouvelle={() => allerA("nouvelle")}
           onParametres={() => allerA("parametres")}
           onDeconnexion={() => setDeconnexion(true)}
@@ -164,24 +186,30 @@ export function Application() {
         )}
       >
         {principal.type === "accueil" && <Accueil onAjouter={() => allerA("nouvelle")} />}
-        {principal.type === "fiche" && (
-          <FicheContact key={principal.id} id={principal.id} onFermer={() => setPrincipal(ACCUEIL)} onMessage={ouvrirDiscussion} />
-        )}
         {principal.type === "discussion" && (
           <>
             <Discussion
-              key={principal.avec}
-              avec={principal.avec}
+              key={principal.conversation}
+              conversation={principal.conversation}
               onInfos={() => setPrincipal({ ...principal, infos: true })}
               onFermer={() => setPrincipal(ACCUEIL)}
             />
             {principal.infos && (
               <aside className="absolute inset-0 z-10 flex lg:static lg:w-[400px] lg:shrink-0 lg:border-l lg:border-bordure">
-                <FicheContact
-                  key={`infos-${principal.avec}`}
-                  id={principal.avec}
-                  onFermer={() => setPrincipal({ ...principal, infos: false })}
-                />
+                {estGroupe(principal.conversation) ? (
+                  <InfosGroupe
+                    key={`infos-${principal.conversation}`}
+                    groupeId={idGroupe(principal.conversation)}
+                    onFermer={() => setPrincipal({ ...principal, infos: false })}
+                    onMessage={ouvrirPersonne}
+                  />
+                ) : (
+                  <FicheContact
+                    key={`infos-${principal.conversation}`}
+                    id={autreParticipant(principal.conversation, moi.id)}
+                    onFermer={() => setPrincipal({ ...principal, infos: false })}
+                  />
+                )}
               </aside>
             )}
           </>

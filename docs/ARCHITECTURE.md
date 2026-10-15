@@ -122,6 +122,28 @@ un **journal numéroté** : messages reçus, copies de mes messages envoyés
 L'ouverture de la connexion vérifie la session et l'origine (le navigateur
 joindrait sinon le cookie à une connexion ouverte depuis un autre site).
 
+### Groupes, réponses, réactions, suppression
+
+- Un groupe vit dans D1 (`groupes`, `membres`). Un message de groupe est
+  relayé par la boîte de l'expéditeur à la boîte de chaque membre ; chacun
+  accuse réception et lecture pour lui-même, et l'application de
+  l'expéditeur affiche « remis » puis « lu » quand **tous** l'ont fait.
+- **40 membres au plus** : sur l'offre gratuite, une opération ne peut pas
+  faire plus de 50 sous-requêtes (appels aux autres boîtes compris). À
+  relever avec une offre payante.
+- Les créations, ajouts, retraits et départs sont des événements déposés
+  dans la boîte de chaque membre concerné, y compris de la personne retirée :
+  ils s'affichent dans la discussion. Un groupe garde toujours un
+  administrateur ; vide, il disparaît.
+- Une réponse transporte un extrait du message cité, lisible même si
+  l'original n'est pas sur l'appareil.
+- Les réactions sont des codes (`pouce`, `coeur`…) affichés en pictogrammes,
+  pas en emoji.
+- « Supprimer pour tout le monde » (48 heures, auteur seulement) envoie un
+  événement ; chaque application vérifie que l'auteur de la suppression est
+  bien celui du message avant de l'appliquer. « Supprimer pour moi » reste
+  sur l'appareil.
+
 Coût d'un message sur l'offre gratuite (100 000 requêtes Durable Objects
 par jour) : environ trois requêtes (envoi, accusé de remise, accusé de
 lecture), soit de l'ordre de 30 000 messages par jour.

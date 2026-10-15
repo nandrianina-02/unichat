@@ -1,4 +1,4 @@
-import type { CarteProfil } from "@unichat/shared";
+import type { CarteProfil, Citation, EvenementGroupe, Groupe, Reaction } from "@unichat/shared";
 import { openDB, type DBSchema, type IDBPDatabase, type IDBPTransaction } from "idb";
 
 export type EtatMessage = "attente" | "envoye" | "remis" | "lu" | "echec";
@@ -11,17 +11,39 @@ export interface MessageLocal {
   a: string;
   texte: string;
   le: number;
+  /** « evenement » : ligne système d'un groupe (création, ajout, départ…). */
+  type?: "texte" | "evenement";
+  evenement?: EvenementGroupe;
+  reponseA?: Citation;
+  /** Réactions, par personne. */
+  reactions?: Record<string, Reaction>;
+  /** Supprimé pour tout le monde par son auteur. */
+  supprime?: boolean;
   /** Pour mes messages : où en est la remise. */
   etat?: EtatMessage;
   erreur?: string;
+  /** Groupe : nombre de destinataires, et qui a reçu ou lu. */
+  attendus?: number;
+  remisPar?: string[];
+  luPar?: string[];
   /** Pour les messages reçus : lu sur l'un de mes appareils. */
   lu?: boolean;
 }
 
 export interface ConversationLocale {
   id: string;
+  /** Discussion à deux : l'autre personne. Groupe : l'identifiant du groupe. */
   autre: string;
-  dernier: { id: string; texte: string; le: number; deMoi: boolean; etat?: EtatMessage } | null;
+  dernier: {
+    id: string;
+    texte: string;
+    le: number;
+    de: string;
+    deMoi: boolean;
+    etat?: EtatMessage;
+    supprime?: boolean;
+    evenement?: EvenementGroupe;
+  } | null;
   nonLus: number;
 }
 
@@ -29,10 +51,15 @@ export interface PersonneLocale extends CarteProfil {
   maj: number;
 }
 
+export interface GroupeLocal extends Groupe {
+  maj: number;
+}
+
 export interface Schema extends DBSchema {
   messages: { key: string; value: MessageLocal; indexes: { conversation: [string, number]; etat: string } };
   conversations: { key: string; value: ConversationLocale };
   personnes: { key: string; value: PersonneLocale };
+  groupes: { key: string; value: GroupeLocal };
   reglages: { key: string; value: unknown };
 }
 
@@ -41,14 +68,18 @@ export type TransactionMessages = IDBPTransaction<Schema, ["messages", "conversa
 
 /** Une base par compte : deux comptes sur le même navigateur ne se mélangent pas. */
 export function ouvrirStockage(utilisateurId: string): Promise<Stockage> {
-  return openDB<Schema>(`unichat-${utilisateurId}`, 1, {
-    upgrade(db) {
-      const messages = db.createObjectStore("messages", { keyPath: "id" });
-      messages.createIndex("conversation", ["conversation", "le"]);
-      messages.createIndex("etat", "etat");
-      db.createObjectStore("conversations", { keyPath: "id" });
-      db.createObjectStore("personnes", { keyPath: "id" });
-      db.createObjectStore("reglages");
+  return openDB<Schema>(`unichat-${utilisateurId}`, 2, {
+    upgrade(db, ancienne) {
+      if (ancienne < 1) {
+        const messages = db.createObjectStore("messages", { keyPath: "id" });
+        messages.createIndex("conversation", ["conversation", "le"]);
+        messages.createIndex("etat", "etat");
+        db.createObjectStore("conversations", { keyPath: "id" });
+        db.createObjectStore("personnes", { keyPath: "id" });
+        db.createObjectStore("reglages");
+      }
+      // Version 2 : les groupes. L'historique déjà présent est conservé.
+      if (ancienne < 2) db.createObjectStore("groupes", { keyPath: "id" });
     },
   });
 }

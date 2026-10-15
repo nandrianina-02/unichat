@@ -1,6 +1,7 @@
 /** Panneaux qui peuvent s'empiler dans la colonne de gauche. */
 export type Vue =
   | "nouvelle"
+  | "nouveau-groupe"
   | "parametres"
   | "profil"
   | "compte"

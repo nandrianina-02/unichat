@@ -1,11 +1,16 @@
 import {
   FERMETURE_SESSION,
+  LIMITE_EXTRAIT,
   autreParticipant,
-  conversationDirecte,
+  estGroupe,
+  idGroupe,
   type CarteProfil,
+  type Citation,
   type Entree,
+  type Groupe,
   type MessageClient,
   type MessageServeur,
+  type Reaction,
 } from "@unichat/shared";
 import { ErreurApi, api } from "./api";
 import {
@@ -29,8 +34,9 @@ export interface Instantane {
   connexion: EtatConnexion;
   conversations: ConversationLocale[];
   personnes: Record<string, CarteProfil>;
-  /** Personne en train d'écrire → instant où l'indication s'éteint. */
-  ecrit: Record<string, number>;
+  groupes: Record<string, Groupe>;
+  /** Discussion → qui écrit, et jusqu'à quand afficher l'indication. */
+  ecrit: Record<string, { de: string; fin: number }>;
   presences: Record<string, Presence>;
   /** Incrémenté à chaque changement d'une discussion : la vue relit ses messages. */
   versions: Record<string, number>;
@@ -63,17 +69,19 @@ export class Messagerie {
   private minuteriePing: ReturnType<typeof setInterval> | null = null;
   private readonly auditeurs = new Set<() => void>();
   private readonly personnesDemandees = new Set<string>();
+  private readonly groupesDemandes = new Set<string>();
   private readonly dernierEcrit = new Map<string, number>();
   /** Accusés de lecture à envoyer, gardés tant que la connexion est coupée. */
-  private readonly lusEnAttente = new Map<string, Set<string>>();
+  private readonly lusEnAttente = new Map<string, { conversation: string; auteur: string; ids: Set<string> }>();
   private ouverte: string | null = null;
   /** Appelé quand on clique sur une notification. */
-  surOuverture: ((autre: string) => void) | null = null;
+  surOuverture: ((conversation: string) => void) | null = null;
 
   private etat: Instantane = {
     connexion: "connexion",
     conversations: [],
     personnes: {},
+    groupes: {},
     ecrit: {},
     presences: {},
     versions: {},
@@ -100,19 +108,31 @@ export class Messagerie {
     for (const auditeur of this.auditeurs) auditeur();
   }
 
+  get connecte(): boolean {
+    return this.etat.connexion === "connecte";
+  }
+
   // --- Cycle de vie -----------------------------------------------------------------
 
   async demarrer(): Promise<void> {
     this.db = await ouvrirStockage(this.moi);
     this.seq = ((await this.db.get("reglages", "seq")) as number | undefined) ?? null;
-    const [conversations, personnes] = await Promise.all([this.db.getAll("conversations"), this.db.getAll("personnes")]);
+    const [conversations, personnes, groupes] = await Promise.all([
+      this.db.getAll("conversations"),
+      this.db.getAll("personnes"),
+      this.db.getAll("groupes"),
+    ]);
     this.publier({
       conversations: trier(conversations),
       personnes: Object.fromEntries(personnes.map((p) => [p.id, p])),
+      groupes: Object.fromEntries(groupes.map((g) => [g.id, g])),
     });
     this.mettreAJourTitre();
     // Les profils en cache s'affichent tout de suite, puis sont rafraîchis.
-    for (const c of conversations) void this.chargerPersonne(c.autre, true);
+    for (const c of conversations) {
+      if (estGroupe(c.id)) void this.chargerGroupe(c.autre, true);
+      else void this.chargerPersonne(c.autre, true);
+    }
     window.addEventListener("online", this.surRetourReseau);
     this.connecter();
   }
@@ -207,23 +227,26 @@ export class Messagerie {
         }
         this.publier({ connexion: "connecte" });
         await this.renvoyerEnAttente();
-        if (this.ouverte) this.demanderPresence(autreParticipant(this.ouverte, this.moi));
+        if (this.ouverte && !estGroupe(this.ouverte)) this.demanderPresence(autreParticipant(this.ouverte, this.moi));
         return;
       case "entree":
         await this.appliquer([m.entree]);
         return;
       case "accepte":
-        await this.modifierMessage(m.id, (msg) => ({ ...msg, etat: plusAvance(msg.etat, "envoye"), le: m.le, erreur: undefined }));
+        await this.modifierMessage(m.id, (msg) => {
+          const accepte = { ...msg, le: m.le, attendus: m.destinataires, erreur: undefined };
+          return { ...accepte, etat: plusAvance(msg.etat === "echec" ? "attente" : msg.etat, this.etatDeMonMessage(accepte)) };
+        });
         return;
       case "refuse":
         if (m.id) await this.modifierMessage(m.id, (msg) => ({ ...msg, etat: "echec", erreur: m.message }));
         return;
       case "ecrit":
-        this.publier({ ecrit: { ...this.etat.ecrit, [m.de]: Date.now() + DUREE_ECRIT } });
+        this.publier({ ecrit: { ...this.etat.ecrit, [m.conversation]: { de: m.de, fin: Date.now() + DUREE_ECRIT } } });
         setTimeout(() => {
-          const fin = this.etat.ecrit[m.de];
-          if (fin && fin <= Date.now()) {
-            const { [m.de]: _, ...reste } = this.etat.ecrit;
+          const indication = this.etat.ecrit[m.conversation];
+          if (indication && indication.fin <= Date.now()) {
+            const { [m.conversation]: _, ...reste } = this.etat.ecrit;
             this.publier({ ecrit: reste });
           }
         }, DUREE_ECRIT + 50);
@@ -234,21 +257,34 @@ export class Messagerie {
     }
   }
 
+  /** État d'un de mes messages : dans un groupe, « remis » et « lu » une fois tous les membres atteints. */
+  private etatDeMonMessage(msg: MessageLocal): EtatMessage {
+    if (!estGroupe(msg.conversation)) return "envoye";
+    const groupe = this.etat.groupes[idGroupe(msg.conversation)];
+    const attendus = msg.attendus ?? (groupe ? Math.max(0, groupe.membres.length - 1) : 0);
+    if (attendus === 0) return "envoye";
+    if ((msg.luPar?.length ?? 0) >= attendus) return "lu";
+    if ((msg.remisPar?.length ?? 0) >= attendus) return "remis";
+    return "envoye";
+  }
+
   private async appliquer(entrees: Entree[]): Promise<void> {
     if (entrees.length === 0) return;
     const tx = this.db.transaction(["messages", "conversations"], "readwrite");
     const messages = tx.objectStore("messages");
     const touchees = new Set<string>();
     const nouveaux: MessageLocal[] = [];
+    const groupesAChanger = new Set<string>();
 
     for (const e of entrees) {
       if (e.type === "message") {
         const m = e.message;
         const existant = await messages.get(m.id);
         if (m.de === this.moi) {
-          await messages.put({ ...m, etat: plusAvance(existant?.etat, "envoye") });
+          const local: MessageLocal = { ...existant, ...m, type: "texte" };
+          await messages.put({ ...local, etat: plusAvance(existant?.etat === "echec" ? "attente" : existant?.etat, this.etatDeMonMessage(local)) });
         } else if (!existant) {
-          const local: MessageLocal = { ...m, lu: false };
+          const local: MessageLocal = { ...m, type: "texte", lu: false };
           await messages.put(local);
           nouveaux.push(local);
         }
@@ -257,17 +293,56 @@ export class Messagerie {
         for (const id of e.ids) {
           const msg = await messages.get(id);
           // Seuls mes messages de cette discussion peuvent changer d'état.
-          if (msg && msg.de === this.moi && msg.conversation === e.conversation) {
+          if (!msg || msg.de !== this.moi || msg.conversation !== e.conversation) continue;
+          if (estGroupe(msg.conversation)) {
+            const remisPar = [...new Set([...(msg.remisPar ?? []), e.par])];
+            const luPar = e.etat === "lu" ? [...new Set([...(msg.luPar ?? []), e.par])] : (msg.luPar ?? []);
+            const suite = { ...msg, remisPar, luPar };
+            await messages.put({ ...suite, etat: plusAvance(msg.etat, this.etatDeMonMessage(suite)) });
+          } else {
             await messages.put({ ...msg, etat: plusAvance(msg.etat, e.etat) });
           }
         }
         touchees.add(e.conversation);
-      } else {
+      } else if (e.type === "lu") {
         for (const id of e.ids) {
           const msg = await messages.get(id);
           if (msg && msg.de !== this.moi && !msg.lu) await messages.put({ ...msg, lu: true });
         }
         touchees.add(e.conversation);
+      } else if (e.type === "reaction") {
+        const msg = await messages.get(e.message);
+        if (msg && msg.conversation === e.conversation && !msg.supprime) {
+          const reactions = { ...msg.reactions };
+          if (e.code) reactions[e.par] = e.code;
+          else delete reactions[e.par];
+          await messages.put({ ...msg, reactions });
+          touchees.add(e.conversation);
+        }
+      } else if (e.type === "suppression") {
+        const msg = await messages.get(e.message);
+        // Seul l'auteur peut supprimer son message pour tout le monde.
+        if (msg && msg.conversation === e.conversation && msg.de === e.par) {
+          await messages.put({ ...msg, texte: "", supprime: true, reactions: {}, reponseA: undefined });
+          touchees.add(e.conversation);
+        }
+      } else {
+        const ev = e.evenement;
+        if (!(await messages.get(ev.id))) {
+          await messages.put({
+            id: ev.id,
+            conversation: ev.conversation,
+            de: ev.par,
+            a: idGroupe(ev.conversation),
+            texte: "",
+            le: ev.le,
+            type: "evenement",
+            evenement: ev,
+            lu: true,
+          });
+        }
+        groupesAChanger.add(idGroupe(ev.conversation));
+        touchees.add(ev.conversation);
       }
     }
     for (const c of touchees) await this.recalculer(tx, c);
@@ -277,11 +352,16 @@ export class Messagerie {
     await this.db.put("reglages", this.seq, "seq");
     this.planifierAccuse();
     // Le message est arrivé : son auteur n'est plus « en train d'écrire ».
-    if (nouveaux.some((m) => this.etat.ecrit[m.de])) {
-      const ecrit = { ...this.etat.ecrit };
-      for (const m of nouveaux) delete ecrit[m.de];
-      this.publier({ ecrit });
+    const ecrit = { ...this.etat.ecrit };
+    let change = false;
+    for (const m of nouveaux) {
+      if (ecrit[m.conversation]?.de === m.de) {
+        delete ecrit[m.conversation];
+        change = true;
+      }
     }
+    if (change) this.publier({ ecrit });
+    for (const g of groupesAChanger) void this.chargerGroupe(g, true);
     await this.publierConversations(touchees);
     this.notifier(nouveaux);
   }
@@ -296,42 +376,97 @@ export class Messagerie {
 
   // --- Envoi --------------------------------------------------------------------------
 
-  async envoyer(autre: string, texte: string): Promise<void> {
+  async envoyer(conversation: string, texte: string, reponseA?: MessageLocal): Promise<void> {
     const propre = texte.trim();
     if (!propre) return;
+    const groupe = estGroupe(conversation);
+    const a = groupe ? idGroupe(conversation) : autreParticipant(conversation, this.moi);
+    const citation: Citation | undefined =
+      reponseA && !reponseA.supprime
+        ? { id: reponseA.id, de: reponseA.de, extrait: reponseA.texte.slice(0, LIMITE_EXTRAIT) }
+        : undefined;
     const message: MessageLocal = {
       id: crypto.randomUUID(),
-      conversation: conversationDirecte(this.moi, autre),
+      conversation,
       de: this.moi,
-      a: autre,
+      a,
       texte: propre,
       le: Date.now(),
+      type: "texte",
       etat: "attente",
+      ...(citation ? { reponseA: citation } : {}),
     };
     const tx = this.db.transaction(["messages", "conversations"], "readwrite");
     await tx.objectStore("messages").put(message);
-    await this.recalculer(tx, message.conversation);
+    await this.recalculer(tx, conversation);
     await tx.done;
-    await this.publierConversations(new Set([message.conversation]));
-    this.brut({ t: "envoyer", id: message.id, a: autre, texte: propre });
+    await this.publierConversations(new Set([conversation]));
+    this.envoyerMessage(message);
+  }
+
+  private envoyerMessage(m: MessageLocal): void {
+    const groupe = estGroupe(m.conversation);
+    this.brut({
+      t: "envoyer",
+      id: m.id,
+      ...(groupe ? { groupe: m.a } : { a: m.a }),
+      texte: m.texte,
+      ...(m.reponseA ? { reponseA: m.reponseA } : {}),
+    });
   }
 
   async renvoyer(id: string): Promise<void> {
     const msg = await this.db.get("messages", id);
     if (!msg || msg.de !== this.moi || msg.etat !== "echec") return;
     await this.modifierMessage(id, (m) => ({ ...m, etat: "attente", erreur: undefined }));
-    this.brut({ t: "envoyer", id, a: msg.a, texte: msg.texte });
+    this.envoyerMessage(msg);
   }
 
   private async renvoyerEnAttente(): Promise<void> {
     const enAttente = await this.db.getAllFromIndex("messages", "etat", "attente");
-    for (const m of enAttente.sort((a, b) => a.le - b.le)) this.brut({ t: "envoyer", id: m.id, a: m.a, texte: m.texte });
-    for (const [autre, ids] of this.lusEnAttente) this.envoyerLus(autre, [...ids]);
+    for (const m of enAttente.sort((a, b) => a.le - b.le)) this.envoyerMessage(m);
+    for (const [cle, lot] of this.lusEnAttente) {
+      this.lusEnAttente.delete(cle);
+      this.envoyerLus(lot.conversation, lot.auteur, [...lot.ids]);
+    }
+  }
+
+  // --- Réactions et suppression ---------------------------------------------------------
+
+  /** Réagir (ou retirer sa réaction avec null). Affichée tout de suite, annulée si le réseau manque. */
+  async reagir(message: MessageLocal, code: Reaction | null): Promise<boolean> {
+    if (!this.connecte) return false;
+    const avant = message.reactions ?? {};
+    const reactions = { ...avant };
+    if (code) reactions[this.moi] = code;
+    else delete reactions[this.moi];
+    await this.modifierMessage(message.id, (m) => ({ ...m, reactions }));
+    if (!this.brut({ t: "reagir", conversation: message.conversation, message: message.id, code })) {
+      await this.modifierMessage(message.id, (m) => ({ ...m, reactions: avant }));
+      return false;
+    }
+    return true;
+  }
+
+  /** Supprimer pour tout le monde : réservé à l'auteur, et seulement en ligne (les autres doivent être prévenus). */
+  async supprimerPourTous(message: MessageLocal): Promise<boolean> {
+    if (message.de !== this.moi || !this.connecte) return false;
+    if (!this.brut({ t: "supprimer", conversation: message.conversation, message: message.id })) return false;
+    await this.modifierMessage(message.id, (m) => ({ ...m, texte: "", supprime: true, reactions: {}, reponseA: undefined }));
+    return true;
+  }
+
+  async supprimerPourMoi(message: MessageLocal): Promise<void> {
+    const tx = this.db.transaction(["messages", "conversations"], "readwrite");
+    await tx.objectStore("messages").delete(message.id);
+    await this.recalculer(tx, message.conversation);
+    await tx.done;
+    await this.publierConversations(new Set([message.conversation]));
   }
 
   // --- Lecture ---------------------------------------------------------------------------
 
-  /** La discussion est affichée : ses messages sont lus, l'expéditeur le voit. */
+  /** La discussion est affichée : ses messages sont lus, chaque auteur le voit. */
   async marquerLu(conversation: string): Promise<void> {
     const tous = await this.db.getAllFromIndex("messages", "conversation", plageConversation(conversation));
     const aLire = tous.filter((m) => m.de !== this.moi && !m.lu);
@@ -341,25 +476,26 @@ export class Messagerie {
     await this.recalculer(tx, conversation);
     await tx.done;
     await this.publierConversations(new Set([conversation]));
-    this.envoyerLus(
-      autreParticipant(conversation, this.moi),
-      aLire.map((m) => m.id),
-    );
+    const parAuteur = new Map<string, string[]>();
+    for (const m of aLire) if (m.type !== "evenement") parAuteur.set(m.de, [...(parAuteur.get(m.de) ?? []), m.id]);
+    for (const [auteur, ids] of parAuteur) this.envoyerLus(conversation, auteur, ids);
   }
 
-  private envoyerLus(autre: string, ids: string[]): void {
-    const enAttente = this.lusEnAttente.get(autre) ?? new Set<string>();
-    for (const id of ids) enAttente.add(id);
-    const tous = [...enAttente];
-    let envoyes = true;
-    for (let i = 0; i < tous.length; i += 500) envoyes = this.brut({ t: "lu", avec: autre, ids: tous.slice(i, i + 500) }) && envoyes;
-    if (envoyes) this.lusEnAttente.delete(autre);
-    else this.lusEnAttente.set(autre, enAttente);
+  private envoyerLus(conversation: string, auteur: string, ids: string[]): void {
+    for (let i = 0; i < ids.length; i += 500) {
+      const lot = ids.slice(i, i + 500);
+      if (!this.brut({ t: "lu", conversation, auteur, ids: lot })) {
+        const cle = `${conversation}|${auteur}`;
+        const enAttente = this.lusEnAttente.get(cle) ?? { conversation, auteur, ids: new Set<string>() };
+        for (const id of lot) enAttente.ids.add(id);
+        this.lusEnAttente.set(cle, enAttente);
+      }
+    }
   }
 
   ouvrir(conversation: string | null): void {
     this.ouverte = conversation;
-    if (conversation) this.demanderPresence(autreParticipant(conversation, this.moi));
+    if (conversation && !estGroupe(conversation)) this.demanderPresence(autreParticipant(conversation, this.moi));
   }
 
   async messages(conversation: string): Promise<MessageLocal[]> {
@@ -368,22 +504,23 @@ export class Messagerie {
 
   // --- Présence, écriture --------------------------------------------------------------
 
-  /** « En train d'écrire » : au plus un signal toutes les trois secondes. */
-  signalerEcriture(autre: string): void {
+  /** « En train d'écrire » : un signal au plus toutes les 3 s (5 s dans un groupe, relayé à chacun). */
+  signalerEcriture(conversation: string): void {
     const maintenant = Date.now();
-    if (maintenant - (this.dernierEcrit.get(autre) ?? 0) < 3000) return;
-    this.dernierEcrit.set(autre, maintenant);
-    this.brut({ t: "ecrit", a: autre });
+    const intervalle = estGroupe(conversation) ? 5000 : 3000;
+    if (maintenant - (this.dernierEcrit.get(conversation) ?? 0) < intervalle) return;
+    this.dernierEcrit.set(conversation, maintenant);
+    this.brut({ t: "ecrit", conversation });
   }
 
   demanderPresence(autre: string): void {
     this.brut({ t: "presence", de: autre });
   }
 
-  // --- Profils ---------------------------------------------------------------------------
+  // --- Profils et groupes -----------------------------------------------------------------
 
   async chargerPersonne(id: string, forcer = false): Promise<void> {
-    if (this.personnesDemandees.has(id) && !forcer) return;
+    if (id === this.moi || (this.personnesDemandees.has(id) && !forcer)) return;
     this.personnesDemandees.add(id);
     try {
       const carte = await api.personne(id);
@@ -398,6 +535,38 @@ export class Messagerie {
   retenirPersonne(carte: CarteProfil): void {
     void this.db.put("personnes", { ...carte, maj: Date.now() });
     this.publier({ personnes: { ...this.etat.personnes, [carte.id]: carte } });
+  }
+
+  async chargerGroupe(id: string, forcer = false): Promise<void> {
+    if (this.groupesDemandes.has(id) && !forcer) return;
+    this.groupesDemandes.add(id);
+    try {
+      this.retenirGroupe(await api.groupe(id));
+    } catch (erreur) {
+      // Groupe quitté ou supprimé : on garde son nom, sans les membres.
+      if (erreur instanceof ErreurApi && erreur.statut === 404) {
+        const connu = this.etat.groupes[id];
+        if (connu) this.retenirGroupe({ ...connu, membres: [], moiMembre: false, moiAdmin: false });
+      }
+    }
+  }
+
+  retenirGroupe(groupe: Groupe): void {
+    void this.db.put("groupes", { ...groupe, maj: Date.now() });
+    this.publier({ groupes: { ...this.etat.groupes, [groupe.id]: groupe } });
+  }
+
+  /** Nom à afficher pour une personne (moi : « Vous »). */
+  nom(id: string, conversation?: string): string {
+    if (id === this.moi) return "Vous";
+    const personne = this.etat.personnes[id];
+    if (personne) return personne.nom;
+    if (conversation && estGroupe(conversation)) {
+      const membre = this.etat.groupes[idGroupe(conversation)]?.membres.find((m) => m.id === id);
+      if (membre) return membre.nom;
+    }
+    void this.chargerPersonne(id);
+    return "Quelqu'un";
   }
 
   // --- Outils ---------------------------------------------------------------------------
@@ -420,11 +589,20 @@ export class Messagerie {
     const dernier = tous[tous.length - 1];
     const resume: ConversationLocale = {
       id: conversation,
-      autre: autreParticipant(conversation, this.moi),
+      autre: estGroupe(conversation) ? idGroupe(conversation) : autreParticipant(conversation, this.moi),
       dernier: dernier
-        ? { id: dernier.id, texte: dernier.texte, le: dernier.le, deMoi: dernier.de === this.moi, etat: dernier.etat }
+        ? {
+            id: dernier.id,
+            texte: dernier.texte,
+            le: dernier.le,
+            de: dernier.de,
+            deMoi: dernier.de === this.moi,
+            etat: dernier.etat,
+            supprime: dernier.supprime,
+            evenement: dernier.evenement,
+          }
         : null,
-      nonLus: tous.filter((m) => m.de !== this.moi && !m.lu).length,
+      nonLus: tous.filter((m) => m.de !== this.moi && !m.lu && m.type !== "evenement").length,
     };
     await tx.objectStore("conversations").put(resume);
   }
@@ -435,7 +613,11 @@ export class Messagerie {
     for (const c of touchees) versions[c] = (versions[c] ?? 0) + 1;
     this.publier({ conversations, versions });
     this.mettreAJourTitre();
-    for (const c of conversations) if (!this.etat.personnes[c.autre]) void this.chargerPersonne(c.autre);
+    for (const c of conversations) {
+      if (estGroupe(c.id)) {
+        if (!this.etat.groupes[c.autre]) void this.chargerGroupe(c.autre);
+      } else if (!this.etat.personnes[c.autre]) void this.chargerPersonne(c.autre);
+    }
   }
 
   private mettreAJourTitre(): void {
@@ -447,11 +629,14 @@ export class Messagerie {
   private notifier(nouveaux: MessageLocal[]): void {
     if (!("Notification" in window) || Notification.permission !== "granted" || !document.hidden) return;
     for (const m of nouveaux) {
-      const nom = this.etat.personnes[m.de]?.nom ?? "Nouveau message";
-      const notification = new Notification(nom, { body: m.texte.slice(0, 200), tag: m.conversation, icon: "/icone.svg" });
+      const groupe = estGroupe(m.conversation) ? this.etat.groupes[idGroupe(m.conversation)] : null;
+      const auteur = this.nom(m.de, m.conversation);
+      const titre = groupe ? groupe.nom : auteur;
+      const corps = groupe ? `${auteur} : ${m.texte}` : m.texte;
+      const notification = new Notification(titre, { body: corps.slice(0, 200), tag: m.conversation, icon: "/icone.svg" });
       notification.onclick = () => {
         window.focus();
-        this.surOuverture?.(m.de);
+        this.surOuverture?.(m.conversation);
         notification.close();
       };
     }

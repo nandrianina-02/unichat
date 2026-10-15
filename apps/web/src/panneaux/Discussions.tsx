@@ -13,19 +13,23 @@ import {
   X,
 } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Avatar } from "../composants/Avatar";
+import { estGroupe } from "@unichat/shared";
+import { Avatar, AvatarGroupe } from "../composants/Avatar";
 import { BoutonIcone } from "../composants/BoutonIcone";
 import { Coches } from "../composants/Coches";
 import { EVENEMENT_CONTACTS, LignePersonne, TitreSection } from "../composants/Lignes";
 import { api } from "../lib/api";
 import { useCompte, useMoi } from "../lib/compte";
-import { dateListe, lieu, quand } from "../lib/format";
+import { dateListe, lieu, quand, texteEvenement } from "../lib/format";
 import { useMessagerie } from "../lib/messagerie-react";
 import type { ConversationLocale } from "../lib/stockage";
 
 interface Props {
+  /** Discussion ouverte (identifiant de conversation). */
   selection: string | null;
-  onOuvrir: (avec: string) => void;
+  onOuvrir: (conversation: string) => void;
+  /** Ouvre la discussion à deux avec cette personne. */
+  onOuvrirPersonne: (id: string) => void;
   onNouvelle: () => void;
   onParametres: () => void;
   onDeconnexion: () => void;
@@ -34,10 +38,10 @@ interface Props {
 type Filtre = "toutes" | "non-lues";
 
 /** Colonne de gauche : en-tête, recherche, alertes, liste des discussions. */
-export function Discussions({ selection, onOuvrir, onNouvelle, onParametres, onDeconnexion }: Props) {
+export function Discussions({ selection, onOuvrir, onOuvrirPersonne, onNouvelle, onParametres, onDeconnexion }: Props) {
   const moi = useMoi();
   const { sessionPerdue } = useCompte();
-  const { etat } = useMessagerie();
+  const { messagerie, etat } = useMessagerie();
   const [contacts, setContacts] = useState<CarteProfil[] | null>(null);
   const [recherche, setRecherche] = useState("");
   const [filtre, setFiltre] = useState<Filtre>("toutes");
@@ -63,7 +67,11 @@ export function Discussions({ selection, onOuvrir, onNouvelle, onParametres, onD
   }, [menu]);
 
   const nomDe = (c: ConversationLocale) =>
-    c.autre === moi.id ? `${moi.nom} (vous)` : (etat.personnes[c.autre]?.nom ?? "");
+    estGroupe(c.id)
+      ? (etat.groupes[c.autre]?.nom ?? "Groupe")
+      : c.autre === moi.id
+        ? `${moi.nom} (vous)`
+        : (etat.personnes[c.autre]?.nom ?? "");
   const texte = recherche.trim().toLowerCase();
   const nonLues = etat.conversations.filter((c) => c.nonLus > 0).length;
 
@@ -76,13 +84,13 @@ export function Discussions({ selection, onOuvrir, onNouvelle, onParametres, onD
           (!texte || nomDe(c).toLowerCase().includes(texte)),
       ),
     // nomDe ne dépend que des personnes connues et du profil, déjà suivis ici.
-    [etat.conversations, etat.personnes, filtre, texte, moi.id, moi.nom],
+    [etat.conversations, etat.personnes, etat.groupes, filtre, texte, moi.id, moi.nom],
   );
 
   // Pendant une recherche : les contacts sans discussion apparaissent aussi.
   const contactsTrouves = useMemo(() => {
     if (!texte || !contacts) return [];
-    const avecDiscussion = new Set(etat.conversations.map((c) => c.autre));
+    const avecDiscussion = new Set(etat.conversations.filter((c) => !estGroupe(c.id)).map((c) => c.autre));
     return contacts.filter(
       (c) =>
         !avecDiscussion.has(c.id) &&
@@ -187,25 +195,30 @@ export function Discussions({ selection, onOuvrir, onNouvelle, onParametres, onD
         <BanniereNotifications />
         <AlerteConnexion />
 
-        {conversations.map((c, i) => (
-          <LigneConversation
-            key={c.id}
-            conversation={c}
-            nom={nomDe(c)}
-            personne={c.autre === moi.id ? null : etat.personnes[c.autre]}
-            photoMoi={c.autre === moi.id ? moi.photo : null}
-            ecrit={(etat.ecrit[c.autre] ?? 0) > Date.now()}
-            selection={selection === c.autre}
-            onClick={() => onOuvrir(c.autre)}
-            className={i < 6 ? `animate-fade stagger-${i + 1}` : undefined}
-          />
-        ))}
+        {conversations.map((c, i) => {
+          const indication = etat.ecrit[c.id];
+          const ecrit = indication && indication.fin > Date.now() ? indication.de : null;
+          return (
+            <LigneConversation
+              key={c.id}
+              conversation={c}
+              nom={nomDe(c)}
+              personne={estGroupe(c.id) || c.autre === moi.id ? null : etat.personnes[c.autre]}
+              photoMoi={c.autre === moi.id ? moi.photo : null}
+              ecrit={ecrit ? (estGroupe(c.id) ? `${messagerie.nom(ecrit, c.id)} écrit…` : "écrit…") : null}
+              apercu={apercu(c, (id) => messagerie.nom(id, c.id))}
+              selection={selection === c.id}
+              onClick={() => onOuvrir(c.id)}
+              className={i < 6 ? `animate-fade stagger-${i + 1}` : undefined}
+            />
+          );
+        })}
 
         {texte && contactsTrouves.length > 0 && (
           <>
             <TitreSection>Contacts</TitreSection>
             {contactsTrouves.map((c) => (
-              <LignePersonne key={c.id} carte={c} selection={selection === c.id} onClick={() => onOuvrir(c.id)} />
+              <LignePersonne key={c.id} carte={c} onClick={() => onOuvrirPersonne(c.id)} />
             ))}
           </>
         )}
@@ -242,12 +255,23 @@ export function Discussions({ selection, onOuvrir, onNouvelle, onParametres, onD
   );
 }
 
+/** Aperçu de la dernière activité : « Ana : message », un événement de groupe, ou un message supprimé. */
+function apercu(c: ConversationLocale, nom: (id: string) => string): { texte: string; italique: boolean } {
+  const d = c.dernier;
+  if (!d) return { texte: "", italique: false };
+  if (d.evenement) return { texte: texteEvenement(d.evenement, nom), italique: false };
+  if (d.supprime) return { texte: d.deMoi ? "Vous avez supprimé ce message" : "Ce message a été supprimé", italique: true };
+  const prefixe = estGroupe(c.id) && !d.deMoi ? `${nom(d.de)} : ` : "";
+  return { texte: `${prefixe}${d.texte}`, italique: false };
+}
+
 function LigneConversation({
   conversation: c,
   nom,
   personne,
   photoMoi,
   ecrit,
+  apercu: resume,
   selection,
   onClick,
   className,
@@ -256,7 +280,8 @@ function LigneConversation({
   nom: string;
   personne: CarteProfil | null | undefined;
   photoMoi: string | null;
-  ecrit: boolean;
+  ecrit: string | null;
+  apercu: { texte: string; italique: boolean };
   selection: boolean;
   onClick: () => void;
   className?: string;
@@ -273,7 +298,11 @@ function LigneConversation({
         className,
       )}
     >
-      <Avatar id={c.autre} photo={personne?.photo ?? photoMoi} nom={nom || "Contact"} taille={49} />
+      {estGroupe(c.id) ? (
+        <AvatarGroupe taille={49} />
+      ) : (
+        <Avatar id={c.autre} photo={personne?.photo ?? photoMoi} nom={nom || "Contact"} taille={49} />
+      )}
       <div className="min-w-0 flex-1 border-b border-bordure py-3 pr-4">
         <div className="flex items-baseline justify-between gap-2">
           <p className="truncate text-[17px] text-texte">{nom || "…"}</p>
@@ -285,12 +314,10 @@ function LigneConversation({
         </div>
         <div className="mt-0.5 flex items-center gap-2">
           <p className={clsx("flex min-w-0 flex-1 items-center gap-1 text-[14px]", ecrit ? "text-primaire" : "text-texte-2")}>
-            {ecrit ? (
-              "écrit…"
-            ) : (
+            {ecrit ?? (
               <>
-                {c.dernier?.deMoi && <Coches etat={c.dernier.etat} />}
-                <span className="truncate">{c.dernier?.texte}</span>
+                {c.dernier?.deMoi && !c.dernier.supprime && !c.dernier.evenement && <Coches etat={c.dernier.etat} />}
+                <span className={clsx("truncate", resume.italique && "italic")}>{resume.texte}</span>
               </>
             )}
           </p>

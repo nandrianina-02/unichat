@@ -1,5 +1,5 @@
 import { lireRecherche, type CarteProfil } from "@unichat/shared";
-import { Check, Link, LoaderCircle, Search, UserCheck, UserPlus, X } from "lucide-react";
+import { Check, Link, LoaderCircle, Search, UserCheck, UserPlus, UsersRound, X } from "lucide-react";
 import { useEffect, useState } from "react";
 import { EVENEMENT_CONTACTS, LignePersonne, TitreSection, contactsModifies } from "../composants/Lignes";
 import { EnTetePanneau } from "../composants/Panneau";
@@ -22,9 +22,10 @@ interface Props {
   onOuvrir: (id: string) => void;
   /** Nom d'utilisateur reçu par un lien de contact. */
   invitation: string | null;
+  onNouveauGroupe: () => void;
 }
 
-export function NouvelleDiscussion({ onRetour, onOuvrir, invitation }: Props) {
+export function NouvelleDiscussion({ onRetour, onOuvrir, invitation, onNouveauGroupe }: Props) {
   const moi = useMoi();
   const { messagerie } = useMessagerie();
   const ouvrir = (carte: CarteProfil) => {
@@ -175,6 +176,16 @@ export function NouvelleDiscussion({ onRetour, onOuvrir, invitation }: Props) {
             />
           </div>
         )}
+
+        <button type="button" onClick={onNouveauGroupe} className="flex w-full items-center gap-4 pl-4 pr-4 text-left hover:bg-survol">
+          <span className="flex size-[49px] shrink-0 items-center justify-center rounded-full bg-primaire text-sur-primaire">
+            <UsersRound size={22} />
+          </span>
+          <span className="min-w-0 flex-1 border-b border-bordure py-3.5">
+            <span className="block text-[17px] text-texte">Nouveau groupe</span>
+            <span className="mt-0.5 block truncate text-[14px] text-texte-2">Jusqu'à 40 personnes de vos contacts</span>
+          </span>
+        </button>
 
         {moi.pseudo && (
           <button type="button" onClick={() => void copierLien()} className="flex w-full items-center gap-4 pl-4 pr-4 text-left hover:bg-survol">

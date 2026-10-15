@@ -5,6 +5,8 @@ import { useEffect, useRef, useState } from "react";
 interface Props {
   libelle: string;
   valeur: string;
+  /** Texte affiché quand la valeur est vide (« Ajouter une description »). */
+  invite?: string;
   maximum: number;
   prefixe?: string;
   aide?: string;
@@ -14,7 +16,7 @@ interface Props {
 }
 
 /** Champ affiché en lecture, qui passe en édition au clic sur le crayon. */
-export function ChampModifiable({ libelle, valeur, maximum, prefixe, aide, enregistrer, valider }: Props) {
+export function ChampModifiable({ libelle, valeur, invite, maximum, prefixe, aide, enregistrer, valider }: Props) {
   const [edition, setEdition] = useState(false);
   const [texte, setTexte] = useState(valeur);
   const [erreur, setErreur] = useState<string | null>(null);
@@ -91,8 +93,14 @@ export function ChampModifiable({ libelle, valeur, maximum, prefixe, aide, enreg
       ) : (
         <div className="mt-3 flex items-center gap-3">
           <p className="min-w-0 flex-1 break-words text-[15px] text-texte">
-            {prefixe && <span className="text-texte-2">{prefixe}</span>}
-            {valeur}
+            {valeur ? (
+              <>
+                {prefixe && <span className="text-texte-2">{prefixe}</span>}
+                {valeur}
+              </>
+            ) : (
+              <span className="text-texte-3">{invite ?? ""}</span>
+            )}
           </p>
           <button
             type="button"
