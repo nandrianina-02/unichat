@@ -1,0 +1,35 @@
+{
+  "$schema": "../../node_modules/wrangler/config-schema.json",
+  "name": "unichat",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-09-01",
+  "observability": { "enabled": true },
+
+  // L'application web est servie par le même Worker : une seule adresse, et
+  // un cookie de session qui reste « first-party » (voir docs/ARCHITECTURE.md).
+  "assets": {
+    "directory": "../web/dist",
+    "not_found_handling": "single-page-application",
+    "run_worker_first": ["/api/*"]
+  },
+
+  // `wrangler dev` et `wrangler deploy` construisent d'abord l'application web.
+  "build": {
+    "command": "npm run build --workspace @unichat/web",
+    "cwd": "../..",
+    "watch_dir": ["../web/src", "../web/index.html", "../../packages/shared/src"]
+  },
+
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "unichat",
+      // Remplacé par l'identifiant réel après `wrangler d1 create unichat`.
+      "database_id": "00000000-0000-0000-0000-000000000000",
+      "migrations_dir": "migrations"
+    }
+  ],
+
+  // Nettoyage quotidien (états de connexion, compteurs, vieilles sessions).
+  "triggers": { "crons": ["17 3 * * *"] }
+}

@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="fr">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>UniChat</title>
+    <meta name="description" content="UniChat : messagerie simple et sécurisée, sur le web, Android et ordinateur." />
+    <meta name="theme-color" content="#4F46E5" />
+    <link rel="icon" type="image/svg+xml" href="/icone.svg" />
+    <script src="/theme.js"></script>
+  </head>
+  <body>
+    <div id="racine">
+      <!-- Écran de chargement visible avant l'exécution du JavaScript ; le
+           composant Chargement reprend exactement le même rendu. -->
+      <div class="fixed inset-0 flex items-center justify-center bg-fond">
+        <div class="flex w-72 flex-col items-center">
+          <svg class="size-16 text-texte-3" viewBox="0 0 48 48" aria-hidden="true">
+            <path fill="currentColor" d="M24 3C12.4 3 3 11.5 3 22c0 5.6 2.7 10.6 7 14.1L8.4 45l9-4.8c2.1.6 4.3.8 6.6.8 11.6 0 21-8.5 21-19S35.6 3 24 3z" />
+            <path class="stroke-fond" fill="none" stroke-linecap="round" stroke-width="3.4" d="M16.5 14.5v8.2a7.5 7.5 0 0 0 15 0v-8.2" />
+          </svg>
+          <div class="mt-12 h-1 w-full overflow-hidden rounded-full bg-bordure">
+            <div class="barre-chargement h-full rounded-full bg-primaire"></div>
+          </div>
+          <p class="mt-6 text-[17px] text-texte">UniChat</p>
+        </div>
+      </div>
+    </div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>

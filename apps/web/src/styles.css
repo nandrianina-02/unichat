@@ -1,0 +1,210 @@
+@import "tailwindcss";
+
+/*
+ * Jetons de couleur d'UniChat. Organisation et contrastes calqués sur une
+ * messagerie de référence, palette propre : indigo #4F46E5 comme seule
+ * couleur d'accent. Aucun composant n'écrit une couleur en dur.
+ */
+:root {
+  --fond: #eff1f5;
+  --panneau: #ffffff;
+  --entete: #f0f2f5;
+  --survol: #f5f6f8;
+  --selection: #eceefb;
+  --bordure: #e6e8ef;
+  --texte: #111827;
+  --texte-2: #5f6577;
+  --texte-3: #8a8fa0;
+  --primaire: #4f46e5;
+  --primaire-fort: #4338ca;
+  --primaire-doux: #e0e7ff;
+  --primaire-texte: #3730a3;
+  --sur-primaire: #ffffff;
+  --danger: #e11d48;
+  --danger-doux: #ffe4e8;
+  --champ: #f0f2f5;
+  --avatar: #dfe3ec;
+  --avatar-icone: #ffffff;
+  --discussion: #eceef6;
+  --voile: rgb(17 24 39 / 0.45);
+  /* Bouton « Continuer avec Google » : couleurs imposées par la charte Google. */
+  --google-fond: #ffffff;
+  --google-bordure: #747775;
+  --google-texte: #1f1f1f;
+  color-scheme: light;
+}
+
+/* Thème sombre : choisi dans les réglages, ou suivi du système. */
+:root[data-theme="sombre"] {
+  --fond: #0c0d12;
+  --panneau: #12131a;
+  --entete: #1b1c25;
+  --survol: #1f2029;
+  --selection: #262842;
+  --bordure: #262733;
+  --texte: #e8e9f0;
+  --texte-2: #9a9cae;
+  --texte-3: #6f7184;
+  --primaire: #6366f1;
+  --primaire-fort: #818cf8;
+  --primaire-doux: #2a2960;
+  --primaire-texte: #c7d2fe;
+  --sur-primaire: #ffffff;
+  --danger: #fb7185;
+  --danger-doux: #3b1520;
+  --champ: #1f2029;
+  --avatar: #33354a;
+  --avatar-icone: #8e90a6;
+  --discussion: #0c0d12;
+  --voile: rgb(0 0 0 / 0.6);
+  --google-fond: #131314;
+  --google-bordure: #8e918f;
+  --google-texte: #e3e3e3;
+  color-scheme: dark;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme]) {
+    --fond: #0c0d12;
+    --panneau: #12131a;
+    --entete: #1b1c25;
+    --survol: #1f2029;
+    --selection: #262842;
+    --bordure: #262733;
+    --texte: #e8e9f0;
+    --texte-2: #9a9cae;
+    --texte-3: #6f7184;
+    --primaire: #6366f1;
+    --primaire-fort: #818cf8;
+    --primaire-doux: #2a2960;
+    --primaire-texte: #c7d2fe;
+    --sur-primaire: #ffffff;
+    --danger: #fb7185;
+    --danger-doux: #3b1520;
+    --champ: #1f2029;
+    --avatar: #33354a;
+    --avatar-icone: #8e90a6;
+    --discussion: #0c0d12;
+    --voile: rgb(0 0 0 / 0.6);
+    --google-fond: #131314;
+    --google-bordure: #8e918f;
+    --google-texte: #e3e3e3;
+    color-scheme: dark;
+  }
+}
+
+@theme inline {
+  --color-fond: var(--fond);
+  --color-panneau: var(--panneau);
+  --color-entete: var(--entete);
+  --color-survol: var(--survol);
+  --color-selection: var(--selection);
+  --color-bordure: var(--bordure);
+  --color-texte: var(--texte);
+  --color-texte-2: var(--texte-2);
+  --color-texte-3: var(--texte-3);
+  --color-primaire: var(--primaire);
+  --color-primaire-fort: var(--primaire-fort);
+  --color-primaire-doux: var(--primaire-doux);
+  --color-primaire-texte: var(--primaire-texte);
+  --color-sur-primaire: var(--sur-primaire);
+  --color-danger: var(--danger);
+  --color-danger-doux: var(--danger-doux);
+  --color-champ: var(--champ);
+  --color-avatar: var(--avatar);
+  --color-avatar-icone: var(--avatar-icone);
+  --color-discussion: var(--discussion);
+  --color-voile: var(--voile);
+  --color-google-fond: var(--google-fond);
+  --color-google-bordure: var(--google-bordure);
+  --color-google-texte: var(--google-texte);
+  /* Police du système, comme les messageries de référence : aucun
+     téléchargement, et le rendu natif de chaque plateforme. */
+  --font-sans: "Segoe UI", "Helvetica Neue", Helvetica, "Lucida Grande", Arial, Ubuntu, Cantarell, "Fira Sans", sans-serif;
+}
+
+@layer base {
+  html,
+  body,
+  #racine {
+    height: 100%;
+  }
+  body {
+    background: var(--fond);
+    color: var(--texte);
+    font-family: var(--font-sans);
+    -webkit-font-smoothing: antialiased;
+  }
+  :focus-visible {
+    outline: 2px solid var(--primaire);
+    outline-offset: 2px;
+  }
+  ::selection {
+    background: color-mix(in srgb, var(--primaire) 25%, transparent);
+  }
+}
+
+/* ---------------------------------------------------------------------------
+ * Animations. Elles accompagnent un changement d'état : un panneau qui
+ * s'ouvre glisse depuis la gauche comme dans la messagerie de référence, un
+ * menu apparaît depuis son bouton, une liste entre en cascade bornée.
+ * ------------------------------------------------------------------------ */
+
+@keyframes glisser-entree {
+  from { transform: translateX(-100%); }
+  to { transform: none; }
+}
+@keyframes glisser-sortie {
+  from { transform: none; }
+  to { transform: translateX(-100%); }
+}
+@keyframes glisser-droite-entree {
+  from { transform: translateX(24px); opacity: 0; }
+  to { transform: none; opacity: 1; }
+}
+@keyframes fondu {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+@keyframes monter {
+  from { opacity: 0; transform: translateY(6px); }
+  to { opacity: 1; transform: none; }
+}
+@keyframes surgir {
+  from { opacity: 0; transform: scale(0.96) translateY(-4px); }
+  to { opacity: 1; transform: none; }
+}
+@keyframes progression {
+  from { transform: scaleX(0.04); }
+  to { transform: scaleX(0.92); }
+}
+
+.panneau-entree { animation: glisser-entree 240ms cubic-bezier(0.1, 0.82, 0.25, 1) both; }
+.panneau-sortie { animation: glisser-sortie 200ms cubic-bezier(0.4, 0, 1, 1) both; }
+.vue-entree { animation: glisser-droite-entree 220ms ease-out both; }
+.animate-fade { animation: fondu 180ms ease-out both; }
+.animate-rise { animation: monter 240ms cubic-bezier(0.2, 0.7, 0.2, 1) both; }
+.animate-pop { animation: surgir 150ms ease-out both; transform-origin: top right; }
+.stagger-1 { animation-delay: 30ms; }
+.stagger-2 { animation-delay: 60ms; }
+.stagger-3 { animation-delay: 90ms; }
+.stagger-4 { animation-delay: 120ms; }
+.stagger-5 { animation-delay: 150ms; }
+.stagger-6 { animation-delay: 180ms; }
+
+/* Barre de l'écran de chargement : elle avance tant que l'application se
+   prépare (indicateur d'état, d'où sa durée plus longue). */
+.barre-chargement {
+  transform-origin: left;
+  animation: progression 2.6s cubic-bezier(0.2, 0.7, 0.2, 1) forwards;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 1ms !important;
+    animation-delay: 0ms !important;
+    transition-duration: 1ms !important;
+  }
+}

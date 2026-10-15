@@ -1,0 +1,5 @@
+# Copier en .dev.vars (jamais versionné) pour le développement local.
+# Identifiants d'un client OAuth « Application Web » créé dans Google Cloud,
+# avec l'URI de redirection http://localhost:8787/api/auth/google/rappel
+GOOGLE_CLIENT_ID=
+GOOGLE_CLIENT_SECRET=
