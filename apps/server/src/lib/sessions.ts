@@ -42,7 +42,7 @@ export type MotifRevocation = "deconnexion" | "revoquee" | "expiration" | "reuti
 export type ResultatSession =
   | { etat: "valide"; session: LigneSession; nouveauJeton?: string }
   | { etat: "absente" }
-  | { etat: "revoquee"; motif: MotifRevocation };
+  | { etat: "revoquee"; motif: MotifRevocation; session: LigneSession };
 
 export interface NouvelAppareil {
   utilisateurId: string;
@@ -87,27 +87,37 @@ export async function creerSession(
  * l'ancien revient après le délai de grâce, quelqu'un d'autre le détient :
  * la session est fermée pour tous.
  */
-export async function verifierSession(db: D1Database, jeton: string, maintenant: number): Promise<ResultatSession> {
+export async function verifierSession(
+  db: D1Database,
+  jeton: string,
+  maintenant: number,
+  options: { renouveler?: boolean } = {},
+): Promise<ResultatSession> {
   const hash = await empreinte(jeton);
   const s = await db
     .prepare("SELECT * FROM sessions WHERE jeton_hash = ?1 OR jeton_precedent_hash = ?1")
     .bind(hash)
     .first<LigneSession>();
   if (!s) return { etat: "absente" };
-  if (s.revoquee_le !== null) return { etat: "revoquee", motif: (s.motif_revocation as MotifRevocation) ?? "revoquee" };
+  if (s.revoquee_le !== null) {
+    return { etat: "revoquee", motif: (s.motif_revocation as MotifRevocation) ?? "revoquee", session: s };
+  }
 
   if (s.jeton_hash !== hash) {
     if (maintenant - s.rotation_le <= DUREES.grace) return { etat: "valide", session: s };
     await revoquer(db, s, "reutilisation", maintenant);
-    return { etat: "revoquee", motif: "reutilisation" };
+    return { etat: "revoquee", motif: "reutilisation", session: s };
   }
 
   if (maintenant > s.expire_le || maintenant - s.vu_le > DUREES.inactivite) {
     await revoquer(db, s, "expiration", maintenant);
-    return { etat: "revoquee", motif: "expiration" };
+    return { etat: "revoquee", motif: "expiration", session: s };
   }
 
-  if (maintenant - s.rotation_le > DUREES.rotation) {
+  // Pas de renouvellement à l'ouverture d'une connexion temps réel : la
+  // réponse 101 ne peut pas porter le nouveau cookie de façon fiable, et un
+  // jeton renouvelé mais jamais reçu ferait passer le suivant pour un vol.
+  if (options.renouveler !== false && maintenant - s.rotation_le > DUREES.rotation) {
     const nouveau = aleatoire(32);
     // Conditionnel : si une requête concurrente a déjà renouvelé le jeton,
     // celle-ci n'écrase rien et se contente de l'ancien, encore en grâce.

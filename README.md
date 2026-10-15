@@ -11,7 +11,8 @@ Les choix techniques et leurs raisons : [docs/ARCHITECTURE.md](docs/ARCHITECTURE
 | Étape | Contenu | État |
 |---|---|---|
 | 1. Socle | Connexion Google sécurisée, sessions par appareil, profil, contacts, confidentialité, application web | Fait |
-| 2. Discussions | Messages à deux et en groupe en temps réel, accusés de lecture, présence, médias, messages vocaux ; application Android | À venir |
+| 2. Discussions | Messages à deux en temps réel, envoi hors connexion, coches (envoyé, remis, lu), « écrit… », présence et dernière connexion, synchronisation entre mes appareils, notifications du navigateur | Fait (web) |
+| 2 bis. Discussions | Groupes, réponses, réactions, suppression, médias, messages vocaux ; application Android | À venir |
 | 3. Sécurité | Chiffrement de bout en bout (protocole Signal), notifications, appareils liés | À venir |
 | 4. Appels et statuts | Appels audio et vidéo (WebRTC), statuts | À venir |
 | 5. API UniChat | Comptes entreprise et bots, REST, webhooks signés, documentation | À venir |

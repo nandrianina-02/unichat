@@ -1,15 +1,28 @@
 import type { CarteProfil } from "@unichat/shared";
-import { LoaderCircle, UserMinus, UserPlus, X } from "lucide-react";
+import { LoaderCircle, MessageSquareText, UserMinus, UserPlus, X } from "lucide-react";
 import { useEffect, useState } from "react";
 import { Avatar } from "../composants/Avatar";
 import { Dialogue } from "../composants/Dialogue";
 import { contactsModifies } from "../composants/Lignes";
 import { ErreurApi, api } from "../lib/api";
 import { useCompte } from "../lib/compte";
+import { useMessagerie } from "../lib/messagerie-react";
 
-/** « Infos du contact », dans la zone principale. */
-export function FicheContact({ id, onFermer }: { id: string; onFermer: () => void }) {
+/**
+ * « Infos du contact ». Ouverte depuis une discussion, elle se place à côté ;
+ * sinon elle propose d'écrire à la personne.
+ */
+export function FicheContact({
+  id,
+  onFermer,
+  onMessage,
+}: {
+  id: string;
+  onFermer: () => void;
+  onMessage?: (id: string) => void;
+}) {
   const { sessionPerdue } = useCompte();
+  const { messagerie } = useMessagerie();
   const [carte, setCarte] = useState<CarteProfil | null>(null);
   const [erreur, setErreur] = useState<string | null>(null);
   const [enCours, setEnCours] = useState(false);
@@ -20,9 +33,12 @@ export function FicheContact({ id, onFermer }: { id: string; onFermer: () => voi
     setErreur(null);
     api
       .personne(id)
-      .then(setCarte)
+      .then((c) => {
+        setCarte(c);
+        messagerie.retenirPersonne(c);
+      })
       .catch((e) => !sessionPerdue(e) && setErreur(e instanceof ErreurApi ? e.message : "Profil indisponible."));
-  }, [id, sessionPerdue]);
+  }, [id, sessionPerdue, messagerie]);
 
   async function basculer() {
     if (!carte) return;
@@ -30,10 +46,14 @@ export function FicheContact({ id, onFermer }: { id: string; onFermer: () => voi
     try {
       if (carte.estContact) {
         await api.retirerContact(carte.id);
-        setCarte({ ...carte, estContact: false });
+        const retiree = { ...carte, estContact: false };
+        setCarte(retiree);
+        messagerie.retenirPersonne(retiree);
         setRetrait(false);
       } else {
-        setCarte(await api.ajouterContact(carte.id));
+        const ajoutee = await api.ajouterContact(carte.id);
+        setCarte(ajoutee);
+        messagerie.retenirPersonne(ajoutee);
       }
       contactsModifies();
     } catch (e) {
@@ -76,6 +96,17 @@ export function FicheContact({ id, onFermer }: { id: string; onFermer: () => voi
               <div className="animate-rise stagger-1 mt-2.5 bg-panneau px-8 py-4">
                 <p className="text-sm text-texte-2">Infos</p>
                 <p className="mt-1.5 text-[16px] break-words text-texte">{carte.infos}</p>
+              </div>
+            )}
+            {onMessage && (
+              <div className="animate-rise stagger-1 mt-2.5 bg-panneau">
+                <button
+                  type="button"
+                  onClick={() => onMessage(carte.id)}
+                  className="flex w-full items-center gap-6 px-8 py-4 text-left text-[16px] text-primaire transition-colors hover:bg-survol"
+                >
+                  <MessageSquareText size={22} /> Envoyer un message
+                </button>
               </div>
             )}
             {!carte.estSoi && (

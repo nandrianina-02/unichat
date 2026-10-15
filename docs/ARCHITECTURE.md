@@ -101,11 +101,34 @@ sur Android). Deux raisons :
 - c'est le modèle compatible avec le chiffrement de bout en bout ;
 - le stockage serveur reste minime, ce qui tient dans les quotas gratuits.
 
-Un Durable Object par utilisateur sert de boîte aux lettres : il tient les
-WebSocket des appareils connectés et la file des messages en attente de
-chaque appareil. Une sauvegarde chiffrée de l'historique pourra aller sur le
-Google Drive de l'utilisateur (dossier privé de l'application), comme la
-sauvegarde Android de WhatsApp.
+### Boîte aux lettres (`apps/server/src/temps-reel/boite.ts`)
+
+Un Durable Object par utilisateur. Il tient les WebSocket de ses appareils
+(API d'hibernation : un appareil connecté mais silencieux ne coûte rien) et
+un **journal numéroté** : messages reçus, copies de mes messages envoyés
+(pour mes autres appareils), accusés de remise et de lecture.
+
+- À l'ouverture, l'appareil envoie `bonjour` avec le dernier numéro reçu ;
+  la boîte lui envoie la suite. Un appareil neuf reçoit ce qui est encore en
+  attente, sans l'historique déjà remis ailleurs (comme un appareil lié sans
+  synchronisation d'historique).
+- L'appareil accuse réception (`recu`) jusqu'à un numéro ; le premier
+  appareil qui reçoit un message déclenche l'accusé « remis » chez
+  l'expéditeur, l'ouverture de la discussion l'accusé « lu ».
+- Ce que tous les appareils ont reçu est effacé ; un appareil muet depuis
+  30 jours ne retient plus rien.
+- Un appareil déconnecté à distance voit sa connexion coupée (code 4001).
+
+L'ouverture de la connexion vérifie la session et l'origine (le navigateur
+joindrait sinon le cookie à une connexion ouverte depuis un autre site).
+
+Coût d'un message sur l'offre gratuite (100 000 requêtes Durable Objects
+par jour) : environ trois requêtes (envoi, accusé de remise, accusé de
+lecture), soit de l'ordre de 30 000 messages par jour.
+
+Une sauvegarde chiffrée de l'historique pourra aller sur le Google Drive de
+l'utilisateur (dossier privé de l'application), comme la sauvegarde Android
+de WhatsApp.
 
 ## Chiffrement de bout en bout (étape 3)
 

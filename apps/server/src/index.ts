@@ -2,6 +2,8 @@ import { creerApp } from "./app";
 import { nettoyer } from "./lib/nettoyage";
 import type { Bindings } from "./types";
 
+export { Boite } from "./temps-reel/boite";
+
 const app = creerApp();
 
 export default {

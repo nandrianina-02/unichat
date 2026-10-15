@@ -5,6 +5,7 @@ import { EVENEMENT_CONTACTS, LignePersonne, TitreSection, contactsModifies } fro
 import { EnTetePanneau } from "../composants/Panneau";
 import { ErreurApi, api } from "../lib/api";
 import { useCompte, useMoi } from "../lib/compte";
+import { useMessagerie } from "../lib/messagerie-react";
 import { lienContact, oublierInvitation } from "../lib/invitation";
 
 type Resultat =
@@ -17,13 +18,19 @@ type Resultat =
 
 interface Props {
   onRetour: () => void;
-  onFiche: (id: string) => void;
+  /** Ouvre la discussion avec cette personne. */
+  onOuvrir: (id: string) => void;
   /** Nom d'utilisateur reçu par un lien de contact. */
   invitation: string | null;
 }
 
-export function NouvelleDiscussion({ onRetour, onFiche, invitation }: Props) {
+export function NouvelleDiscussion({ onRetour, onOuvrir, invitation }: Props) {
   const moi = useMoi();
+  const { messagerie } = useMessagerie();
+  const ouvrir = (carte: CarteProfil) => {
+    messagerie.retenirPersonne(carte);
+    onOuvrir(carte.id);
+  };
   const { sessionPerdue } = useCompte();
   const [texte, setTexte] = useState(invitation ? `@${invitation}` : "");
   const [resultat, setResultat] = useState<Resultat>({ etat: "vide" });
@@ -145,7 +152,7 @@ export function NouvelleDiscussion({ onRetour, onFiche, invitation }: Props) {
             <TitreSection>Résultat</TitreSection>
             <LignePersonne
               carte={resultat.carte}
-              onClick={() => onFiche(resultat.carte.id)}
+              onClick={() => ouvrir(resultat.carte)}
               droite={
                 resultat.carte.estSoi ? null : resultat.carte.estContact ? (
                   <span className="flex items-center gap-1.5 text-sm text-texte-2">
@@ -190,7 +197,7 @@ export function NouvelleDiscussion({ onRetour, onFiche, invitation }: Props) {
           <p className="px-7 py-3 text-sm text-texte-2">Vous n'avez pas encore de contact.</p>
         ) : (
           contacts.map((c, i) => (
-            <LignePersonne key={c.id} carte={c} onClick={() => onFiche(c.id)} className={i < 6 ? `animate-fade stagger-${i + 1}` : undefined} />
+            <LignePersonne key={c.id} carte={c} onClick={() => ouvrir(c)} className={i < 6 ? `animate-fade stagger-${i + 1}` : undefined} />
           ))
         )}
       </div>

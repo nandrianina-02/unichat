@@ -26,6 +26,9 @@
   --avatar: #dfe3ec;
   --avatar-icone: #ffffff;
   --discussion: #eceef6;
+  --bulle-envoyee: #e3e6fc;
+  --bulle-recue: #ffffff;
+  --coche-lue: #4f46e5;
   --voile: rgb(17 24 39 / 0.45);
   /* Bouton « Continuer avec Google » : couleurs imposées par la charte Google. */
   --google-fond: #ffffff;
@@ -56,6 +59,9 @@
   --avatar: #33354a;
   --avatar-icone: #8e90a6;
   --discussion: #0c0d12;
+  --bulle-envoyee: #2d2a6b;
+  --bulle-recue: #1f2029;
+  --coche-lue: #a5b4fc;
   --voile: rgb(0 0 0 / 0.6);
   --google-fond: #131314;
   --google-bordure: #8e918f;
@@ -85,6 +91,9 @@
     --avatar: #33354a;
     --avatar-icone: #8e90a6;
     --discussion: #0c0d12;
+    --bulle-envoyee: #2d2a6b;
+    --bulle-recue: #1f2029;
+    --coche-lue: #a5b4fc;
     --voile: rgb(0 0 0 / 0.6);
     --google-fond: #131314;
     --google-bordure: #8e918f;
@@ -114,6 +123,9 @@
   --color-avatar: var(--avatar);
   --color-avatar-icone: var(--avatar-icone);
   --color-discussion: var(--discussion);
+  --color-bulle-envoyee: var(--bulle-envoyee);
+  --color-bulle-recue: var(--bulle-recue);
+  --color-coche-lue: var(--coche-lue);
   --color-voile: var(--voile);
   --color-google-fond: var(--google-fond);
   --color-google-bordure: var(--google-bordure);
@@ -141,6 +153,23 @@
   }
   ::selection {
     background: color-mix(in srgb, var(--primaire) 25%, transparent);
+  }
+}
+
+/* Fond des discussions : motif discret de bulles et de traits, à peine
+   visible, qui donne de la matière sans gêner la lecture. Sa couleur est
+   écrite dans l'image (une variable CSS ne peut pas entrer dans une image
+   data:), d'où une version par thème. */
+.papier-peint {
+  background-color: var(--discussion);
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160' fill='none' stroke='%23111827' stroke-opacity='.035' stroke-width='1.5' stroke-linecap='round'%3E%3Cpath d='M20 24h26a6 6 0 0 1 6 6v12a6 6 0 0 1-6 6H32l-8 6v-6h-4a6 6 0 0 1-6-6V30a6 6 0 0 1 6-6z'/%3E%3Ccircle cx='110' cy='34' r='7'/%3E%3Cpath d='M128 96h12M134 90v12'/%3E%3Ccircle cx='44' cy='118' r='3'/%3E%3Cpath d='M88 120c6-10 18-10 24 0'/%3E%3Crect x='100' y='136' width='14' height='10' rx='2'/%3E%3Cpath d='M60 80l8-8M60 72l8 8'/%3E%3C/svg%3E");
+}
+:root[data-theme="sombre"] .papier-peint {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160' fill='none' stroke='%23ffffff' stroke-opacity='.035' stroke-width='1.5' stroke-linecap='round'%3E%3Cpath d='M20 24h26a6 6 0 0 1 6 6v12a6 6 0 0 1-6 6H32l-8 6v-6h-4a6 6 0 0 1-6-6V30a6 6 0 0 1 6-6z'/%3E%3Ccircle cx='110' cy='34' r='7'/%3E%3Cpath d='M128 96h12M134 90v12'/%3E%3Ccircle cx='44' cy='118' r='3'/%3E%3Cpath d='M88 120c6-10 18-10 24 0'/%3E%3Crect x='100' y='136' width='14' height='10' rx='2'/%3E%3Cpath d='M60 80l8-8M60 72l8 8'/%3E%3C/svg%3E");
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme]) .papier-peint {
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160' fill='none' stroke='%23ffffff' stroke-opacity='.035' stroke-width='1.5' stroke-linecap='round'%3E%3Cpath d='M20 24h26a6 6 0 0 1 6 6v12a6 6 0 0 1-6 6H32l-8 6v-6h-4a6 6 0 0 1-6-6V30a6 6 0 0 1 6-6z'/%3E%3Ccircle cx='110' cy='34' r='7'/%3E%3Cpath d='M128 96h12M134 90v12'/%3E%3Ccircle cx='44' cy='118' r='3'/%3E%3Cpath d='M88 120c6-10 18-10 24 0'/%3E%3Crect x='100' y='136' width='14' height='10' rx='2'/%3E%3Cpath d='M60 80l8-8M60 72l8 8'/%3E%3C/svg%3E");
   }
 }
 

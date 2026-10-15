@@ -1,25 +1,46 @@
 import type { CarteProfil, EvenementSecurite } from "@unichat/shared";
-import { EllipsisVertical, LogOut, MessageSquarePlus, Search, Settings, ShieldAlert, UserPlus, X } from "lucide-react";
+import clsx from "clsx";
+import {
+  BellRing,
+  EllipsisVertical,
+  LogOut,
+  MessageSquarePlus,
+  Search,
+  Settings,
+  ShieldAlert,
+  UserPlus,
+  WifiOff,
+  X,
+} from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
+import { Avatar } from "../composants/Avatar";
 import { BoutonIcone } from "../composants/BoutonIcone";
+import { Coches } from "../composants/Coches";
 import { EVENEMENT_CONTACTS, LignePersonne, TitreSection } from "../composants/Lignes";
 import { api } from "../lib/api";
-import { useCompte } from "../lib/compte";
-import { lieu, quand } from "../lib/format";
+import { useCompte, useMoi } from "../lib/compte";
+import { dateListe, lieu, quand } from "../lib/format";
+import { useMessagerie } from "../lib/messagerie-react";
+import type { ConversationLocale } from "../lib/stockage";
 
 interface Props {
-  fiche: string | null;
-  onFiche: (id: string) => void;
+  selection: string | null;
+  onOuvrir: (avec: string) => void;
   onNouvelle: () => void;
   onParametres: () => void;
   onDeconnexion: () => void;
 }
 
-/** Colonne de gauche : en-tête, recherche, alertes de sécurité, discussions. */
-export function Discussions({ fiche, onFiche, onNouvelle, onParametres, onDeconnexion }: Props) {
+type Filtre = "toutes" | "non-lues";
+
+/** Colonne de gauche : en-tête, recherche, alertes, liste des discussions. */
+export function Discussions({ selection, onOuvrir, onNouvelle, onParametres, onDeconnexion }: Props) {
+  const moi = useMoi();
   const { sessionPerdue } = useCompte();
+  const { etat } = useMessagerie();
   const [contacts, setContacts] = useState<CarteProfil[] | null>(null);
   const [recherche, setRecherche] = useState("");
+  const [filtre, setFiltre] = useState<Filtre>("toutes");
   const [menu, setMenu] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
 
@@ -41,11 +62,35 @@ export function Discussions({ fiche, onFiche, onNouvelle, onParametres, onDeconn
     return () => document.removeEventListener("mousedown", fermer);
   }, [menu]);
 
-  const trouves = useMemo(() => {
-    const texte = recherche.trim().toLowerCase();
+  const nomDe = (c: ConversationLocale) =>
+    c.autre === moi.id ? `${moi.nom} (vous)` : (etat.personnes[c.autre]?.nom ?? "");
+  const texte = recherche.trim().toLowerCase();
+  const nonLues = etat.conversations.filter((c) => c.nonLus > 0).length;
+
+  const conversations = useMemo(
+    () =>
+      etat.conversations.filter(
+        (c) =>
+          c.dernier !== null &&
+          (filtre === "toutes" || c.nonLus > 0) &&
+          (!texte || nomDe(c).toLowerCase().includes(texte)),
+      ),
+    // nomDe ne dépend que des personnes connues et du profil, déjà suivis ici.
+    [etat.conversations, etat.personnes, filtre, texte, moi.id, moi.nom],
+  );
+
+  // Pendant une recherche : les contacts sans discussion apparaissent aussi.
+  const contactsTrouves = useMemo(() => {
     if (!texte || !contacts) return [];
-    return contacts.filter((c) => c.nom.toLowerCase().includes(texte) || c.pseudo?.includes(texte.replace(/^@/, "")));
-  }, [recherche, contacts]);
+    const avecDiscussion = new Set(etat.conversations.map((c) => c.autre));
+    return contacts.filter(
+      (c) =>
+        !avecDiscussion.has(c.id) &&
+        (c.nom.toLowerCase().includes(texte) || c.pseudo?.includes(texte.replace(/^@/, ""))),
+    );
+  }, [texte, contacts, etat.conversations]);
+
+  const aucuneDiscussion = etat.conversations.every((c) => c.dernier === null);
 
   return (
     <div className="flex h-full flex-col">
@@ -91,7 +136,7 @@ export function Discussions({ fiche, onFiche, onNouvelle, onParametres, onDeconn
           <input
             value={recherche}
             onChange={(e) => setRecherche(e.target.value)}
-            placeholder="Rechercher un contact"
+            placeholder="Rechercher une discussion ou un contact"
             className="min-w-0 flex-1 bg-transparent text-[15px] text-texte outline-none placeholder:text-texte-2"
           />
           {recherche && (
@@ -102,22 +147,77 @@ export function Discussions({ fiche, onFiche, onNouvelle, onParametres, onDeconn
         </label>
       </div>
 
+      {!aucuneDiscussion && (
+        <div className="flex gap-2 px-3 pb-2" role="tablist" aria-label="Filtrer les discussions">
+          {(
+            [
+              ["toutes", "Toutes"],
+              ["non-lues", nonLues > 0 ? `Non lues ${nonLues}` : "Non lues"],
+            ] as const
+          ).map(([valeur, libelle]) => (
+            <button
+              key={valeur}
+              role="tab"
+              type="button"
+              aria-selected={filtre === valeur}
+              onClick={() => setFiltre(valeur)}
+              className={clsx(
+                "rounded-full px-3 py-1 text-[14px] transition-colors",
+                filtre === valeur ? "bg-primaire-doux text-primaire-texte" : "bg-champ text-texte-2 hover:bg-survol",
+              )}
+            >
+              {libelle}
+            </button>
+          ))}
+        </div>
+      )}
+
       <div className="min-h-0 flex-1 overflow-y-auto">
+        {etat.connexion === "hors-ligne" && (
+          <div role="status" className="animate-fade mx-3 mb-2 flex items-center gap-4 rounded-lg bg-entete px-4 py-3">
+            <span className="flex size-10 shrink-0 items-center justify-center rounded-full bg-texte-3 text-sur-primaire">
+              <WifiOff size={20} />
+            </span>
+            <span className="text-sm">
+              <span className="block font-medium text-texte">Hors connexion</span>
+              <span className="text-texte-2">Vos messages partiront dès le retour du réseau.</span>
+            </span>
+          </div>
+        )}
+        <BanniereNotifications />
         <AlerteConnexion />
-        {recherche.trim() ? (
-          trouves.length > 0 ? (
-            <>
-              <TitreSection>Contacts</TitreSection>
-              {trouves.map((c) => (
-                <LignePersonne key={c.id} carte={c} selection={fiche === c.id} onClick={() => onFiche(c.id)} />
-              ))}
-            </>
-          ) : (
-            <p className="animate-fade px-7 py-10 text-center text-sm text-texte-2">
-              Aucun contact ne correspond à « {recherche.trim()} ».
-            </p>
-          )
-        ) : (
+
+        {conversations.map((c, i) => (
+          <LigneConversation
+            key={c.id}
+            conversation={c}
+            nom={nomDe(c)}
+            personne={c.autre === moi.id ? null : etat.personnes[c.autre]}
+            photoMoi={c.autre === moi.id ? moi.photo : null}
+            ecrit={(etat.ecrit[c.autre] ?? 0) > Date.now()}
+            selection={selection === c.autre}
+            onClick={() => onOuvrir(c.autre)}
+            className={i < 6 ? `animate-fade stagger-${i + 1}` : undefined}
+          />
+        ))}
+
+        {texte && contactsTrouves.length > 0 && (
+          <>
+            <TitreSection>Contacts</TitreSection>
+            {contactsTrouves.map((c) => (
+              <LignePersonne key={c.id} carte={c} selection={selection === c.id} onClick={() => onOuvrir(c.id)} />
+            ))}
+          </>
+        )}
+
+        {texte && conversations.length === 0 && contactsTrouves.length === 0 && (
+          <p className="animate-fade px-7 py-10 text-center text-sm text-texte-2">Aucun résultat pour « {recherche.trim()} ».</p>
+        )}
+        {!texte && filtre === "non-lues" && conversations.length === 0 && (
+          <p className="animate-fade px-7 py-10 text-center text-sm text-texte-2">Aucune discussion non lue.</p>
+        )}
+
+        {!texte && aucuneDiscussion && (
           <div className="animate-rise flex flex-col items-center px-10 py-14 text-center">
             <span className="flex size-16 items-center justify-center rounded-full bg-primaire-doux text-primaire">
               <MessageSquarePlus size={28} />
@@ -125,7 +225,7 @@ export function Discussions({ fiche, onFiche, onNouvelle, onParametres, onDeconn
             <p className="mt-5 text-[17px] text-texte">Aucune discussion pour l'instant</p>
             <p className="mt-2 text-sm leading-relaxed text-texte-2">
               {contacts && contacts.length > 0
-                ? `Vous avez ${contacts.length} contact${contacts.length > 1 ? "s" : ""}. Retrouvez-les avec la recherche ci-dessus.`
+                ? "Choisissez un contact pour lui écrire."
                 : "Ajoutez un contact avec son nom d'utilisateur ou son adresse e-mail pour commencer."}
             </p>
             <button
@@ -133,10 +233,122 @@ export function Discussions({ fiche, onFiche, onNouvelle, onParametres, onDeconn
               onClick={onNouvelle}
               className="mt-6 inline-flex items-center gap-2 rounded-full bg-primaire px-5 py-2.5 text-sm font-medium text-sur-primaire transition-colors hover:bg-primaire-fort"
             >
-              <UserPlus size={18} /> Ajouter un contact
+              <MessageSquarePlus size={18} /> Nouvelle discussion
             </button>
           </div>
         )}
+      </div>
+    </div>
+  );
+}
+
+function LigneConversation({
+  conversation: c,
+  nom,
+  personne,
+  photoMoi,
+  ecrit,
+  selection,
+  onClick,
+  className,
+}: {
+  conversation: ConversationLocale;
+  nom: string;
+  personne: CarteProfil | null | undefined;
+  photoMoi: string | null;
+  ecrit: boolean;
+  selection: boolean;
+  onClick: () => void;
+  className?: string;
+}) {
+  return (
+    <div
+      role="button"
+      tabIndex={0}
+      onClick={onClick}
+      onKeyDown={(e) => (e.key === "Enter" || e.key === " ") && (e.preventDefault(), onClick())}
+      className={clsx(
+        "flex cursor-pointer items-center gap-3.5 pl-3 transition-colors hover:bg-survol",
+        selection && "bg-selection hover:bg-selection",
+        className,
+      )}
+    >
+      <Avatar id={c.autre} photo={personne?.photo ?? photoMoi} nom={nom || "Contact"} taille={49} />
+      <div className="min-w-0 flex-1 border-b border-bordure py-3 pr-4">
+        <div className="flex items-baseline justify-between gap-2">
+          <p className="truncate text-[17px] text-texte">{nom || "…"}</p>
+          {c.dernier && (
+            <span className={clsx("shrink-0 text-xs", c.nonLus > 0 ? "font-medium text-primaire" : "text-texte-2")}>
+              {dateListe(c.dernier.le)}
+            </span>
+          )}
+        </div>
+        <div className="mt-0.5 flex items-center gap-2">
+          <p className={clsx("flex min-w-0 flex-1 items-center gap-1 text-[14px]", ecrit ? "text-primaire" : "text-texte-2")}>
+            {ecrit ? (
+              "écrit…"
+            ) : (
+              <>
+                {c.dernier?.deMoi && <Coches etat={c.dernier.etat} />}
+                <span className="truncate">{c.dernier?.texte}</span>
+              </>
+            )}
+          </p>
+          {c.nonLus > 0 && (
+            <span className="animate-pop flex h-5 min-w-5 shrink-0 items-center justify-center rounded-full bg-primaire px-1.5 text-[11px] font-semibold text-sur-primaire">
+              {c.nonLus}
+            </span>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+const CLE_NOTIFICATIONS = "unichat.notifications-refusees";
+
+/** Proposition d'activer les notifications, tant que le navigateur n'a pas reçu de réponse. */
+function BanniereNotifications() {
+  const [visible, setVisible] = useState(() => {
+    if (!("Notification" in window) || Notification.permission !== "default") return false;
+    try {
+      return !localStorage.getItem(CLE_NOTIFICATIONS);
+    } catch {
+      return true;
+    }
+  });
+  if (!visible) return null;
+  return (
+    <div className="animate-rise mx-3 mb-2 flex gap-4 rounded-lg bg-entete px-4 py-3.5">
+      <span className="flex size-10 shrink-0 items-center justify-center rounded-full bg-primaire text-sur-primaire">
+        <BellRing size={20} />
+      </span>
+      <div className="min-w-0 text-sm">
+        <p className="font-medium text-texte">Soyez prévenu des nouveaux messages</p>
+        <p className="mt-0.5 text-texte-2">Une notification s'affiche quand UniChat est en arrière-plan.</p>
+        <div className="mt-2 flex gap-5 font-medium">
+          <button
+            type="button"
+            onClick={() => void Notification.requestPermission().finally(() => setVisible(false))}
+            className="text-primaire-texte hover:underline"
+          >
+            Activer
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              try {
+                localStorage.setItem(CLE_NOTIFICATIONS, "1");
+              } catch {
+                // Sans stockage, la bannière reviendra à la prochaine visite.
+              }
+              setVisible(false);
+            }}
+            className="text-texte-2 hover:underline"
+          >
+            Plus tard
+          </button>
+        </div>
       </div>
     </div>
   );
@@ -160,7 +372,9 @@ function AlerteConnexion() {
     return () => window.removeEventListener("focus", verifier);
   }, [sessionPerdue]);
 
-  if (!alerte) return resultat ? <p className="animate-fade mx-3 mb-2 rounded-lg bg-entete px-4 py-3 text-sm text-texte-2">{resultat}</p> : null;
+  if (!alerte) {
+    return resultat ? <p className="animate-fade mx-3 mb-2 rounded-lg bg-entete px-4 py-3 text-sm text-texte-2">{resultat}</p> : null;
+  }
 
   async function traiter(deconnecter: boolean) {
     try {

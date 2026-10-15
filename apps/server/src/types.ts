@@ -1,7 +1,9 @@
 import type { LigneSession } from "./lib/sessions";
+import type { Boite } from "./temps-reel/boite";
 
 export interface Bindings {
   DB: D1Database;
+  BOITE: DurableObjectNamespace<Boite>;
   GOOGLE_CLIENT_ID?: string;
   GOOGLE_CLIENT_SECRET?: string;
 }

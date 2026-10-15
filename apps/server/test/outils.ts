@@ -1,4 +1,5 @@
 import { env } from "cloudflare:workers";
+import type { MessageClient, MessageServeur } from "@unichat/shared";
 import { SignJWT, exportJWK, generateKeyPair } from "jose";
 import { creerApp } from "../src/app";
 import { base64url } from "../src/lib/crypto";
@@ -121,6 +122,50 @@ export async function preparer() {
   /** Appareil connecté : son cookie suit les renouvellements, comme un navigateur. */
   class Appareil {
     constructor(public jeton: string) {}
+
+    /** Ouvre la connexion temps réel et garde tout ce qui arrive, pour l'attendre ensuite. */
+    async tempsReel(origine = ORIGINE) {
+      const reponse = await requete("/api/temps-reel", {
+        headers: { Upgrade: "websocket", Cookie: `__Host-uc_session=${this.jeton}`, Origin: origine },
+      });
+      const ws = reponse.webSocket;
+      if (reponse.status !== 101 || !ws) return { refus: reponse.status } as const;
+      ws.accept();
+      const recus: MessageServeur[] = [];
+      const enAttente: { condition: (m: MessageServeur) => boolean; resoudre: (m: MessageServeur) => void }[] = [];
+      ws.addEventListener("message", (e) => {
+        const m = JSON.parse(e.data as string) as MessageServeur;
+        recus.push(m);
+        for (const attente of [...enAttente]) {
+          if (attente.condition(m)) {
+            enAttente.splice(enAttente.indexOf(attente), 1);
+            attente.resoudre(m);
+          }
+        }
+      });
+      const fermeture = new Promise<number>((resoudre) => ws.addEventListener("close", (e) => resoudre(e.code)));
+      return {
+        refus: null,
+        ws,
+        recus,
+        fermeture,
+        envoyer: (m: MessageClient) => ws.send(JSON.stringify(m)),
+        attendre<T extends MessageServeur>(condition: (m: MessageServeur) => m is T, delai = 3000): Promise<T> {
+          const deja = recus.find(condition);
+          if (deja) return Promise.resolve(deja as T);
+          return new Promise<T>((resoudre, rejeter) => {
+            const minuterie = setTimeout(() => rejeter(new Error("message attendu non reçu")), delai);
+            enAttente.push({
+              condition,
+              resoudre: (m) => {
+                clearTimeout(minuterie);
+                resoudre(m as T);
+              },
+            });
+          });
+        },
+      };
+    }
     async appel(chemin: string, init: RequestInit & { json?: unknown } = {}) {
       const enTetes = new Headers(init.headers);
       enTetes.set("Cookie", `__Host-uc_session=${this.jeton}`);

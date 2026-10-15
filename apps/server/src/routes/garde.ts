@@ -1,5 +1,6 @@
 import { getCookie } from "hono/cookie";
 import { createMiddleware } from "hono/factory";
+import { fermerConnexions } from "../lib/connexions";
 import { Refus, refus } from "../lib/erreurs";
 import { verifierSession } from "../lib/sessions";
 import type { AppEnv } from "../types";
@@ -26,6 +27,8 @@ export const exigerSession = createMiddleware<AppEnv>(async (c, next) => {
   if (resultat.etat !== "valide") {
     if (!porteur) effacerCookie(c, COOKIE_SESSION);
     if (resultat.etat === "revoquee" && resultat.motif === "reutilisation") {
+      // Le jeton a fuité : la connexion temps réel de cet appareil tombe aussi.
+      await fermerConnexions(c.env, resultat.session.utilisateur_id, [resultat.session.id]);
       throw new Refus(
         401,
         "session_compromise",

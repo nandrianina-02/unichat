@@ -6,6 +6,7 @@ import { appareils } from "./routes/appareils";
 import { auth } from "./routes/auth";
 import { moi } from "./routes/moi";
 import { securite } from "./routes/securite";
+import { ouvrirTempsReel } from "./routes/temps-reel";
 import type { AppEnv, Dependances } from "./types";
 
 export function creerApp(remplacements: Partial<Dependances> = {}) {
@@ -21,6 +22,9 @@ export function creerApp(remplacements: Partial<Dependances> = {}) {
     c.set("deps", deps);
     await next();
   });
+  // Avant les en-têtes de sécurité : la réponse 101 de la connexion temps
+  // réel doit repartir telle quelle, avec son WebSocket.
+  app.get("/api/temps-reel", ouvrirTempsReel);
   // Les fichiers de l'application web ont leurs propres en-têtes (_headers) ;
   // ceux-ci couvrent les réponses de l'API.
   app.use("/api/*", secureHeaders({ referrerPolicy: "strict-origin-when-cross-origin" }));

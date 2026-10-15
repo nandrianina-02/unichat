@@ -1,6 +1,7 @@
 import { Hono } from "hono";
 import { getCookie } from "hono/cookie";
 import { trouverOuCreerCompte } from "../lib/comptes";
+import { fermerConnexions } from "../lib/connexions";
 import { aleatoire, defiPkce, empreinte } from "../lib/crypto";
 import { autoriser } from "../lib/limites";
 import { nomAppareil } from "../lib/appareil";
@@ -110,7 +111,9 @@ auth.get("/google/rappel", async (c) => {
 });
 
 auth.post("/deconnexion", exigerSession, async (c) => {
-  await revoquer(c.env.DB, c.get("session"), "deconnexion", c.get("deps").maintenant());
+  const session = c.get("session");
+  await revoquer(c.env.DB, session, "deconnexion", c.get("deps").maintenant());
+  await fermerConnexions(c.env, session.utilisateur_id, [session.id]);
   effacerCookie(c, COOKIE_SESSION);
   return c.body(null, 204);
 });

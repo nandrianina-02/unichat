@@ -29,6 +29,13 @@
     }
   ],
 
+  // Une boîte aux lettres par utilisateur : connexions temps réel et messages
+  // en attente de remise. Stockage SQLite, seul disponible sur l'offre gratuite.
+  "durable_objects": {
+    "bindings": [{ "name": "BOITE", "class_name": "Boite" }]
+  },
+  "migrations": [{ "tag": "v1", "new_sqlite_classes": ["Boite"] }],
+
   // Nettoyage quotidien (états de connexion, compteurs, vieilles sessions).
   "triggers": { "crons": ["17 3 * * *"] }
 }

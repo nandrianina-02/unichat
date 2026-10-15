@@ -8,6 +8,7 @@ import { DialogueTheme } from "../composants/DialogueTheme";
 import { CouchePanneau, usePile } from "../composants/Panneau";
 import { useCompte, useMoi } from "../lib/compte";
 import { invitationEnAttente } from "../lib/invitation";
+import { useMessagerie } from "../lib/messagerie-react";
 import { Activite } from "../panneaux/Activite";
 import { Appareils } from "../panneaux/Appareils";
 import { Compte } from "../panneaux/Compte";
@@ -18,7 +19,16 @@ import { Parametres } from "../panneaux/Parametres";
 import { Profil } from "../panneaux/Profil";
 import type { Vue } from "../panneaux/vues";
 import { Accueil } from "../vues/Accueil";
+import { Discussion } from "../vues/Discussion";
 import { FicheContact } from "../vues/FicheContact";
+
+/** Ce qu'affiche la zone principale. */
+type Principal =
+  | { type: "accueil" }
+  | { type: "discussion"; avec: string; infos: boolean }
+  | { type: "fiche"; id: string };
+
+const ACCUEIL: Principal = { type: "accueil" };
 
 /**
  * L'application connectée, organisée comme les messageries de bureau : une
@@ -28,11 +38,22 @@ import { FicheContact } from "../vues/FicheContact";
 export function Application() {
   const moi = useMoi();
   const { deconnecter } = useCompte();
+  const { messagerie } = useMessagerie();
   const { pile, ouvrir, retour, toutFermer, retirer } = usePile<Vue>();
-  const [fiche, setFiche] = useState<string | null>(null);
+  const [principal, setPrincipal] = useState<Principal>(ACCUEIL);
   const [theme, setTheme] = useState(false);
   const [deconnexion, setDeconnexion] = useState(false);
   const [invitation] = useState(invitationEnAttente);
+
+  const ouvrirDiscussion = useCallback((avec: string) => setPrincipal({ type: "discussion", avec, infos: false }), []);
+
+  // Un clic sur une notification ramène à la discussion concernée.
+  useEffect(() => {
+    messagerie.surOuverture = ouvrirDiscussion;
+    return () => {
+      messagerie.surOuverture = null;
+    };
+  }, [messagerie, ouvrirDiscussion]);
 
   // Lien de contact reçu avant la connexion : on ouvre directement la recherche
   // (une seule fois, même si React rejoue l'effet en développement).
@@ -58,7 +79,16 @@ export function Application() {
   function rendre(vue: Vue) {
     switch (vue) {
       case "nouvelle":
-        return <NouvelleDiscussion onRetour={retour} onFiche={setFiche} invitation={invitation} />;
+        return (
+          <NouvelleDiscussion
+            onRetour={retour}
+            onOuvrir={(id) => {
+              toutFermer();
+              ouvrirDiscussion(id);
+            }}
+            invitation={invitation}
+          />
+        );
       case "parametres":
         return (
           <Parametres onRetour={retour} onOuvrir={ouvrir} onTheme={() => setTheme(true)} onDeconnexion={() => setDeconnexion(true)} />
@@ -79,6 +109,8 @@ export function Application() {
         return <ChoixVisibilite champ="infos" onRetour={retour} />;
     }
   }
+
+  const selection = principal.type === "discussion" ? principal.avec : principal.type === "fiche" ? principal.id : null;
 
   return (
     <div className="flex h-full overflow-hidden bg-fond">
@@ -104,8 +136,8 @@ export function Application() {
 
       <aside className="relative flex w-full shrink-0 flex-col overflow-hidden border-bordure bg-panneau md:w-[380px] md:border-r lg:w-[30%] lg:min-w-[340px] lg:max-w-[460px]">
         <Discussions
-          fiche={fiche}
-          onFiche={setFiche}
+          selection={selection}
+          onOuvrir={ouvrirDiscussion}
           onNouvelle={() => allerA("nouvelle")}
           onParametres={() => allerA("parametres")}
           onDeconnexion={() => setDeconnexion(true)}
@@ -117,9 +149,40 @@ export function Application() {
         ))}
       </aside>
 
-      {/* Sur téléphone, la fiche recouvre tout l'écran ; sur ordinateur, elle occupe la zone principale. */}
-      <main className={clsx("min-w-0 flex-1", fiche ? "fixed inset-0 z-40 flex md:static md:z-auto" : "hidden md:flex")}>
-        {fiche ? <FicheContact key={fiche} id={fiche} onFermer={() => setFiche(null)} /> : <Accueil onAjouter={() => allerA("nouvelle")} />}
+      {/* Sur téléphone, la discussion ou la fiche recouvre tout l'écran. */}
+      <main
+        className={clsx(
+          "min-w-0",
+          principal.type === "accueil"
+            ? "relative hidden flex-1 md:flex"
+            : // Un seul positionnement par taille d'écran : « relative » et « fixed »
+              // ensemble s'annulent selon l'ordre des règles CSS.
+              "fixed inset-0 z-40 flex md:relative md:inset-auto md:z-auto md:flex-1",
+        )}
+      >
+        {principal.type === "accueil" && <Accueil onAjouter={() => allerA("nouvelle")} />}
+        {principal.type === "fiche" && (
+          <FicheContact key={principal.id} id={principal.id} onFermer={() => setPrincipal(ACCUEIL)} onMessage={ouvrirDiscussion} />
+        )}
+        {principal.type === "discussion" && (
+          <>
+            <Discussion
+              key={principal.avec}
+              avec={principal.avec}
+              onInfos={() => setPrincipal({ ...principal, infos: true })}
+              onFermer={() => setPrincipal(ACCUEIL)}
+            />
+            {principal.infos && (
+              <aside className="absolute inset-0 z-10 flex lg:static lg:w-[400px] lg:shrink-0 lg:border-l lg:border-bordure">
+                <FicheContact
+                  key={`infos-${principal.avec}`}
+                  id={principal.avec}
+                  onFermer={() => setPrincipal({ ...principal, infos: false })}
+                />
+              </aside>
+            )}
+          </>
+        )}
       </main>
 
       {theme && <DialogueTheme onFermer={() => setTheme(false)} />}
@@ -131,7 +194,7 @@ export function Application() {
           onConfirmer={() => void deconnecter()}
           onFermer={() => setDeconnexion(false)}
         >
-          Cet appareil sera déconnecté. Vous pourrez vous reconnecter avec Google.
+          Cet appareil sera déconnecté. Ses messages restent enregistrés dans ce navigateur pour votre prochaine connexion.
         </Dialogue>
       )}
     </div>

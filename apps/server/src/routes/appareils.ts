@@ -1,5 +1,6 @@
 import { Hono } from "hono";
 import type { AppareilConnecte } from "@unichat/shared";
+import { fermerConnexions } from "../lib/connexions";
 import { refus } from "../lib/erreurs";
 import { revoquer, sessionsActives, type LigneSession } from "../lib/sessions";
 import type { AppEnv } from "../types";
@@ -38,6 +39,7 @@ appareils.delete("/:id", async (c) => {
   if (!cible) throw refus.introuvable("Cet appareil n'est plus connecté.");
   const estActuelle = cible.id === session.id;
   await revoquer(c.env.DB, cible, estActuelle ? "deconnexion" : "revoquee", c.get("deps").maintenant());
+  await fermerConnexions(c.env, session.utilisateur_id, [cible.id]);
   if (estActuelle) effacerCookie(c, COOKIE_SESSION);
   return c.body(null, 204);
 });
@@ -47,5 +49,10 @@ appareils.post("/deconnecter-autres", async (c) => {
   const maintenant = c.get("deps").maintenant();
   const autres = (await sessionsActives(c.env.DB, session.utilisateur_id, maintenant)).filter((s) => s.id !== session.id);
   for (const s of autres) await revoquer(c.env.DB, s, "revoquee", maintenant);
+  await fermerConnexions(
+    c.env,
+    session.utilisateur_id,
+    autres.map((s) => s.id),
+  );
   return c.json({ nombre: autres.length });
 });

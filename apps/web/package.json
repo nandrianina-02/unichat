@@ -9,6 +9,7 @@
   "dependencies": {
     "@unichat/shared": "*",
     "clsx": "^2.1.1",
+    "idb": "^8.0.4",
     "lucide-react": "^1.57.0",
     "react": "^19.3.0",
     "react-dom": "^19.3.0"
