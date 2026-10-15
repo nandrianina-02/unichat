@@ -24,8 +24,7 @@
     {
       "binding": "DB",
       "database_name": "unichat",
-      // Remplacé par l'identifiant réel après `wrangler d1 create unichat`.
-      "database_id": "00000000-0000-0000-0000-000000000000",
+      "database_id": "90e76eb6-e591-4913-9e5f-9b4b2d64d0f6",
       "migrations_dir": "migrations"
     }
   ],
