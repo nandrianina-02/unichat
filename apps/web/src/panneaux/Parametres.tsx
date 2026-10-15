@@ -40,6 +40,14 @@ export function Parametres({ onRetour, onOuvrir, onTheme, onDeconnexion }: Props
           <LigneReglage icone={Palette} titre="Thème" detail="Clair, sombre ou selon le système" onClick={onTheme} fleche={false} />
           <LigneReglage icone={LogOut} titre="Se déconnecter" onClick={onDeconnexion} danger fleche={false} />
         </div>
+        <p className="animate-fade stagger-2 flex flex-wrap gap-x-4 gap-y-1 px-7 py-6 text-[13px] text-texte-3">
+          <a href="/confidentialite" target="_blank" rel="noopener" className="hover:text-texte-2 hover:underline">
+            Règles de confidentialité
+          </a>
+          <a href="/conditions" target="_blank" rel="noopener" className="hover:text-texte-2 hover:underline">
+            Conditions d'utilisation
+          </a>
+        </p>
       </div>
     </>
   );

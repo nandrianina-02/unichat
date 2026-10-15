@@ -44,6 +44,12 @@ export class Boite extends DurableObject<Bindings> {
   constructor(ctx: DurableObjectState, env: Bindings) {
     super(ctx, env);
     this.sql = ctx.storage.sql;
+    this.preparerTables();
+    // Le maintien de connexion des applications ne réveille pas l'objet.
+    ctx.setWebSocketAutoResponse(new WebSocketRequestResponsePair('{"t":"ping"}', '{"t":"pong"}'));
+  }
+
+  private preparerTables(): void {
     this.sql.exec(`CREATE TABLE IF NOT EXISTS journal (
       seq INTEGER PRIMARY KEY AUTOINCREMENT,
       type TEXT NOT NULL,
@@ -61,8 +67,6 @@ export class Boite extends DurableObject<Bindings> {
       vu_le INTEGER NOT NULL
     )`);
     this.sql.exec("CREATE TABLE IF NOT EXISTS etat (cle TEXT PRIMARY KEY, valeur TEXT NOT NULL)");
-    // Le maintien de connexion des applications ne réveille pas l'objet.
-    ctx.setWebSocketAutoResponse(new WebSocketRequestResponsePair('{"t":"ping"}', '{"t":"pong"}'));
   }
 
   // --- Connexion -------------------------------------------------------------
@@ -265,6 +269,20 @@ export class Boite extends DurableObject<Bindings> {
     }
     this.sql.exec("DELETE FROM appareils WHERE session_id = ?", sessionId);
     this.nettoyer(Date.now());
+  }
+
+  /** Compte supprimé : connexions coupées, messages en attente et état effacés. */
+  async toutEffacer(): Promise<void> {
+    for (const ws of this.ctx.getWebSockets()) {
+      try {
+        ws.close(FERMETURE_SESSION, "Compte supprimé");
+      } catch {
+        // Déjà fermée.
+      }
+    }
+    await this.ctx.storage.deleteAll();
+    // Tables recréées vides : un message encore en route ne fait pas échouer l'expéditeur.
+    this.preparerTables();
   }
 
   // --- Outils ----------------------------------------------------------------------

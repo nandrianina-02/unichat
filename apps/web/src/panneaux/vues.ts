@@ -8,4 +8,5 @@ export type Vue =
   | "activite"
   | "confidentialite"
   | "visibilite-photo"
-  | "visibilite-infos";
+  | "visibilite-infos"
+  | "supprimer-compte";

@@ -7,5 +7,15 @@ export default defineConfig({
   build: {
     outDir: "dist",
     emptyOutDir: true,
+    rollupOptions: {
+      // Pages publiques en HTML statique : lisibles sans JavaScript, par les
+      // visiteurs comme par Google, qui les exige pour publier la connexion.
+      // Chemins relatifs au dossier de l'application web.
+      input: {
+        application: "index.html",
+        confidentialite: "confidentialite.html",
+        conditions: "conditions.html",
+      },
+    },
   },
 });

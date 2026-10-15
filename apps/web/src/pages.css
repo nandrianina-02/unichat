@@ -1,0 +1,52 @@
+@import "./styles.css";
+
+/* Pages publiques (confidentialité, conditions) : du texte long, lisible
+   sans JavaScript, avec les mêmes jetons que l'application. */
+.page-texte h2 {
+  margin-top: 2.25rem;
+  font-size: 1.125rem;
+  font-weight: 600;
+  color: var(--texte);
+}
+.page-texte p,
+.page-texte li {
+  margin-top: 0.75rem;
+  font-size: 0.95rem;
+  line-height: 1.7;
+  color: var(--texte-2);
+}
+.page-texte ul {
+  margin-top: 0.5rem;
+  list-style: disc;
+  padding-left: 1.25rem;
+}
+.page-texte li {
+  margin-top: 0.35rem;
+}
+.page-texte strong {
+  color: var(--texte);
+  font-weight: 600;
+}
+.page-texte a {
+  color: var(--primaire);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+.page-texte table {
+  margin-top: 1rem;
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.9rem;
+}
+.page-texte th,
+.page-texte td {
+  border-bottom: 1px solid var(--bordure);
+  padding: 0.6rem 0.5rem 0.6rem 0;
+  text-align: left;
+  vertical-align: top;
+  color: var(--texte-2);
+}
+.page-texte th {
+  color: var(--texte);
+  font-weight: 600;
+}

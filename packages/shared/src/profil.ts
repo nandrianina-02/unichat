@@ -72,7 +72,10 @@ export const schemaMajProfil = z
   .strict();
 export type MajProfil = z.infer<typeof schemaMajProfil>;
 
-export const schemaAjoutContact = z.object({ id: z.string().uuid("Identifiant invalide.") }).strict();
+/** Suppression du compte : on confirme en recopiant son nom d'utilisateur. */
+export const schemaSuppressionCompte = z.object({ confirmation: z.string().trim().toLowerCase() }).strict();
+
+export const schemaAjoutContact =z.object({ id: z.string().uuid("Identifiant invalide.") }).strict();
 
 /** Recherche exacte : une adresse e-mail ou un nom d'utilisateur, jamais un fragment. */
 export function lireRecherche(brute: string): { type: "email"; valeur: string } | { type: "pseudo"; valeur: string } | null {

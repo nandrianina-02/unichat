@@ -56,6 +56,7 @@ export const api = {
     return appel<Moi>("/moi/photo", { method: "PUT", body: formulaire });
   },
   supprimerPhoto: () => appel<Moi>("/moi/photo", { method: "DELETE" }),
+  supprimerCompte: (confirmation: string) => appel<void>("/moi", json("DELETE", { confirmation })),
 
   rechercher: (texte: string, signal?: AbortSignal) =>
     appel<{ resultats: CarteProfil[] }>(`/recherche?q=${encodeURIComponent(texte)}`, { signal }),

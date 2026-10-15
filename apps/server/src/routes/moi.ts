@@ -1,5 +1,5 @@
 import { Hono, type Context } from "hono";
-import { LIMITES, schemaMajProfil, schemaPseudo, type MajProfil } from "@unichat/shared";
+import { LIMITES, schemaMajProfil, schemaPseudo, schemaSuppressionCompte, type MajProfil } from "@unichat/shared";
 import { lireUtilisateur } from "../lib/comptes";
 import { lireCorpsBorne } from "../lib/corps";
 import { refus } from "../lib/erreurs";
@@ -7,9 +7,10 @@ import { journaliser } from "../lib/evenements";
 import { typeImage } from "../lib/images";
 import { enregistrerPhoto, supprimerPhoto } from "../lib/photos";
 import { versMoi } from "../lib/profils";
+import { supprimerCompte } from "../lib/suppression";
 import type { AppEnv } from "../types";
 import { exigerSession } from "./garde";
-import { MINUTE, corpsJson, limiter } from "./outils";
+import { COOKIE_SESSION, MINUTE, corpsJson, effacerCookie, limiter } from "./outils";
 
 export const moi = new Hono<AppEnv>();
 moi.use("*", exigerSession);
@@ -22,6 +23,20 @@ async function moiActuel(c: Context<AppEnv>) {
 }
 
 moi.get("/", async (c) => c.json(await moiActuel(c)));
+
+moi.delete("/", async (c) => {
+  const { confirmation } = await corpsJson(c, schemaSuppressionCompte);
+  const session = c.get("session");
+  const u = await lireUtilisateur(c.env.DB, session.utilisateur_id);
+  if (!u) throw refus.nonConnecte();
+  // Recopier son nom d'utilisateur : une suppression ne part pas d'un clic égaré.
+  if (!u.pseudo || confirmation !== u.pseudo) {
+    throw refus.requete("Le nom d'utilisateur saisi ne correspond pas à votre compte.");
+  }
+  await supprimerCompte(c.env, u.id);
+  effacerCookie(c, COOKIE_SESSION);
+  return c.body(null, 204);
+});
 
 const COLONNES: Record<keyof MajProfil, string> = {
   nom: "nom",

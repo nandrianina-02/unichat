@@ -12,6 +12,8 @@ interface Compte {
   /** Remplace le profil après une modification (la réponse de l'API fait foi). */
   remplacer: (moi: Moi) => void;
   deconnecter: () => Promise<void>;
+  /** Après la suppression du compte : retour à l'accueil et effacement de l'historique local. */
+  compteSupprime: (utilisateurId: string) => void;
   /** Appelé quand l'API répond 401 en cours de route : la session a été fermée ailleurs. */
   sessionPerdue: (erreur: unknown) => boolean;
 }
@@ -45,6 +47,12 @@ export function FournisseurCompte({ children }: { children: ReactNode }) {
       deconnecter: async () => {
         await api.deconnexion().catch(() => {});
         setEtat({ etat: "deconnecte", motif: null });
+      },
+      compteSupprime: (utilisateurId) => {
+        setEtat({ etat: "deconnecte", motif: "compte_supprime" });
+        // La base locale est fermée en quittant l'application ; sa suppression
+        // attend cette fermeture, puis efface les messages gardés ici.
+        indexedDB.deleteDatabase(`unichat-${utilisateurId}`);
       },
       sessionPerdue,
     }),

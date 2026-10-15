@@ -1,4 +1,4 @@
-import { History, Mail, MonitorSmartphone } from "lucide-react";
+import { History, Mail, MonitorSmartphone, Trash2 } from "lucide-react";
 import { LigneReglage } from "../composants/Lignes";
 import { EnTetePanneau } from "../composants/Panneau";
 import { useMoi } from "../lib/compte";
@@ -18,6 +18,7 @@ export function Compte({ onRetour, onOuvrir }: { onRetour: () => void; onOuvrir:
         />
         <LigneReglage icone={History} titre="Activité du compte" detail="Connexions et changements récents" onClick={() => onOuvrir("activite")} />
         <LigneReglage icone={Mail} titre="Adresse e-mail" detail={`${moi.email} · connexion avec Google`} />
+        <LigneReglage icone={Trash2} titre="Supprimer mon compte" danger onClick={() => onOuvrir("supprimer-compte")} />
       </div>
     </>
   );

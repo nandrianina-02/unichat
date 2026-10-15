@@ -17,6 +17,7 @@ import { Discussions } from "../panneaux/Discussions";
 import { NouvelleDiscussion } from "../panneaux/NouvelleDiscussion";
 import { Parametres } from "../panneaux/Parametres";
 import { Profil } from "../panneaux/Profil";
+import { SupprimerCompte } from "../panneaux/SupprimerCompte";
 import type { Vue } from "../panneaux/vues";
 import { Accueil } from "../vues/Accueil";
 import { Discussion } from "../vues/Discussion";
@@ -107,6 +108,8 @@ export function Application() {
         return <ChoixVisibilite champ="photo" onRetour={retour} />;
       case "visibilite-infos":
         return <ChoixVisibilite champ="infos" onRetour={retour} />;
+      case "supprimer-compte":
+        return <SupprimerCompte onRetour={retour} />;
     }
   }
 

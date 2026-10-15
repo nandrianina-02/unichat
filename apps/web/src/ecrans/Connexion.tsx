@@ -15,6 +15,7 @@ const MESSAGES: Record<string, string> = {
     "Votre session a été fermée par sécurité : une ancienne clé de connexion a été réutilisée depuis un autre endroit. Reconnectez-vous ; vos autres appareils restent connectés.",
   session_fermee: "Votre session a été fermée depuis un autre appareil, ou a expiré. Reconnectez-vous.",
   reseau: "Le serveur ne répond pas. Vérifiez votre connexion, puis rechargez la page.",
+  compte_supprime: "Votre compte a été supprimé, ainsi que les messages gardés dans ce navigateur.",
 };
 
 const ETAPES = [
@@ -82,7 +83,17 @@ export function Connexion({ motif }: { motif: string | null }) {
           ))}
         </ul>
       </section>
-      <p className="mt-8 text-center text-[13px] text-texte-3">UniChat, sur le web, Android et ordinateur.</p>
+      <footer className="mt-8 flex flex-col items-center gap-2 text-center text-[13px] text-texte-3">
+        <p>UniChat, messagerie gratuite sur le web, Android et ordinateur.</p>
+        <p className="flex gap-4">
+          <a href="/confidentialite" className="hover:text-texte-2 hover:underline">
+            Règles de confidentialité
+          </a>
+          <a href="/conditions" className="hover:text-texte-2 hover:underline">
+            Conditions d'utilisation
+          </a>
+        </p>
+      </footer>
     </Cadre>
   );
 }
