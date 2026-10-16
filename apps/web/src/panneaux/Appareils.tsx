@@ -1,6 +1,6 @@
 import type { AppareilConnecte } from "@unichat/shared";
 import clsx from "clsx";
-import { Globe, Laptop, LoaderCircle, LogOut, MonitorSmartphone, Smartphone } from "lucide-react";
+import { CloudOff, Globe, KeyRound, Laptop, Link2, LoaderCircle, LogOut, MonitorSmartphone, Smartphone, type LucideIcon } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import { Dialogue } from "../composants/Dialogue";
 import { Apparition } from "../composants/Apparition";
@@ -8,13 +8,32 @@ import { TitreSection } from "../composants/Lignes";
 import { EnTetePanneau } from "../composants/Panneau";
 import { ErreurApi, api } from "../lib/api";
 import { useCompte } from "../lib/compte";
+import type { EtatChiffrement } from "../lib/cles";
 import { lieu, quand } from "../lib/format";
+import { useMessagerie } from "../lib/messagerie-react";
 
 const ICONES = { web: Globe, android: Smartphone, desktop: Laptop } as const;
 const ACTIF = 5 * 60 * 1000;
 
+const CLES: Record<EtatChiffrement, { icone: LucideIcon; titre: string; detail?: string }> = {
+  preparation: { icone: LoaderCircle, titre: "Préparation des clés…" },
+  pret: {
+    icone: KeyRound,
+    titre: "Clés prêtes sur cet appareil",
+    detail: "Les clés privées restent ici ; le serveur ne garde que les clés publiques.",
+  },
+  "a-relier": {
+    icone: Link2,
+    titre: "Clés à recevoir",
+    detail: "Les clés de votre compte ont été créées sur un autre appareil. Celui-ci devra lui être relié pour les recevoir.",
+  },
+  indisponible: { icone: CloudOff, titre: "Clés non vérifiées", detail: "Le serveur n'a pas répondu. Nouvel essai au retour du réseau." },
+};
+
 export function Appareils({ onRetour }: { onRetour: () => void }) {
   const { sessionPerdue, deconnecter } = useCompte();
+  const { etat } = useMessagerie();
+  const cles = CLES[etat.chiffrement];
   const [appareils, setAppareils] = useState<AppareilConnecte[] | null>(null);
   const [erreur, setErreur] = useState<string | null>(null);
   const [cible, setCible] = useState<AppareilConnecte | "autres" | null>(null);
@@ -61,6 +80,17 @@ export function Appareils({ onRetour }: { onRetour: () => void }) {
             UniChat fonctionne sur plusieurs appareils à la fois. Déconnectez ceux que vous ne reconnaissez pas : ils devront
             repasser par Google.
           </p>
+        </div>
+
+        <TitreSection>Chiffrement</TitreSection>
+        <div key={etat.chiffrement} className="animate-fade flex items-start gap-5 pl-7 pr-5 pb-4">
+          <span className="flex size-11 shrink-0 items-center justify-center rounded-full bg-entete text-texte-2">
+            <cles.icone size={22} className={clsx(etat.chiffrement === "preparation" && "animate-spin", etat.chiffrement === "pret" && "text-primaire")} />
+          </span>
+          <span className="min-w-0 flex-1 pt-1">
+            <span className="block text-[16px] text-texte">{cles.titre}</span>
+            {cles.detail && <span className="mt-0.5 block text-[13px] leading-relaxed text-texte-2">{cles.detail}</span>}
+          </span>
         </div>
 
         {erreur && <p className="px-7 pb-3 text-sm text-danger">{erreur}</p>}

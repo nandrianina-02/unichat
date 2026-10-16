@@ -7,6 +7,7 @@
     "check": "tsc --noEmit"
   },
   "dependencies": {
+    "@unichat/chiffrement": "*",
     "@unichat/shared": "*",
     "clsx": "^2.1.1",
     "idb": "^8.0.4",

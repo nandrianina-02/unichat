@@ -20,6 +20,7 @@ import {
   type Reaction,
 } from "@unichat/shared";
 import { ErreurApi, api } from "./api";
+import { preparerCles, type EtatChiffrement } from "./cles";
 import { retirerMedia, telechargerMedia, transfererMedia } from "./api-medias";
 import { heureCourte, resumeMessage } from "./format";
 import { activerPush, montrerNotification, pushActif } from "./notifications";
@@ -54,6 +55,8 @@ export interface Instantane {
   versions: Record<string, number>;
   /** Fichiers en cours d'envoi : message → part envoyée (0 à 1). */
   envois: Record<string, number>;
+  /** Clés de chiffrement de cet appareil. */
+  chiffrement: EtatChiffrement;
 }
 
 const RANG: Record<EtatMessage, number> = { echec: -1, attente: 0, envoye: 1, remis: 2, lu: 3 };
@@ -113,6 +116,7 @@ export class Messagerie {
     presences: {},
     versions: {},
     envois: {},
+    chiffrement: "preparation",
   };
 
   constructor(
@@ -167,6 +171,18 @@ export class Messagerie {
     window.addEventListener("online", this.surRetourReseau);
     this.connecter();
     void activerPush();
+    void this.preparerCles();
+  }
+
+  /** Clés de l'appareil : inscrites, reprises ou entretenues ; refait au retour du réseau si besoin. */
+  private async preparerCles(): Promise<void> {
+    try {
+      const chiffrement = await preparerCles(this.db, this.moi);
+      if (!this.arretee) this.publier({ chiffrement });
+    } catch (erreur) {
+      // Session perdue : la connexion temps réel la signale de son côté.
+      if (!(erreur instanceof ErreurApi && erreur.statut === 401) && !this.arretee) this.publier({ chiffrement: "indisponible" });
+    }
   }
 
   arreter(): void {
@@ -259,6 +275,7 @@ export class Messagerie {
           return;
         }
         this.publier({ connexion: "connecte" });
+        if (this.etat.chiffrement === "indisponible") void this.preparerCles();
         await this.renvoyerEnAttente();
         if (this.ouverte && !estGroupe(this.ouverte)) this.demanderPresence(autreParticipant(this.ouverte, this.moi));
         return;

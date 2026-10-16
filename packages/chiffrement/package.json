@@ -1,0 +1,22 @@
+{
+  "name": "@unichat/chiffrement",
+  "private": true,
+  "type": "module",
+  "description": "Chiffrement de bout en bout d'UniChat : X3DH et Double Ratchet (spécifications de Signal) sur les primitives noble.",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "test": "vitest run",
+    "check": "tsc --noEmit && vitest run"
+  },
+  "devDependencies": {
+    "typescript": "^5.9.3",
+    "vitest": "^4.1.12"
+  },
+  "dependencies": {
+    "@noble/ciphers": "^2.4.0",
+    "@noble/curves": "^2.4.0",
+    "@noble/hashes": "^2.4.0"
+  }
+}

@@ -3,7 +3,12 @@ import type {
   ApercuLien,
   AppareilConnecte,
   CarteProfil,
+  CleSigneeTransport,
+  CleUniqueTransport,
   ErreurApiCorps,
+  EtatCles,
+  InscriptionCles,
+  PaquetsCompte,
   EvenementSecurite,
   Groupe,
   MajProfil,
@@ -106,6 +111,13 @@ export const api = {
   rejoindre: (code: string) => appel<Groupe>(`/invitations/${encodeURIComponent(code)}`, { method: "POST" }),
   nommerAdmin: (id: string, membre: string) =>
     appel<Groupe>(`/groupes/${encodeURIComponent(id)}/admins/${encodeURIComponent(membre)}`, { method: "POST" }),
+
+  etatCles: () => appel<EtatCles>("/cles"),
+  inscrireCles: (inscription: InscriptionCles) => appel<EtatCles>("/cles/identite", json("POST", inscription)),
+  reprendreCles: (numero: number, jeton: string) => appel<EtatCles>("/cles/reprendre", json("POST", { numero, jeton })),
+  ajouterClesUniques: (cles: CleUniqueTransport[]) => appel<EtatCles>("/cles/uniques", json("POST", { cles })),
+  publierCleSignee: (cleSignee: CleSigneeTransport) => appel<EtatCles>("/cles/signee", json("PUT", { cleSignee })),
+  paquets: (comptes: { id: string; appareils?: number[] }[]) => appel<{ comptes: PaquetsCompte[] }>("/cles/paquets", json("POST", { comptes })),
 };
 
 export function urlPhoto(id: string, version: string, taille: "petite" | "grande"): string {

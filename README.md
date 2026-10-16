@@ -15,8 +15,8 @@ Les choix techniques et leurs raisons : [docs/ARCHITECTURE.md](docs/ARCHITECTURE
 | 2 bis. Discussions | Groupes (jusqu'à 40 membres, administrateurs, ajout, retrait, départ), réponses citées, réactions, suppression pour tous ou pour soi | Fait (web) |
 | 2 ter. Médias | Photos, vidéos, documents et messages vocaux (Karaks Storage, 30 jours), aperçu avec légende, visionneuse | Fait (web) |
 | 2 quinquies. Quotidien | Bloquer, signaler ; sourdine, favoris, archives, épingles, effacer, supprimer, exporter une discussion ; transférer, sélectionner, modifier, messages importants, épingler un message, rechercher dans une discussion ; emoji, liens cliquables et aperçus, mentions @ ; confidentialité de la présence et des confirmations de lecture, ajout aux groupes, photo et lien d'invitation des groupes ; médias, liens et documents, infos du message, marquer comme non lu, fond des discussions ; messages éphémères, vue unique, position, contact, sondages | Fait (web) |
-| 2 quater. Android | Application installable (PWA, hors connexion, bouton Retour), notifications Web Push même fermée, application Android (Trusted Web Activity) | En cours |
-| 3. Sécurité | Chiffrement de bout en bout (protocole Signal), notifications, appareils liés | À venir |
+| 2 quater. Android | Application installée depuis Chrome (PWA, hors connexion, bouton Retour, appui long et glissement), notifications Web Push même fermée, animations d'ouverture et de fermeture | Fait |
+| 3. Sécurité | Chiffrement de bout en bout (spécifications de Signal), appareils reliés, code de sécurité | En cours (lot 1 sur 8 : clés et annuaire) |
 | 4. Appels et statuts | Appels audio et vidéo (WebRTC), statuts | À venir |
 | 5. API UniChat | Comptes entreprise et bots, REST, webhooks signés, documentation | À venir |
 | 6. Ordinateur | Application Tauri, communautés, chaînes | À venir |
@@ -27,6 +27,7 @@ Les choix techniques et leurs raisons : [docs/ARCHITECTURE.md](docs/ARCHITECTURE
 apps/server      Worker Cloudflare : API (Hono), base D1, tâches planifiées
 apps/web         Application web (React, Vite, Tailwind)
 packages/shared  Schémas zod et types communs
+packages/chiffrement  X3DH et Double Ratchet (chiffrement de bout en bout)
 ```
 
 ## Développement local

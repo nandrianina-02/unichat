@@ -1,3 +1,4 @@
+import { APPAREIL_INACTIF } from "@unichat/shared";
 import type { Bindings } from "../types";
 import { abandonnerEnvoi, supprimerFichier, type ConfigKaraks } from "./karaks";
 
@@ -20,6 +21,8 @@ export async function nettoyer(env: Bindings, maintenant: number, recuperer: typ
     db.prepare("DELETE FROM signalements WHERE cree_le < ?1").bind(maintenant - 180 * JOUR),
     // Groupe sans plus aucun membre (tous partis, comptes supprimés) : effacé, photo comprise.
     db.prepare("DELETE FROM groupes WHERE NOT EXISTS (SELECT 1 FROM membres m WHERE m.groupe_id = groupes.id)"),
+    // Appareil muet depuis 90 jours : on cesse de chiffrer pour lui.
+    db.prepare("DELETE FROM appareils_cles WHERE vu_le < ?1").bind(maintenant - APPAREIL_INACTIF),
   ]);
   await nettoyerMedias(env, maintenant, recuperer);
 }

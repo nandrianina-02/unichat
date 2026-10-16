@@ -55,6 +55,7 @@ apps/web        Application web (React, Vite, Tailwind)
 apps/android    Application Android (Trusted Web Activity, générée par Bubblewrap)
 apps/desktop    Application desktop (Tauri) — étape 6
 packages/shared Schémas zod et types communs à toutes les applications
+packages/chiffrement  X3DH et Double Ratchet, sans dépendance au navigateur ni au serveur
 ```
 
 Espaces de travail npm plutôt que pnpm : un seul `npm install` pour tout le dépôt.
@@ -276,10 +277,74 @@ Une réécriture native reste possible plus tard si un besoin l'impose
 
 ## Chiffrement de bout en bout (étape 3)
 
-Protocole Signal (X3DH ou PQXDH, puis Double Ratchet), clés par appareil.
-Le serveur publie les paquets de clés publiques des appareils et ne voit que
-des messages chiffrés. Les sessions sont déjà rattachées à un appareil pour
-que cette étape n'oblige pas à revoir les comptes.
+Spécifications de Signal : **X3DH** pour ouvrir une session entre deux
+appareils, **Double Ratchet** ensuite (une clé par message, oubliée sitôt
+servie). Implémentation propre, `packages/chiffrement`, sur les primitives
+**noble** (X25519, Ed25519, HKDF et HMAC SHA-256, AES-256-GCM ; auditées,
+licence MIT). Les bibliothèques de Signal ne conviennent pas : le portage
+TypeScript est sous GPL-3.0, `libsignal-client` sous AGPL-3.0 et réservé à
+Node ; elles imposeraient leur licence à toute l'application.
+
+- **Écart avec la spécification** : l'identité porte deux clés (Ed25519 pour
+  signer, X25519 pour l'échange, la seconde signée par la première) au lieu
+  d'une seule clé XEdDSA. Étiquettes de séparation propres à UniChat.
+- **Pas d'audit externe** de ce code : les primitives le sont, l'assemblage
+  est couvert par les tests du paquet (ouverture, désordre, perte, rejeu,
+  altération, signature forgée, ouvertures simultanées).
+
+### Identité et appareils (lot 1)
+
+- **Une identité par compte**, partagée par ses appareils comme dans
+  Signal. Un nouvel appareil la reçoit d'un appareil déjà relié, jamais du
+  serveur : celui-ci ne peut pas inscrire un faux appareil, il lui faudrait
+  signer sa clé.
+- **Par appareil** : un numéro jamais réutilisé, une clé signée renouvelée
+  chaque mois (l'ancienne reste deux mois pour les sessions en cours
+  d'ouverture) et une réserve de 100 clés uniques, refaite sous 40, 200 au
+  plus. Une clé unique n'est remise qu'une fois ; réserve vide, X3DH s'en
+  passe.
+- **Annuaire** (`/api/cles`, tables `identites`, `appareils_cles`,
+  `cles_uniques`) : le premier appareil du compte crée l'identité ; les
+  suivants sont « à relier ». Les signatures sont vérifiées par les
+  applications : le serveur ne fait que ranger et redonner.
+- **Un appareil survit à sa session** : reconnecté sur le même navigateur, il
+  reprend sa place avec un jeton (gardé en base sous forme d'empreinte).
+  Déconnecté à distance ou jeton volé, il quitte l'annuaire et ne pourra plus
+  revenir sans être relié de nouveau. Muet 90 jours, il en sort aussi.
+- **Sur l'appareil** : clés privées dans IndexedDB (magasin `cles`,
+  version 6), préparées sous verrou (Web Locks) pour que deux onglets ne
+  créent pas deux identités. La bibliothèque est chargée à la demande.
+
+### Messages (lots suivants)
+
+- **Contenu chiffré une fois** sous une clé aléatoire (AES-256-GCM) ; cette
+  clé part vers chaque appareil destinataire, et vers mes autres appareils,
+  par sa session Double Ratchet. Le serveur garde son rôle (relayer, compter,
+  accuser réception) sans lire. Il refuse un envoi qui oublie un appareil
+  inscrit : l'application refait ses sessions et renvoie.
+- **Ce que le serveur voit encore**, comme chez WhatsApp : qui écrit à qui,
+  quand, la taille, les accusés, « écrit… », la présence, les réglages de
+  discussion, les groupes (nom, membres, photo).
+- **Fichiers** chiffrés sur l'appareil avant l'envoi ; nom, type et vignette
+  voyagent dans le message chiffré. Karaks Storage ne voit que des octets.
+- **Notifications** : le service worker déchiffre sur l'appareil.
+- **Code de sécurité** à comparer de vive voix ou par QR code ; un changement
+  d'identité d'un contact est signalé dans la discussion.
+
+### Lots
+
+1. Socle cryptographique, annuaire des clés, inscription du premier appareil.
+2. Relier un appareil (QR code), réinitialiser les clés du compte.
+3. Discussions à deux chiffrées : messages, réactions, modifications,
+   suppressions, votes.
+4. Groupes.
+5. Fichiers.
+6. Notifications déchiffrées sur l'appareil.
+7. Code de sécurité et avertissement de changement d'identité.
+8. Historique transmis à un appareil relié ; fin des messages non chiffrés.
+
+La mention « chiffré de bout en bout » n'apparaît dans l'application qu'à
+la fin de l'étape.
 
 ## Médias
 

@@ -5,6 +5,7 @@ import { contacts, personnes, recherche } from "./routes/annuaire";
 import { apercu } from "./routes/apercu";
 import { appareils } from "./routes/appareils";
 import { auth } from "./routes/auth";
+import { cles } from "./routes/cles";
 import { groupes } from "./routes/groupes";
 import { invitations } from "./routes/invitations";
 import { medias } from "./routes/medias";
@@ -49,6 +50,7 @@ export function creerApp(remplacements: Partial<Dependances> = {}) {
   app.route("/api/apercu", apercu);
   app.route("/api/invitations", invitations);
   app.route("/api/push", push);
+  app.route("/api/cles", cles);
 
   // Lien entre le site et l'application Android : sans lui, elle s'ouvrirait
   // avec une barre d'adresse, comme un simple onglet.

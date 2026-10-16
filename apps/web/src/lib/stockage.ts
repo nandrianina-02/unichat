@@ -114,6 +114,8 @@ export interface Schema extends DBSchema {
   groupes: { key: string; value: GroupeLocal };
   fichiers: { key: string; value: FichierLocal };
   reglages: { key: string; value: unknown };
+  /** Clés privées du chiffrement de bout en bout : elles ne quittent jamais l'appareil. */
+  cles: { key: string; value: unknown };
 }
 
 export type Stockage = IDBPDatabase<Schema>;
@@ -121,7 +123,7 @@ export type TransactionMessages = IDBPTransaction<Schema, ["messages", "conversa
 
 /** Une base par compte : deux comptes sur le même navigateur ne se mélangent pas. */
 export function ouvrirStockage(utilisateurId: string): Promise<Stockage> {
-  return openDB<Schema>(`unichat-${utilisateurId}`, 5, {
+  return openDB<Schema>(`unichat-${utilisateurId}`, 6, {
     upgrade(db, ancienne, _nouvelle, transaction) {
       if (ancienne < 1) {
         const messages = db.createObjectStore("messages", { keyPath: "id" });
@@ -139,6 +141,8 @@ export function ouvrirStockage(utilisateurId: string): Promise<Stockage> {
       if (ancienne < 4) transaction.objectStore("messages").createIndex("important", "importantLe");
       // Version 5 : les messages éphémères, retrouvés à leur échéance.
       if (ancienne < 5) transaction.objectStore("messages").createIndex("expire", "expireLe");
+      // Version 6 : les clés du chiffrement de bout en bout.
+      if (ancienne < 6) db.createObjectStore("cles");
     },
   });
 }

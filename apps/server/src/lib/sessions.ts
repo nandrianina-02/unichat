@@ -151,6 +151,12 @@ export async function revoquer(
     db
       .prepare("UPDATE sessions SET revoquee_le = ?1, motif_revocation = ?2 WHERE id = ?3 AND revoquee_le IS NULL")
       .bind(maintenant, motif, s.id),
+    // Clés de l'appareil : déconnecté à distance ou jeton volé, il quitte
+    // l'annuaire et ne pourra plus reprendre sa place ; parti de lui-même ou
+    // expiré, il la reprendra à la prochaine connexion sur ce navigateur.
+    motif === "revoquee" || motif === "reutilisation"
+      ? db.prepare("DELETE FROM appareils_cles WHERE session_id = ?1").bind(s.id)
+      : db.prepare("UPDATE appareils_cles SET session_id = NULL WHERE session_id = ?1").bind(s.id),
   ];
   const type = motif === "reutilisation" ? "reutilisation_jeton" : motif === "revoquee" ? "session_revoquee" : motif === "deconnexion" ? "deconnexion" : null;
   if (type) {
