@@ -8,6 +8,10 @@ import type { Bindings } from "../types";
  * reçue.
  */
 export async function supprimerCompte(env: Bindings, utilisateurId: string): Promise<void> {
-  await env.DB.prepare("DELETE FROM utilisateurs WHERE id = ?1").bind(utilisateurId).run();
+  await env.DB.batch([
+    // Ses fichiers cessent d'être servis ; le nettoyage les efface du stockage.
+    env.DB.prepare("UPDATE medias SET expire_le = 0 WHERE proprietaire = ?1").bind(utilisateurId),
+    env.DB.prepare("DELETE FROM utilisateurs WHERE id = ?1").bind(utilisateurId),
+  ]);
   await env.BOITE.get(env.BOITE.idFromName(utilisateurId)).toutEffacer();
 }

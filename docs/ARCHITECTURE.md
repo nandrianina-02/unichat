@@ -161,11 +161,44 @@ que cette étape n'oblige pas à revoir les comptes.
 
 ## Médias
 
-Chiffrés sur l'appareil avant l'envoi. Le stockage reste à choisir :
-Cloudflare R2 (10 Go gratuits, mais l'activation demande d'enregistrer un
-moyen de paiement — à vérifier avant de l'adopter), ou Karaks Storage
-(Google Drive). En attendant, les photos de profil, petites (640 px et
-128 px, compressées dans le navigateur), sont rangées dans D1.
+Photos, vidéos, documents et messages vocaux sont stockés dans **Karaks
+Storage** (projet « UniChat »), le service de fichiers déjà en ligne pour
+Karaks : gratuit, sans moyen de paiement à enregistrer, contrairement à R2.
+Les photos de profil, petites (640 px et 128 px), restent dans D1.
+
+- **La clé ne quitte pas le Worker.** Le navigateur envoie le fichier à
+  `/api/medias` par morceaux de 4 Mo ; le Worker vérifie la session, la
+  participation à la discussion, le type et la taille, puis relaie chaque
+  morceau à l'envoi reprenable de Karaks Storage. La politique de sécurité
+  du site reste `connect-src 'self'`.
+- **Préparation dans le navigateur** (10 ms de calcul par requête côté
+  serveur) : photos réduites à 1 600 px en WebP, vignette de 24 px jointe au
+  message pour l'affichage flou avant téléchargement, durée et dimensions
+  des vidéos lues par le navigateur.
+- **Lecture** : `GET /api/medias/:id`, réservé aux membres de la
+  discussion. Le Worker demande à Karaks Storage un lien signé de 5 minutes
+  et relaie le contenu (avec `Range`), servi en `Content-Security-Policy:
+  sandbox` et `nosniff` : un fichier piégé ne peut rien exécuter sous
+  l'origine d'UniChat. Pas de SVG.
+- **Message** : l'application envoie l'identifiant du média avec le message ;
+  la boîte de l'expéditeur relit en base le type, le nom et la taille (seuls
+  les dimensions, la durée et la vignette sont déclarés par le client) et
+  refuse un média qui n'est pas le sien ou pas dans cette discussion.
+- **Sur l'appareil** : chaque fichier envoyé ou reçu est gardé dans
+  IndexedDB (magasin `fichiers`), comme l'historique. Photos et messages
+  vocaux se téléchargent quand ils approchent de l'écran ; vidéos et
+  documents à la demande.
+- **Durée** : 30 jours sur le serveur, puis effacement (tâche horaire,
+  15 fichiers par passage pour rester sous les 50 sous-requêtes). Une
+  suppression pour tout le monde ou du compte rend les fichiers
+  inaccessibles aussitôt (`expire_le = 0`) ; l'effacement suit.
+- **Clé** : préréglage « Application cliente » de Karaks Storage, plus le
+  droit « Mettre à la corbeille et supprimer ». Secret `KARAKS_STORAGE_CLE` ;
+  sans lui, l'envoi répond `503 stockage_indisponible`.
+
+Le chiffrement de bout en bout (étape 3) chiffrera les fichiers sur
+l'appareil avant l'envoi ; Karaks Storage ne verra alors que des octets
+opaques.
 
 ## API d'intégration (étape 5)
 
@@ -189,3 +222,4 @@ Sur le modèle de la WhatsApp Business API :
 | D1 | 5 millions de lignes lues et 100 000 écrites par jour, 500 Mo par base | Écritures espacées (`vu_le` toutes les 5 min) ; photos limitées en taille |
 | Durable Objects | 100 000 requêtes par jour, stockage SQLite | WebSocket en veille ; messages effacés après remise |
 | Fichiers statiques | Gratuits, illimités | Application web servie par le Worker |
+| Karaks Storage | Espace du Google Drive relié | Fichiers effacés après 30 jours ; 64 Mo au plus par vidéo ou document, 16 Mo par photo ou audio |

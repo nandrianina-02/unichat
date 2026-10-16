@@ -1,4 +1,4 @@
-import type { CarteProfil, Citation, EvenementGroupe, Groupe, Reaction } from "@unichat/shared";
+import type { CarteProfil, Citation, EvenementGroupe, Groupe, MediaMessage, Reaction } from "@unichat/shared";
 import { openDB, type DBSchema, type IDBPDatabase, type IDBPTransaction } from "idb";
 
 export type EtatMessage = "attente" | "envoye" | "remis" | "lu" | "echec";
@@ -15,6 +15,8 @@ export interface MessageLocal {
   type?: "texte" | "evenement";
   evenement?: EvenementGroupe;
   reponseA?: Citation;
+  /** Fichier joint. Son identifiant reste vide tant que l'envoi n'est pas terminé. */
+  media?: MediaMessage;
   /** Réactions, par personne. */
   reactions?: Record<string, Reaction>;
   /** Supprimé pour tout le monde par son auteur. */
@@ -43,6 +45,7 @@ export interface ConversationLocale {
     etat?: EtatMessage;
     supprime?: boolean;
     evenement?: EvenementGroupe;
+    media?: { type: MediaMessage["type"]; nom: string; duree?: number; vocal?: boolean };
   } | null;
   nonLus: number;
 }
@@ -55,11 +58,18 @@ export interface GroupeLocal extends Groupe {
   maj: number;
 }
 
+/** Contenu d'un fichier gardé sur l'appareil, rangé sous l'identifiant du message. */
+export interface FichierLocal {
+  id: string;
+  blob: Blob;
+}
+
 export interface Schema extends DBSchema {
   messages: { key: string; value: MessageLocal; indexes: { conversation: [string, number]; etat: string } };
   conversations: { key: string; value: ConversationLocale };
   personnes: { key: string; value: PersonneLocale };
   groupes: { key: string; value: GroupeLocal };
+  fichiers: { key: string; value: FichierLocal };
   reglages: { key: string; value: unknown };
 }
 
@@ -68,7 +78,7 @@ export type TransactionMessages = IDBPTransaction<Schema, ["messages", "conversa
 
 /** Une base par compte : deux comptes sur le même navigateur ne se mélangent pas. */
 export function ouvrirStockage(utilisateurId: string): Promise<Stockage> {
-  return openDB<Schema>(`unichat-${utilisateurId}`, 2, {
+  return openDB<Schema>(`unichat-${utilisateurId}`, 3, {
     upgrade(db, ancienne) {
       if (ancienne < 1) {
         const messages = db.createObjectStore("messages", { keyPath: "id" });
@@ -80,6 +90,8 @@ export function ouvrirStockage(utilisateurId: string): Promise<Stockage> {
       }
       // Version 2 : les groupes. L'historique déjà présent est conservé.
       if (ancienne < 2) db.createObjectStore("groupes", { keyPath: "id" });
+      // Version 3 : les fichiers reçus et envoyés, gardés sur l'appareil.
+      if (ancienne < 3) db.createObjectStore("fichiers", { keyPath: "id" });
     },
   });
 }

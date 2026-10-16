@@ -2,15 +2,21 @@ import type { CarteProfil, EvenementSecurite } from "@unichat/shared";
 import clsx from "clsx";
 import {
   BellRing,
+  Camera,
   EllipsisVertical,
+  FileText,
+  Headphones,
   LogOut,
   MessageSquarePlus,
+  Mic,
   Search,
   Settings,
   ShieldAlert,
   UserPlus,
+  Video,
   WifiOff,
   X,
+  type LucideIcon,
 } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { estGroupe } from "@unichat/shared";
@@ -20,7 +26,7 @@ import { Coches } from "../composants/Coches";
 import { EVENEMENT_CONTACTS, LignePersonne, TitreSection } from "../composants/Lignes";
 import { api } from "../lib/api";
 import { useCompte, useMoi } from "../lib/compte";
-import { dateListe, lieu, quand, texteEvenement } from "../lib/format";
+import { dateListe, dureeCourte, libelleMedia, lieu, quand, texteEvenement } from "../lib/format";
 import { useMessagerie } from "../lib/messagerie-react";
 import type { ConversationLocale } from "../lib/stockage";
 
@@ -256,12 +262,27 @@ export function Discussions({ selection, onOuvrir, onOuvrirPersonne, onNouvelle,
 }
 
 /** Aperçu de la dernière activité : « Ana : message », un événement de groupe, ou un message supprimé. */
-function apercu(c: ConversationLocale, nom: (id: string) => string): { texte: string; italique: boolean } {
+const ICONES_MEDIA: Record<string, LucideIcon> = { image: Camera, video: Video, audio: Headphones, document: FileText };
+
+interface Apercu {
+  texte: string;
+  italique: boolean;
+  /** Auteur dans un groupe, devant le pictogramme du fichier : « Bob : [micro] 0:12 ». */
+  prefixe?: string;
+  icone?: LucideIcon;
+}
+
+function apercu(c: ConversationLocale, nom: (id: string) => string): Apercu {
   const d = c.dernier;
   if (!d) return { texte: "", italique: false };
   if (d.evenement) return { texte: texteEvenement(d.evenement, nom), italique: false };
   if (d.supprime) return { texte: d.deMoi ? "Vous avez supprimé ce message" : "Ce message a été supprimé", italique: true };
   const prefixe = estGroupe(c.id) && !d.deMoi ? `${nom(d.de)} : ` : "";
+  if (d.media) {
+    // Message vocal : sa durée dit plus que son nom.
+    const libelle = d.media.vocal && d.media.duree !== undefined ? dureeCourte(d.media.duree) : libelleMedia(d.media);
+    return { texte: d.texte || libelle, italique: false, prefixe, icone: d.media.vocal ? Mic : ICONES_MEDIA[d.media.type] };
+  }
   return { texte: `${prefixe}${d.texte}`, italique: false };
 }
 
@@ -281,7 +302,7 @@ function LigneConversation({
   personne: CarteProfil | null | undefined;
   photoMoi: string | null;
   ecrit: string | null;
-  apercu: { texte: string; italique: boolean };
+  apercu: Apercu;
   selection: boolean;
   onClick: () => void;
   className?: string;
@@ -317,6 +338,8 @@ function LigneConversation({
             {ecrit ?? (
               <>
                 {c.dernier?.deMoi && !c.dernier.supprime && !c.dernier.evenement && <Coches etat={c.dernier.etat} />}
+                {resume.prefixe && <span className="shrink-0">{resume.prefixe}</span>}
+                {resume.icone && <resume.icone size={16} className="shrink-0" aria-hidden="true" />}
                 <span className={clsx("truncate", resume.italique && "italic")}>{resume.texte}</span>
               </>
             )}

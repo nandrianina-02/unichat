@@ -103,12 +103,86 @@ export function cookies(reponse: Response): Map<string, string> {
   return resultat;
 }
 
+/**
+ * Faux Karaks Storage : mêmes adresses et mêmes réponses que l'API réelle
+ * (sessions d'envoi par morceaux, liens temporaires, corbeille), en mémoire.
+ */
+export function creerKaraksFaux(base: string) {
+  const envois = new Map<string, { taille: number; morceaux: Uint8Array[]; recu: number }>();
+  const fichiers = new Map<string, Uint8Array>();
+  const liens = new Map<string, string>();
+  const effaces: string[] = [];
+
+  const recuperer = async (url: string, init: RequestInit = {}): Promise<Response | null> => {
+    if (!url.startsWith(base)) return null;
+    const chemin = url.slice(base.length);
+    const methode = init.method ?? "GET";
+    const lien = /^\/l\/(.+)$/.exec(chemin);
+    if (lien) {
+      const fichier = fichiers.get(liens.get(lien[1]!) ?? "");
+      return fichier ? new Response(fichier, { headers: { "Content-Length": String(fichier.length), "Accept-Ranges": "bytes" } }) : new Response(null, { status: 404 });
+    }
+    if (new Headers(init.headers).get("Authorization") !== "Bearer cle-essai") {
+      return Response.json({ success: false, error: { message: "Clé invalide." } }, { status: 401 });
+    }
+    if (chemin === "/api/v1/uploads" && methode === "POST") {
+      const corps = JSON.parse(String(init.body)) as { size: number };
+      const id = `upl_${crypto.randomUUID().slice(0, 8)}`;
+      envois.set(id, { taille: corps.size, morceaux: [], recu: 0 });
+      return Response.json({ success: true, upload: { id, received: 0 } }, { status: 201 });
+    }
+    const envoi = /^\/api\/v1\/uploads\/([^/]+)$/.exec(chemin);
+    if (envoi && methode === "PUT") {
+      const e = envois.get(envoi[1]!)!;
+      const morceau = new Uint8Array(init.body as ArrayBuffer | Uint8Array);
+      e.morceaux.push(morceau);
+      e.recu += morceau.length;
+      if (e.recu < e.taille) return Response.json({ success: true, upload: { received: e.recu }, file: null }, { status: 202 });
+      const contenu = new Uint8Array(e.taille);
+      let position = 0;
+      for (const m of e.morceaux) {
+        contenu.set(m, position);
+        position += m.length;
+      }
+      const id = `fil_${crypto.randomUUID().slice(0, 8)}`;
+      fichiers.set(id, contenu);
+      return Response.json({ success: true, upload: { received: e.recu }, file: { id, size: e.taille, mimeType: "x" } });
+    }
+    if (envoi && methode === "DELETE") return Response.json({ success: true });
+    const signe = /^\/api\/v1\/files\/([^/]+)\/signed-url$/.exec(chemin);
+    if (signe) {
+      const jeton = crypto.randomUUID();
+      liens.set(jeton, signe[1]!);
+      return Response.json({ success: true, url: `${base}/l/${jeton}` }, { status: 201 });
+    }
+    const definitif = /^\/api\/v1\/files\/([^/]+)\/permanent$/.exec(chemin);
+    if (definitif) {
+      fichiers.delete(definitif[1]!);
+      effaces.push(definitif[1]!);
+      return Response.json({ success: true });
+    }
+    if (/^\/api\/v1\/files\/[^/]+$/.test(chemin) && methode === "DELETE") return Response.json({ success: true });
+    return Response.json({ success: false, error: { message: "inconnu" } }, { status: 404 });
+  };
+  return { recuperer, fichiers, effaces };
+}
+
 /** Une application de test, son faux Google et une horloge que le test fait avancer. */
-export async function preparer() {
+export async function preparer(options: { stockage?: boolean } = {}) {
   const google = await creerGoogleFaux();
+  const karaks = creerKaraksFaux(env.KARAKS_STORAGE_URL!);
   let maintenant = Date.now();
-  const app = creerApp({ recuperer: google.recuperer, maintenant: () => maintenant });
-  const environnement = { ...env, GOOGLE_CLIENT_ID: CLIENT_ID, GOOGLE_CLIENT_SECRET: "secret-essai" };
+  const recuperer: typeof fetch = async (entree, init) => {
+    const url = typeof entree === "string" ? entree : entree instanceof URL ? entree.href : entree.url;
+    return (await karaks.recuperer(url, init)) ?? google.recuperer(entree, init);
+  };
+  const app = creerApp({ recuperer, maintenant: () => maintenant });
+  const environnement = {
+    ...env,
+    GOOGLE_CLIENT_ID: CLIENT_ID,
+    GOOGLE_CLIENT_SECRET: "secret-essai",
+    ...(options.stockage === false ? {} : { KARAKS_STORAGE_CLE: "cle-essai" }),
+  };
 
   // Une adresse par environnement de test : les compteurs de limitation ne
   // se partagent pas d'un test à l'autre.
@@ -199,6 +273,9 @@ export async function preparer() {
   return {
     app,
     google,
+    karaks,
+    recuperer,
+    environnement,
     requete,
     connecter,
     avancer: (ms: number) => (maintenant += ms),

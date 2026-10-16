@@ -13,6 +13,9 @@ import {
   type Reaction,
 } from "@unichat/shared";
 import { ErreurApi, api } from "./api";
+import { retirerMedia, telechargerMedia } from "./api-medias";
+import { resumeMessage } from "./format";
+import { envoyerParMorceaux, type FichierPrepare } from "./medias";
 import {
   ouvrirStockage,
   plageConversation,
@@ -40,6 +43,8 @@ export interface Instantane {
   presences: Record<string, Presence>;
   /** Incrémenté à chaque changement d'une discussion : la vue relit ses messages. */
   versions: Record<string, number>;
+  /** Fichiers en cours d'envoi : message → part envoyée (0 à 1). */
+  envois: Record<string, number>;
 }
 
 const RANG: Record<EtatMessage, number> = { echec: -1, attente: 0, envoye: 1, remis: 2, lu: 3 };
@@ -85,6 +90,7 @@ export class Messagerie {
     ecrit: {},
     presences: {},
     versions: {},
+    envois: {},
   };
 
   constructor(
@@ -128,6 +134,7 @@ export class Messagerie {
       groupes: Object.fromEntries(groupes.map((g) => [g.id, g])),
     });
     this.mettreAJourTitre();
+    await this.signalerEnvoisInterrompus();
     // Les profils en cache s'affichent tout de suite, puis sont rafraîchis.
     for (const c of conversations) {
       if (estGroupe(c.id)) void this.chargerGroupe(c.autre, true);
@@ -275,6 +282,7 @@ export class Messagerie {
     const touchees = new Set<string>();
     const nouveaux: MessageLocal[] = [];
     const groupesAChanger = new Set<string>();
+    const supprimes: string[] = [];
 
     for (const e of entrees) {
       if (e.type === "message") {
@@ -323,7 +331,8 @@ export class Messagerie {
         const msg = await messages.get(e.message);
         // Seul l'auteur peut supprimer son message pour tout le monde.
         if (msg && msg.conversation === e.conversation && msg.de === e.par) {
-          await messages.put({ ...msg, texte: "", supprime: true, reactions: {}, reponseA: undefined });
+          await messages.put({ ...msg, texte: "", supprime: true, reactions: {}, reponseA: undefined, media: undefined });
+          supprimes.push(msg.id);
           touchees.add(e.conversation);
         }
       } else {
@@ -347,6 +356,7 @@ export class Messagerie {
     }
     for (const c of touchees) await this.recalculer(tx, c);
     await tx.done;
+    for (const id of supprimes) await this.db.delete("fichiers", id);
 
     this.seq = Math.max(this.seq ?? 0, ...entrees.map((e) => e.seq));
     await this.db.put("reglages", this.seq, "seq");
@@ -383,7 +393,7 @@ export class Messagerie {
     const a = groupe ? idGroupe(conversation) : autreParticipant(conversation, this.moi);
     const citation: Citation | undefined =
       reponseA && !reponseA.supprime
-        ? { id: reponseA.id, de: reponseA.de, extrait: reponseA.texte.slice(0, LIMITE_EXTRAIT) }
+        ? { id: reponseA.id, de: reponseA.de, extrait: resumeMessage(reponseA).slice(0, LIMITE_EXTRAIT) }
         : undefined;
     const message: MessageLocal = {
       id: crypto.randomUUID(),
@@ -405,20 +415,129 @@ export class Messagerie {
   }
 
   private envoyerMessage(m: MessageLocal): void {
+    // Un fichier encore en route : le message partira à la fin de l'envoi.
+    if (m.media && !m.media.id) return;
     const groupe = estGroupe(m.conversation);
+    const media = m.media
+      ? {
+          id: m.media.id,
+          ...(m.media.largeur ? { largeur: m.media.largeur } : {}),
+          ...(m.media.hauteur ? { hauteur: m.media.hauteur } : {}),
+          ...(m.media.duree !== undefined ? { duree: m.media.duree } : {}),
+          ...(m.media.apercu ? { apercu: m.media.apercu } : {}),
+          ...(m.media.vocal ? { vocal: true } : {}),
+        }
+      : undefined;
     this.brut({
       t: "envoyer",
       id: m.id,
       ...(groupe ? { groupe: m.a } : { a: m.a }),
       texte: m.texte,
+      ...(media ? { media } : {}),
       ...(m.reponseA ? { reponseA: m.reponseA } : {}),
     });
+  }
+
+  // --- Fichiers -------------------------------------------------------------------------
+
+  /**
+   * Envoi d'un fichier : il est gardé sur l'appareil et s'affiche tout de
+   * suite ; il part par morceaux, puis le message est envoyé avec lui.
+   */
+  async envoyerFichier(conversation: string, f: FichierPrepare, legende: string, reponseA?: MessageLocal): Promise<void> {
+    const groupe = estGroupe(conversation);
+    const citation: Citation | undefined =
+      reponseA && !reponseA.supprime
+        ? { id: reponseA.id, de: reponseA.de, extrait: resumeMessage(reponseA).slice(0, LIMITE_EXTRAIT) }
+        : undefined;
+    const message: MessageLocal = {
+      id: crypto.randomUUID(),
+      conversation,
+      de: this.moi,
+      a: groupe ? idGroupe(conversation) : autreParticipant(conversation, this.moi),
+      texte: legende.trim(),
+      le: Date.now(),
+      type: "texte",
+      etat: "attente",
+      media: {
+        id: "",
+        type: f.type,
+        mime: f.mime,
+        nom: f.nom,
+        taille: f.blob.size,
+        ...(f.largeur ? { largeur: f.largeur } : {}),
+        ...(f.hauteur ? { hauteur: f.hauteur } : {}),
+        ...(f.duree !== undefined ? { duree: f.duree } : {}),
+        ...(f.apercu ? { apercu: f.apercu } : {}),
+        ...(f.vocal ? { vocal: true } : {}),
+      },
+      ...(citation ? { reponseA: citation } : {}),
+    };
+    await this.db.put("fichiers", { id: message.id, blob: f.blob });
+    const tx = this.db.transaction(["messages", "conversations"], "readwrite");
+    await tx.objectStore("messages").put(message);
+    await this.recalculer(tx, conversation);
+    await tx.done;
+    await this.publierConversations(new Set([conversation]));
+    void this.televerser(message, f);
+  }
+
+  private async televerser(message: MessageLocal, f: FichierPrepare): Promise<void> {
+    this.publier({ envois: { ...this.etat.envois, [message.id]: 0 } });
+    try {
+      const mediaId = await envoyerParMorceaux(message.conversation, f, (part) =>
+        this.publier({ envois: { ...this.etat.envois, [message.id]: part } }),
+      );
+      await this.modifierMessage(message.id, (m) => ({ ...m, media: { ...m.media!, id: mediaId } }));
+      const pret = await this.db.get("messages", message.id);
+      if (pret) this.envoyerMessage(pret);
+    } catch (erreur) {
+      const texte = erreur instanceof ErreurApi ? erreur.message : "L'envoi du fichier a échoué.";
+      await this.modifierMessage(message.id, (m) => ({ ...m, etat: "echec", erreur: texte }));
+    } finally {
+      const { [message.id]: _, ...reste } = this.etat.envois;
+      this.publier({ envois: reste });
+    }
+  }
+
+  /** Un envoi coupé par la fermeture de la page reprendra à la demande (« Réessayer »). */
+  private async signalerEnvoisInterrompus(): Promise<void> {
+    const enAttente = await this.db.getAllFromIndex("messages", "etat", "attente");
+    for (const m of enAttente) {
+      if (m.media && !m.media.id) {
+        await this.modifierMessage(m.id, (x) => ({ ...x, etat: "echec", erreur: "Envoi interrompu" }));
+      }
+    }
+  }
+
+  /** Le fichier d'un message, s'il est déjà sur l'appareil. */
+  async fichierLocal(messageId: string): Promise<Blob | undefined> {
+    return (await this.db.get("fichiers", messageId))?.blob;
+  }
+
+  /** Télécharge le fichier d'un message et le garde sur l'appareil. */
+  async recupererFichier(messageId: string, mediaId: string): Promise<Blob> {
+    const local = await this.fichierLocal(messageId);
+    if (local) return local;
+    const blob = await telechargerMedia(mediaId);
+    await this.db.put("fichiers", { id: messageId, blob });
+    return blob;
   }
 
   async renvoyer(id: string): Promise<void> {
     const msg = await this.db.get("messages", id);
     if (!msg || msg.de !== this.moi || msg.etat !== "echec") return;
     await this.modifierMessage(id, (m) => ({ ...m, etat: "attente", erreur: undefined }));
+    // Fichier jamais arrivé au serveur : on le renvoie depuis l'appareil.
+    if (msg.media && !msg.media.id) {
+      const blob = await this.fichierLocal(id);
+      if (!blob) {
+        await this.modifierMessage(id, (m) => ({ ...m, etat: "echec", erreur: "Fichier introuvable sur cet appareil." }));
+        return;
+      }
+      void this.televerser(msg, { ...msg.media, blob });
+      return;
+    }
     this.envoyerMessage(msg);
   }
 
@@ -452,11 +571,15 @@ export class Messagerie {
   async supprimerPourTous(message: MessageLocal): Promise<boolean> {
     if (message.de !== this.moi || !this.connecte) return false;
     if (!this.brut({ t: "supprimer", conversation: message.conversation, message: message.id })) return false;
-    await this.modifierMessage(message.id, (m) => ({ ...m, texte: "", supprime: true, reactions: {}, reponseA: undefined }));
+    // Le fichier cesse d'être servi tout de suite, et disparaît d'ici aussi.
+    if (message.media?.id) void retirerMedia(message.media.id);
+    await this.db.delete("fichiers", message.id);
+    await this.modifierMessage(message.id, (m) => ({ ...m, texte: "", supprime: true, reactions: {}, reponseA: undefined, media: undefined }));
     return true;
   }
 
   async supprimerPourMoi(message: MessageLocal): Promise<void> {
+    await this.db.delete("fichiers", message.id);
     const tx = this.db.transaction(["messages", "conversations"], "readwrite");
     await tx.objectStore("messages").delete(message.id);
     await this.recalculer(tx, message.conversation);
@@ -600,6 +723,7 @@ export class Messagerie {
             etat: dernier.etat,
             supprime: dernier.supprime,
             evenement: dernier.evenement,
+            ...(dernier.media ? { media: { type: dernier.media.type, nom: dernier.media.nom, duree: dernier.media.duree, vocal: dernier.media.vocal } } : {}),
           }
         : null,
       nonLus: tous.filter((m) => m.de !== this.moi && !m.lu && m.type !== "evenement").length,
@@ -632,7 +756,7 @@ export class Messagerie {
       const groupe = estGroupe(m.conversation) ? this.etat.groupes[idGroupe(m.conversation)] : null;
       const auteur = this.nom(m.de, m.conversation);
       const titre = groupe ? groupe.nom : auteur;
-      const corps = groupe ? `${auteur} : ${m.texte}` : m.texte;
+      const corps = groupe ? `${auteur} : ${resumeMessage(m)}` : resumeMessage(m);
       const notification = new Notification(titre, { body: corps.slice(0, 200), tag: m.conversation, icon: "/icone.svg" });
       notification.onclick = () => {
         window.focus();

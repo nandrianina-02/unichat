@@ -1,9 +1,12 @@
 import {
   DELAI_SUPPRESSION,
+  LIMITES_MEDIA,
   LIMITE_TEXTE,
   autreParticipant,
   estGroupe,
+  formatMedia,
   idGroupe,
+  mimeSimple,
   type CarteProfil,
   type Reaction,
 } from "@unichat/shared";
@@ -14,8 +17,12 @@ import {
   ChevronDown,
   Copy,
   EllipsisVertical,
+  FileText,
+  Images,
   Info,
   LoaderCircle,
+  Mic,
+  Paperclip,
   Reply,
   RotateCw,
   SendHorizontal,
@@ -27,11 +34,14 @@ import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "re
 import { Avatar, AvatarGroupe } from "../composants/Avatar";
 import { BoutonIcone } from "../composants/BoutonIcone";
 import { Coches } from "../composants/Coches";
+import { Enregistrement } from "../composants/Enregistrement";
+import { ACCEPTE_DOCUMENTS, ACCEPTE_VISUELS, EnvoiFichiers } from "../composants/EnvoiFichiers";
 import { contactsModifies } from "../composants/Lignes";
+import { ContenuMedia, Visionneuse, type MessageAvecMedia } from "../composants/Media";
 import { ChoixReaction, IconeReaction, REACTIONS_AFFICHEES } from "../composants/Reactions";
 import { ErreurApi, api } from "../lib/api";
 import { useCompte, useMoi } from "../lib/compte";
-import { heureCourte, jourMessage, texteEvenement, vuLe } from "../lib/format";
+import { heureCourte, jourMessage, resumeMessage, tailleFichier, texteEvenement, vuLe } from "../lib/format";
 import { useMessagerie, useMessages } from "../lib/messagerie-react";
 import type { MessageLocal } from "../lib/stockage";
 
@@ -62,6 +72,9 @@ export function Discussion({ conversation, onInfos, onFermer }: Props) {
   const [reponse, setReponse] = useState<MessageLocal | null>(null);
   const [aSupprimer, setASupprimer] = useState<MessageLocal | null>(null);
   const [avis, setAvis] = useState<string | null>(null);
+  const [aJoindre, setAJoindre] = useState<File[] | null>(null);
+  const [visionne, setVisionne] = useState<{ message: MessageAvecMedia; url: string } | null>(null);
+  const [depot, setDepot] = useState(false);
 
   useEffect(() => {
     if (!avis) return;
@@ -112,8 +125,45 @@ export function Discussion({ conversation, onInfos, onFermer }: Props) {
     if (!(await messagerie.reagir(message, code))) setAvis("Hors connexion : la réaction n'a pas pu être envoyée.");
   }
 
+  function joindre(fichiers: File[]) {
+    if (quitte || fichiers.length === 0) return;
+    setAJoindre(fichiers);
+  }
+
+  function envoyerVocal(blob: Blob, duree: number) {
+    const mime = mimeSimple(blob.type);
+    const format = formatMedia(mime);
+    if (!format || format.type !== "audio") {
+      setAvis("Ce navigateur enregistre dans un format que UniChat ne prend pas en charge.");
+      return;
+    }
+    if (blob.size > LIMITES_MEDIA.audio) {
+      setAvis(`Message vocal trop long : ${tailleFichier(LIMITES_MEDIA.audio)} au maximum.`);
+      return;
+    }
+    const fichier = { blob, nom: `Message vocal.${format.extension}`, mime, type: "audio" as const, duree, vocal: true };
+    void messagerie.envoyerFichier(conversation, fichier, "", reponse ?? undefined);
+    setReponse(null);
+  }
+
   return (
-    <section className="flex h-full min-w-0 flex-1 flex-col bg-discussion">
+    <section
+      className="relative flex h-full min-w-0 flex-1 flex-col bg-discussion"
+      onDragOver={(e) => {
+        if (quitte || !e.dataTransfer.types.includes("Files")) return;
+        e.preventDefault();
+        setDepot(true);
+      }}
+      onDragLeave={(e) => {
+        if (!e.currentTarget.contains(e.relatedTarget as Node | null)) setDepot(false);
+      }}
+      onDrop={(e) => {
+        if (quitte) return;
+        e.preventDefault();
+        setDepot(false);
+        joindre([...e.dataTransfer.files]);
+      }}
+    >
       <EnTete
         avatar={enGroupe ? <AvatarGroupe taille={40} /> : <Avatar id={autre!} photo={personne?.photo ?? null} nom={titre || "Contact"} taille={40} />}
         titre={titre}
@@ -133,12 +183,15 @@ export function Discussion({ conversation, onInfos, onFermer }: Props) {
         onReagir={(m, code) => void reagir(m, code)}
         onSupprimer={(m) => setASupprimer(m)}
         onCopier={(m) => {
+          if (!m.texte) return;
           void navigator.clipboard.writeText(m.texte).then(
             () => setAvis("Message copié."),
             () => setAvis("La copie a été refusée par le navigateur."),
           );
         }}
         onRenvoyer={(id) => void messagerie.renvoyer(id)}
+        onOuvrirMedia={(message, url) => setVisionne({ message, url })}
+        envois={etat.envois}
       />
       {avis && (
         <p role="status" className="animate-fade shrink-0 bg-entete px-4 pt-2 text-center text-[13px] text-texte-2">
@@ -160,6 +213,39 @@ export function Discussion({ conversation, onInfos, onFermer }: Props) {
             setReponse(null);
           }}
           onEcrit={() => !estSoi && messagerie.signalerEcriture(conversation)}
+          onJoindre={joindre}
+          onVocal={envoyerVocal}
+          onAvis={setAvis}
+        />
+      )}
+      {depot && (
+        <div className="animate-fade pointer-events-none absolute inset-0 z-30 flex items-center justify-center bg-voile p-8">
+          <p className="flex items-center gap-3 rounded-lg bg-panneau px-6 py-4 text-[15px] text-texte shadow-xl">
+            <Paperclip size={20} className="text-primaire" /> Déposez les fichiers pour les envoyer
+          </p>
+        </div>
+      )}
+      {aJoindre && (
+        <EnvoiFichiers
+          fichiers={aJoindre}
+          destinataire={titre || "ce contact"}
+          onAnnuler={() => setAJoindre(null)}
+          onEnvoyer={(envois) => {
+            for (const [i, { fichier, legende }] of envois.entries()) {
+              // La réponse s'attache au premier fichier, comme une légende.
+              void messagerie.envoyerFichier(conversation, fichier, legende, i === 0 ? (reponse ?? undefined) : undefined);
+            }
+            setReponse(null);
+            setAJoindre(null);
+          }}
+        />
+      )}
+      {visionne && (
+        <Visionneuse
+          message={visionne.message}
+          url={visionne.url}
+          auteur={visionne.message.de === moi.id ? "Vous" : nom(visionne.message.de)}
+          onFermer={() => setVisionne(null)}
         />
       )}
       {aSupprimer && (
@@ -322,6 +408,7 @@ interface ActionsMessage {
   onSupprimer: (m: MessageLocal) => void;
   onCopier: (m: MessageLocal) => void;
   onRenvoyer: (id: string) => void;
+  onOuvrirMedia: (m: MessageAvecMedia, url: string) => void;
 }
 
 function ListeMessages({
@@ -329,12 +416,14 @@ function ListeMessages({
   moiId,
   enGroupe,
   nom,
+  envois,
   ...actions
 }: {
   messages: MessageLocal[] | null;
   moiId: string;
   enGroupe: boolean;
   nom: (id: string) => string;
+  envois: Record<string, number>;
 } & ActionsMessage) {
   const zone = useRef<HTMLDivElement>(null);
   const separateur = useRef<HTMLDivElement>(null);
@@ -424,6 +513,7 @@ function ListeMessages({
         premier={premier}
         auteur={enGroupe && premier && m.de !== moiId ? nom(m.de) : null}
         nom={nom}
+        progression={envois[m.id]}
         onAllerA={allerAuMessage}
         {...actions}
       />,
@@ -481,12 +571,14 @@ function Bulle({
   premier,
   auteur,
   nom,
+  progression,
   onAllerA,
   onRepondre,
   onReagir,
   onSupprimer,
   onCopier,
   onRenvoyer,
+  onOuvrirMedia,
 }: {
   message: MessageLocal;
   mien: boolean;
@@ -494,6 +586,7 @@ function Bulle({
   premier: boolean;
   auteur: string | null;
   nom: (id: string) => string;
+  progression: number | undefined;
   onAllerA: (id: string) => void;
 } & ActionsMessage) {
   const [menu, setMenu] = useState<"bas" | "haut" | null>(null);
@@ -512,8 +605,18 @@ function Bulle({
     ? []
     : [
         { icone: Reply, libelle: "Répondre", action: () => onRepondre(m) },
-        { icone: Copy, libelle: "Copier", action: () => onCopier(m) },
+        ...(m.texte ? [{ icone: Copy, libelle: "Copier", action: () => onCopier(m) }] : []),
       ];
+  const media = !m.supprime && m.media ? m.media : undefined;
+  // Photo et vidéo occupent toute la bulle, bord à bord ; l'heure se pose dessus quand il n'y a pas de légende.
+  const visuel = media?.type === "image" || media?.type === "video";
+  const heurePosee = visuel && !m.texte;
+  const heure = (
+    <>
+      {heureCourte(m.le)}
+      {mien && !m.supprime && <Coches etat={m.etat} surImage={heurePosee} />}
+    </>
+  );
 
   return (
     <div
@@ -523,36 +626,56 @@ function Bulle({
       <div ref={cadre} className="group relative max-w-[min(85%,560px)] md:max-w-[min(65%,560px)]">
         <div
           className={clsx(
-            "relative rounded-lg px-2.5 pt-1.5 pb-2 text-[14.5px] leading-[19px] text-texte shadow-sm",
+            "relative rounded-lg text-[14.5px] leading-[19px] text-texte shadow-sm",
+            visuel ? "p-[3px]" : "px-2.5 pt-1.5 pb-2",
             mien ? "bg-bulle-envoyee" : "bg-bulle-recue",
             premier && (mien ? "rounded-tr-none" : "rounded-tl-none"),
           )}
         >
           {premier && <Queue mien={mien} />}
-          {auteur && <span className="mb-0.5 block text-[13px] font-medium text-primaire-texte">{auteur}</span>}
-          {m.reponseA && !m.supprime && (
-            <button
-              type="button"
-              onClick={() => onAllerA(m.reponseA!.id)}
-              className="mb-1.5 block w-full min-w-[160px] rounded-md border-l-4 border-primaire bg-texte/5 px-2.5 py-1.5 text-left"
-            >
-              <span className="block text-[12.5px] font-medium text-primaire-texte">{nom(m.reponseA.de)}</span>
-              <span className="line-clamp-2 text-[13px] text-texte-2">{m.reponseA.extrait}</span>
-            </button>
+          {(auteur || (m.reponseA && !m.supprime)) && (
+            <div className={visuel ? "px-1.5 pt-0.5 pb-[3px]" : undefined}>
+              {auteur && <span className="mb-0.5 block text-[13px] font-medium text-primaire-texte">{auteur}</span>}
+              {m.reponseA && !m.supprime && (
+                <button
+                  type="button"
+                  onClick={() => onAllerA(m.reponseA!.id)}
+                  className="mb-1.5 block w-full min-w-[160px] rounded-md border-l-4 border-primaire bg-texte/5 px-2.5 py-1.5 text-left"
+                >
+                  <span className="block text-[12.5px] font-medium text-primaire-texte">{nom(m.reponseA.de)}</span>
+                  <span className="line-clamp-2 text-[13px] text-texte-2">{m.reponseA.extrait}</span>
+                </button>
+              )}
+            </div>
           )}
-          {m.supprime ? (
-            <span className="inline-flex items-center gap-1.5 italic text-texte-2">
-              <Ban size={14} /> {mien ? "Vous avez supprimé ce message" : "Ce message a été supprimé"}
-            </span>
-          ) : (
-            <span className="whitespace-pre-wrap [overflow-wrap:anywhere]">{m.texte}</span>
+          {media && (
+            <ContenuMedia
+              message={m as MessageAvecMedia}
+              progression={progression}
+              surImage={
+                heurePosee ? (
+                  <span className="pointer-events-none absolute right-1.5 bottom-1.5 flex items-center gap-1 rounded bg-pastille-media px-1.5 py-0.5 text-[11px] text-sur-visionneuse">
+                    {heure}
+                  </span>
+                ) : undefined
+              }
+              onOuvrir={(url) => onOuvrirMedia(m as MessageAvecMedia, url)}
+            />
           )}
-          {/* Réserve la place de l'heure sur la dernière ligne, qui s'y loge en bas à droite. */}
-          <span aria-hidden="true" className={clsx("inline-block", mien ? "w-[68px]" : "w-[42px]")} />
-          <span className="absolute right-2 bottom-1 flex items-center gap-1 text-[11px] text-texte-2">
-            {heureCourte(m.le)}
-            {mien && !m.supprime && <Coches etat={m.etat} />}
-          </span>
+          {!heurePosee && (
+            <div className={clsx(visuel && "px-1.5 pt-1.5 pb-1", media?.type === "document" && "pt-1")}>
+              {m.supprime ? (
+                <span className="inline-flex items-center gap-1.5 italic text-texte-2">
+                  <Ban size={14} /> {mien ? "Vous avez supprimé ce message" : "Ce message a été supprimé"}
+                </span>
+              ) : (
+                m.texte && <span className="whitespace-pre-wrap [overflow-wrap:anywhere]">{m.texte}</span>
+              )}
+              {/* Réserve la place de l'heure sur la dernière ligne, qui s'y loge en bas à droite. */}
+              {media?.type !== "audio" && <span aria-hidden="true" className={clsx("inline-block", mien ? "w-[68px]" : "w-[42px]")} />}
+            </div>
+          )}
+          {!heurePosee && <span className="absolute right-2 bottom-1 flex items-center gap-1 text-[11px] text-texte-2">{heure}</span>}
           {/* Ouverture du menu : visible au survol, comme sur ordinateur dans les messageries de référence. */}
           <button
             type="button"
@@ -683,6 +806,9 @@ function Composeur({
   onAnnulerReponse,
   onEnvoyer,
   onEcrit,
+  onJoindre,
+  onVocal,
+  onAvis,
 }: {
   conversation: string;
   reponse: MessageLocal | null;
@@ -690,9 +816,18 @@ function Composeur({
   onAnnulerReponse: () => void;
   onEnvoyer: (texte: string) => void;
   onEcrit: () => void;
+  onJoindre: (fichiers: File[]) => void;
+  onVocal: (blob: Blob, duree: number) => void;
+  onAvis: (texte: string) => void;
 }) {
   const [texte, setTexte] = useState(() => brouillons.get(conversation) ?? "");
+  const [menu, setMenu] = useState(false);
+  const [enregistre, setEnregistre] = useState(false);
   const champ = useRef<HTMLTextAreaElement>(null);
+  const menuRef = useRef<HTMLDivElement>(null);
+  const visuels = useRef<HTMLInputElement>(null);
+  const documents = useRef<HTMLInputElement>(null);
+  useFermetureExterieure(menu, menuRef, () => setMenu(false));
 
   useEffect(() => {
     champ.current?.focus();
@@ -722,49 +857,103 @@ function Composeur({
         <div className="animate-rise flex items-center gap-3 px-3 pt-2.5 md:px-4">
           <div className="min-w-0 flex-1 rounded-md border-l-4 border-primaire bg-panneau px-3 py-2">
             <p className="text-[12.5px] font-medium text-primaire-texte">Réponse à {nom(reponse.de)}</p>
-            <p className="truncate text-[13px] text-texte-2">{reponse.texte}</p>
+            <p className="truncate text-[13px] text-texte-2">{resumeMessage(reponse)}</p>
           </div>
           <BoutonIcone libelle="Annuler la réponse" onClick={onAnnulerReponse}>
             <X size={20} />
           </BoutonIcone>
         </div>
       )}
-      <div className="flex items-end gap-2 px-3 py-2.5 md:px-4">
-        <div className="flex min-h-[42px] flex-1 items-center rounded-lg bg-panneau px-3.5 py-[10px]">
-          <textarea
-            ref={champ}
-            rows={1}
-            value={texte}
-            maxLength={LIMITE_TEXTE}
-            onChange={(e) => {
-              setTexte(e.target.value);
-              if (e.target.value.trim()) onEcrit();
-            }}
-            onKeyDown={(e) => {
-              // Entrée envoie, Maj+Entrée va à la ligne ; pas pendant une saisie
-              // en cours de composition (accents, alphabets asiatiques).
-              if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) {
+      {enregistre ? (
+        <Enregistrement
+          onAnnuler={() => setEnregistre(false)}
+          onTerminer={(blob, duree) => {
+            setEnregistre(false);
+            onVocal(blob, duree);
+          }}
+          onErreur={(message) => {
+            setEnregistre(false);
+            onAvis(message);
+          }}
+        />
+      ) : (
+        <div className="flex items-end gap-1 px-2 py-2.5 md:gap-2 md:px-4">
+          <div ref={menuRef} className="relative">
+            <BoutonIcone libelle="Joindre" actif={menu} onClick={() => setMenu((m) => !m)} aria-haspopup="menu" aria-expanded={menu} className="mb-px">
+              <Paperclip size={22} />
+            </BoutonIcone>
+            {menu && (
+              <Menu
+                className="bottom-full left-0 mb-2"
+                elements={[
+                  { icone: Images, libelle: "Photos et vidéos", action: () => visuels.current?.click() },
+                  { icone: FileText, libelle: "Document", action: () => documents.current?.click() },
+                ]}
+                onChoix={() => setMenu(false)}
+              />
+            )}
+            {[
+              { ref: visuels, accept: ACCEPTE_VISUELS },
+              { ref: documents, accept: ACCEPTE_DOCUMENTS },
+            ].map(({ ref, accept }) => (
+              <input
+                key={accept}
+                ref={ref}
+                type="file"
+                multiple
+                accept={accept}
+                hidden
+                onChange={(e) => {
+                  const choisis = [...(e.target.files ?? [])];
+                  e.target.value = "";
+                  onJoindre(choisis);
+                }}
+              />
+            ))}
+          </div>
+          <div className="flex min-h-[42px] flex-1 items-center rounded-lg bg-panneau px-3.5 py-[10px]">
+            <textarea
+              ref={champ}
+              rows={1}
+              value={texte}
+              maxLength={LIMITE_TEXTE}
+              onChange={(e) => {
+                setTexte(e.target.value);
+                if (e.target.value.trim()) onEcrit();
+              }}
+              onKeyDown={(e) => {
+                // Entrée envoie, Maj+Entrée va à la ligne ; pas pendant une saisie
+                // en cours de composition (accents, alphabets asiatiques).
+                if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) {
+                  e.preventDefault();
+                  envoyer();
+                }
+                if (e.key === "Escape" && reponse) onAnnulerReponse();
+              }}
+              onPaste={(e) => {
+                // Une capture d'écran collée part comme une photo, avec aperçu.
+                const fichiers = [...e.clipboardData.files];
+                if (fichiers.length === 0) return;
                 e.preventDefault();
-                envoyer();
-              }
-              if (e.key === "Escape" && reponse) onAnnulerReponse();
-            }}
-            placeholder="Écrire un message"
-            aria-label="Message"
-            className="max-h-[132px] w-full resize-none bg-transparent text-[15px] leading-[20px] text-texte outline-none placeholder:text-texte-2"
-          />
+                onJoindre(fichiers);
+              }}
+              placeholder="Écrire un message"
+              aria-label="Message"
+              className="max-h-[132px] w-full resize-none bg-transparent text-[15px] leading-[20px] text-texte outline-none placeholder:text-texte-2"
+            />
+          </div>
+          {/* Champ vide : le micro prend la place du bouton d'envoi, comme dans les messageries de référence. */}
+          <button
+            type="button"
+            onClick={texte.trim() ? envoyer : () => setEnregistre(true)}
+            aria-label={texte.trim() ? "Envoyer" : "Enregistrer un message vocal"}
+            title={texte.trim() ? "Envoyer" : "Message vocal"}
+            className="flex size-[42px] shrink-0 items-center justify-center rounded-full bg-primaire text-sur-primaire transition-colors hover:bg-primaire-fort"
+          >
+            {texte.trim() ? <SendHorizontal key="envoyer" size={20} className="animate-fade" /> : <Mic key="micro" size={20} className="animate-fade" />}
+          </button>
         </div>
-        <button
-          type="button"
-          onClick={envoyer}
-          disabled={!texte.trim()}
-          aria-label="Envoyer"
-          title="Envoyer"
-          className="flex size-[42px] shrink-0 items-center justify-center rounded-full bg-primaire text-sur-primaire transition-opacity hover:bg-primaire-fort disabled:opacity-40"
-        >
-          <SendHorizontal size={20} />
-        </button>
-      </div>
+      )}
     </footer>
   );
 }

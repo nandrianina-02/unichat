@@ -3,3 +3,7 @@
 # avec l'URI de redirection http://localhost:8787/api/auth/google/rappel
 GOOGLE_CLIENT_ID=
 GOOGLE_CLIENT_SECRET=
+
+# Clé d'API Karaks Storage (projet « UniChat », préréglage « Application
+# cliente » plus « Mettre à la corbeille et supprimer ») : envoi de fichiers.
+KARAKS_STORAGE_CLE=

@@ -24,7 +24,7 @@
 
     <main class="page-texte mx-auto max-w-3xl px-5 py-10">
       <h1 class="text-3xl font-light text-texte">Règles de confidentialité</h1>
-      <p>Dernière mise à jour : 15 octobre 2026.</p>
+      <p>Dernière mise à jour : 16 octobre 2026.</p>
       <p>
         UniChat est une messagerie gratuite, sur le web, Android et ordinateur. Cette page explique quelles données nous
         recevons, pourquoi, combien de temps nous les gardons, et comment les effacer. Contact :
@@ -63,7 +63,16 @@
       <p>
         <strong>À ce jour, les messages ne sont pas chiffrés de bout en bout.</strong> Ils sont chiffrés pendant leur transport
         (HTTPS), mais restent lisibles par notre infrastructure tant qu'ils attendent d'être remis. Le chiffrement de bout en
-        bout est prévu ; cette page sera mise à jour lorsqu'il sera en place.
+        bout est prévu ; cette page sera mise à jour lorsqu'il sera en place. Il en va de même pour les fichiers.
+      </p>
+      <p>
+        <strong>Photos, vidéos, messages vocaux et documents.</strong> Un fichier envoyé est stocké sur nos serveurs le temps
+        que chaque destinataire le télécharge, <strong>30 jours au plus</strong>, puis effacé ; il reste ensuite sur les
+        appareils qui l'ont reçu. Seuls les membres de la discussion peuvent le télécharger, par un lien temporaire. Avant
+        l'envoi, les photos sont réduites dans votre navigateur et une vignette minuscule est jointe au message pour
+        l'afficher floue en attendant. Les messages vocaux ne sont enregistrés que pendant que vous tenez le micro ouvert, et
+        ne quittent l'appareil qu'au moment où vous les envoyez. Supprimer un message « pour tout le monde » rend aussi son
+        fichier inaccessible sur-le-champ, puis l'efface de nos serveurs.
       </p>
       <p>
         Les personnes avec qui vous discutez voient quand leurs messages vous sont remis et quand vous les lisez, quand vous
@@ -106,8 +115,10 @@
       <p>
         Nous ne vendons aucune donnée, n'affichons aucune publicité et ne partageons rien avec des tiers à des fins
         commerciales. Nos prestataires techniques traitent les données pour notre compte, uniquement pour faire fonctionner le
-        service : <strong>Cloudflare</strong> (hébergement, base de données, transmission des messages) et
-        <strong>Google</strong> (connexion). Nous pouvons être tenus de communiquer des informations si la loi l'exige.
+        service : <strong>Cloudflare</strong> (hébergement, base de données, transmission des messages),
+        <strong>Google</strong> (connexion) et <strong>Karaks Storage</strong> (stockage temporaire des fichiers envoyés,
+        hébergé chez Vercel, les fichiers étant conservés dans un espace Google Drive réservé à ce service et jamais rendus
+        publics). Nous pouvons être tenus de communiquer des informations si la loi l'exige.
       </p>
 
       <h2>7. Durées de conservation</h2>
@@ -118,6 +129,7 @@
         <tbody>
           <tr><td>Profil, photo, contacts, réglages</td><td>Jusqu'à la suppression de votre compte</td></tr>
           <tr><td>Messages en attente de remise</td><td>Jusqu'à leur remise, 30 jours au plus</td></tr>
+          <tr><td>Photos, vidéos, messages vocaux, documents</td><td>30 jours après l'envoi, ou dès leur suppression pour tout le monde</td></tr>
           <tr><td>Sessions (appareils connectés)</td><td>Fermées après 30 jours d'inactivité ou 90 jours au plus ; effacées 30 jours après</td></tr>
           <tr><td>Journal de sécurité</td><td>6 mois</td></tr>
           <tr><td>Compteurs liés à l'adresse IP</td><td>24 heures</td></tr>
@@ -128,8 +140,9 @@
       <p>
         Vous consultez et modifiez vos informations dans Paramètres. Vous pouvez <strong>supprimer votre compte</strong> à tout
         moment dans Paramètres, Compte, Supprimer mon compte : votre profil, votre photo, vos contacts, vos sessions, votre
-        journal de sécurité et vos messages en attente sont effacés immédiatement, et tous vos appareils sont déconnectés. Les
-        messages déjà remis restent sur les appareils de leurs destinataires.
+        journal de sécurité et vos messages en attente sont effacés immédiatement, les fichiers que vous avez envoyés deviennent
+        inaccessibles aussitôt et sont effacés dans les heures qui suivent, et tous vos appareils sont déconnectés. Les messages et fichiers déjà remis restent sur les appareils de
+        leurs destinataires.
       </p>
       <p>
         Pour toute autre demande (accès, rectification, opposition, portabilité) ou question, écrivez à

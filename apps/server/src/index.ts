@@ -9,6 +9,6 @@ const app = creerApp();
 export default {
   fetch: app.fetch,
   async scheduled(_controleur, env, ctx) {
-    ctx.waitUntil(nettoyer(env.DB, Date.now()));
+    ctx.waitUntil(nettoyer(env, Date.now(), (entree, init) => fetch(entree, init)));
   },
 } satisfies ExportedHandler<Bindings>;

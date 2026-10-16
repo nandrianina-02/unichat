@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { schemaMediaEnvoye, type MediaMessage } from "./medias";
 
 /**
  * Protocole temps réel entre les applications et le serveur (WebSocket,
@@ -55,7 +56,9 @@ export interface Message {
   de: string;
   /** Destinataire : une personne, ou le groupe. */
   a: string;
+  /** Texte, ou légende d'un fichier (peut alors être vide). */
   texte: string;
+  media?: MediaMessage;
   /** Heure du serveur à l'acceptation du message. */
   le: number;
   reponseA?: Citation;
@@ -100,13 +103,12 @@ export const schemaClient = z.discriminatedUnion("t", [
       id: uuid,
       a: uuid.optional(),
       groupe: uuid.optional(),
-      texte: z
-        .string()
-        .max(LIMITE_TEXTE, `${LIMITE_TEXTE} caractères au maximum.`)
-        .refine((t) => t.trim().length > 0, "Message vide."),
+      texte: z.string().max(LIMITE_TEXTE, `${LIMITE_TEXTE} caractères au maximum.`),
+      media: schemaMediaEnvoye.optional(),
       reponseA: z.object({ id: uuid, de: uuid, extrait: z.string().max(LIMITE_EXTRAIT) }).optional(),
     })
-    .refine((m) => Boolean(m.a) !== Boolean(m.groupe), "Destinataire manquant."),
+    .refine((m) => Boolean(m.a) !== Boolean(m.groupe), "Destinataire manquant.")
+    .refine((m) => m.texte.trim().length > 0 || m.media, "Message vide."),
   /** Messages lus, groupés par auteur : c'est lui qui verra « lu ». */
   z.object({ t: z.literal("lu"), conversation, auteur: uuid, ids: z.array(uuid).min(1).max(500) }),
   z.object({ t: z.literal("ecrit"), conversation }),

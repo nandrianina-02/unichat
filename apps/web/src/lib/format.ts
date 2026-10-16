@@ -114,3 +114,39 @@ export function initiales(nom: string): string {
     .map((m) => m[0]!.toUpperCase())
     .join("");
 }
+
+/** Nom d'un fichier joint quand il n'a pas de légende : « Photo », « Message vocal », ou le nom du document. */
+export function libelleMedia(media: { type: string; nom: string; vocal?: boolean }): string {
+  switch (media.type) {
+    case "image":
+      return "Photo";
+    case "video":
+      return "Vidéo";
+    case "audio":
+      return media.vocal ? "Message vocal" : "Audio";
+    default:
+      return media.nom;
+  }
+}
+
+/** Texte qui résume un message ailleurs que dans sa bulle : citation, notification, liste. */
+export const resumeMessage = (m: { texte: string; media?: { type: string; nom: string; vocal?: boolean } }) =>
+  m.texte || (m.media ? libelleMedia(m.media) : "");
+
+/** « 0:07 », « 12:40 », « 1:02:03 ». */
+export function dureeCourte(secondes: number): string {
+  const s = Math.max(0, Math.round(secondes));
+  const h = Math.floor(s / 3600);
+  const m = Math.floor((s % 3600) / 60);
+  const reste = String(s % 60).padStart(2, "0");
+  return h > 0 ? `${h}:${String(m).padStart(2, "0")}:${reste}` : `${m}:${reste}`;
+}
+
+const nombre = new Intl.NumberFormat("fr-FR", { maximumFractionDigits: 1 });
+
+/** « 820 o », « 34 ko », « 2,4 Mo ». */
+export function tailleFichier(octets: number): string {
+  if (octets < 1024) return `${octets} o`;
+  if (octets < 1024 * 1024) return `${Math.round(octets / 1024)} ko`;
+  return `${nombre.format(octets / (1024 * 1024))} Mo`;
+}

@@ -13,7 +13,8 @@ Les choix techniques et leurs raisons : [docs/ARCHITECTURE.md](docs/ARCHITECTURE
 | 1. Socle | Connexion Google sécurisée, sessions par appareil, profil, contacts, confidentialité, application web | Fait |
 | 2. Discussions | Messages à deux en temps réel, envoi hors connexion, coches (envoyé, remis, lu), « écrit… », présence et dernière connexion, synchronisation entre mes appareils, notifications du navigateur | Fait (web) |
 | 2 bis. Discussions | Groupes (jusqu'à 40 membres, administrateurs, ajout, retrait, départ), réponses citées, réactions, suppression pour tous ou pour soi | Fait (web) |
-| 2 ter. | Médias et messages vocaux (stockage à choisir), application Android | À venir |
+| 2 ter. Médias | Photos, vidéos, documents et messages vocaux (Karaks Storage, 30 jours), aperçu avec légende, visionneuse | Fait (web) |
+| 2 quater. Android | Application Android | À venir |
 | 3. Sécurité | Chiffrement de bout en bout (protocole Signal), notifications, appareils liés | À venir |
 | 4. Appels et statuts | Appels audio et vidéo (WebRTC), statuts | À venir |
 | 5. API UniChat | Comptes entreprise et bots, REST, webhooks signés, documentation | À venir |
@@ -63,5 +64,10 @@ signe de vrais jetons.
    cd apps/server
    npx wrangler secret put GOOGLE_CLIENT_ID
    npx wrangler secret put GOOGLE_CLIENT_SECRET
+   npx wrangler secret put KARAKS_STORAGE_CLE
    ```
+   La clé Karaks Storage se crée dans le projet « UniChat » du service
+   (`KARAKS_STORAGE_URL` dans `wrangler.jsonc`) : préréglage « Application
+   cliente », plus « Mettre à la corbeille et supprimer ». Sans elle, tout
+   fonctionne sauf l'envoi de fichiers.
 5. **Déploiement** : `npm run deploy` (migrations, construction, envoi).

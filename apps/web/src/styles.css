@@ -30,6 +30,10 @@
   --bulle-recue: #ffffff;
   --coche-lue: #4f46e5;
   --voile: rgb(17 24 39 / 0.45);
+  /* Visionneuse de photos et vidéos : sombre dans les deux thèmes, l'image prime. */
+  --visionneuse: #0b0c11;
+  --sur-visionneuse: #eef0f6;
+  --pastille-media: rgb(11 12 17 / 0.55);
   /* Bouton « Continuer avec Google » : couleurs imposées par la charte Google. */
   --google-fond: #ffffff;
   --google-bordure: #747775;
@@ -63,6 +67,9 @@
   --bulle-recue: #1f2029;
   --coche-lue: #a5b4fc;
   --voile: rgb(0 0 0 / 0.6);
+  --visionneuse: #0b0c11;
+  --sur-visionneuse: #eef0f6;
+  --pastille-media: rgb(0 0 0 / 0.55);
   --google-fond: #131314;
   --google-bordure: #8e918f;
   --google-texte: #e3e3e3;
@@ -95,6 +102,9 @@
     --bulle-recue: #1f2029;
     --coche-lue: #a5b4fc;
     --voile: rgb(0 0 0 / 0.6);
+    --visionneuse: #0b0c11;
+    --sur-visionneuse: #eef0f6;
+    --pastille-media: rgb(0 0 0 / 0.55);
     --google-fond: #131314;
     --google-bordure: #8e918f;
     --google-texte: #e3e3e3;
@@ -127,6 +137,9 @@
   --color-bulle-recue: var(--bulle-recue);
   --color-coche-lue: var(--coche-lue);
   --color-voile: var(--voile);
+  --color-visionneuse: var(--visionneuse);
+  --color-sur-visionneuse: var(--sur-visionneuse);
+  --color-pastille-media: var(--pastille-media);
   --color-google-fond: var(--google-fond);
   --color-google-bordure: var(--google-bordure);
   --color-google-texte: var(--google-texte);
@@ -227,6 +240,13 @@
   100% { background-color: transparent; }
 }
 .surbrillance { animation: surbrillance 1.2s ease-out; }
+
+/* Point de l'enregistrement d'un message vocal : il bat tant que le micro
+   écoute (indicateur d'état, comme la barre de chargement). */
+@keyframes battre {
+  50% { opacity: 0.25; }
+}
+.enregistrement { animation: battre 1.2s ease-in-out infinite; }
 
 /* Barre de l'écran de chargement : elle avance tant que l'application se
    prépare (indicateur d'état, d'où sa durée plus longue). */

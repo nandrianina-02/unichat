@@ -6,6 +6,9 @@ export interface Bindings {
   BOITE: DurableObjectNamespace<Boite>;
   GOOGLE_CLIENT_ID?: string;
   GOOGLE_CLIENT_SECRET?: string;
+  /** Stockage des fichiers joints (Karaks Storage) : adresse publique, et clé secrète. */
+  KARAKS_STORAGE_URL?: string;
+  KARAKS_STORAGE_CLE?: string;
 }
 
 /**

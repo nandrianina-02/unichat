@@ -8,6 +8,7 @@ import {
   idGroupe,
   schemaClient,
   type Entree,
+  type MediaMessage,
   type Message,
   type MessageClient,
   type MessageServeur,
@@ -305,6 +306,24 @@ export class Boite extends DurableObject<Bindings> {
       return;
     }
 
+    let media: MediaMessage | undefined;
+    if (m.media) {
+      // Un message ne peut joindre qu'un fichier que son auteur a envoyé,
+      // entièrement, pour cette discussion.
+      const ligne = await this.env.DB.prepare(
+        `SELECT id, type, mime, nom, taille FROM medias
+         WHERE id = ?1 AND proprietaire = ?2 AND conversation = ?3 AND fichier_id IS NOT NULL AND expire_le > ?4`,
+      )
+        .bind(m.media.id, moi, conversation, maintenant)
+        .first<Pick<MediaMessage, "id" | "type" | "mime" | "nom" | "taille">>();
+      if (!ligne) {
+        this.envoyer(ws, { t: "refuse", id: m.id, message: "Le fichier n'est pas arrivé jusqu'au serveur. Réessayez." });
+        return;
+      }
+      const { id: _, ...declare } = m.media;
+      media = { ...ligne, ...declare };
+    }
+
     const message: Message = {
       id: m.id,
       conversation,
@@ -312,6 +331,7 @@ export class Boite extends DurableObject<Bindings> {
       a: m.groupe ?? m.a!,
       texte: m.texte.trim(),
       le: maintenant,
+      ...(media ? { media } : {}),
       ...(m.reponseA ? { reponseA: m.reponseA } : {}),
     };
     await this.distribuer(destinataires, { type: "message", message });

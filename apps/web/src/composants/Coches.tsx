@@ -11,13 +11,15 @@ const LIBELLES: Record<EtatMessage, string> = {
 };
 
 /** Horloge, une coche, deux coches, deux coches colorées : l'état de remise d'un message. */
-export function Coches({ etat, className }: { etat: EtatMessage | undefined; className?: string }) {
+export function Coches({ etat, surImage, className }: { etat: EtatMessage | undefined; surImage?: boolean; className?: string }) {
   if (!etat) return null;
   const commun = clsx("shrink-0", className);
   const libelle = LIBELLES[etat];
-  if (etat === "attente") return <Clock size={14} className={clsx(commun, "text-texte-3")} aria-label={libelle} />;
-  if (etat === "envoye") return <Check size={16} className={clsx(commun, "text-texte-3")} aria-label={libelle} />;
-  if (etat === "remis") return <CheckCheck size={16} className={clsx(commun, "text-texte-3")} aria-label={libelle} />;
+  // Posées sur une photo, les coches grises ne se verraient pas.
+  const neutre = surImage ? "text-sur-visionneuse" : "text-texte-3";
+  if (etat === "attente") return <Clock size={14} className={clsx(commun, neutre)} aria-label={libelle} />;
+  if (etat === "envoye") return <Check size={16} className={clsx(commun, neutre)} aria-label={libelle} />;
+  if (etat === "remis") return <CheckCheck size={16} className={clsx(commun, neutre)} aria-label={libelle} />;
   if (etat === "lu") return <CheckCheck size={16} className={clsx(commun, "text-coche-lue")} aria-label={libelle} />;
   return <CircleAlert size={15} className={clsx(commun, "text-danger")} aria-label={libelle} />;
 }
