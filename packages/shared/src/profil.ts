@@ -60,6 +60,13 @@ export const VISIBILITES = ["tous", "contacts", "personne"] as const;
 export const schemaVisibilite = z.enum(VISIBILITES);
 export type Visibilite = z.infer<typeof schemaVisibilite>;
 
+/** « En ligne » : visible de tous, ou seulement de ceux qui voient ma dernière connexion. */
+export const VISIBILITES_EN_LIGNE = ["tous", "comme_vu"] as const;
+export type VisibiliteEnLigne = (typeof VISIBILITES_EN_LIGNE)[number];
+/** Qui peut m'ajouter à un groupe. */
+export const AJOUTS_GROUPES = ["tous", "contacts"] as const;
+export type AjoutGroupes = (typeof AJOUTS_GROUPES)[number];
+
 export const schemaMajProfil = z
   .object({
     nom: schemaNom.optional(),
@@ -68,6 +75,10 @@ export const schemaMajProfil = z
     visibilitePhoto: schemaVisibilite.optional(),
     visibiliteInfos: schemaVisibilite.optional(),
     trouvableParEmail: z.boolean().optional(),
+    visibiliteVu: schemaVisibilite.optional(),
+    enLigne: z.enum(VISIBILITES_EN_LIGNE).optional(),
+    confirmationsLecture: z.boolean().optional(),
+    ajoutGroupes: z.enum(AJOUTS_GROUPES).optional(),
   })
   .strict();
 export type MajProfil = z.infer<typeof schemaMajProfil>;

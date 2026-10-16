@@ -14,7 +14,7 @@ Les choix techniques et leurs raisons : [docs/ARCHITECTURE.md](docs/ARCHITECTURE
 | 2. Discussions | Messages à deux en temps réel, envoi hors connexion, coches (envoyé, remis, lu), « écrit… », présence et dernière connexion, synchronisation entre mes appareils, notifications du navigateur | Fait (web) |
 | 2 bis. Discussions | Groupes (jusqu'à 40 membres, administrateurs, ajout, retrait, départ), réponses citées, réactions, suppression pour tous ou pour soi | Fait (web) |
 | 2 ter. Médias | Photos, vidéos, documents et messages vocaux (Karaks Storage, 30 jours), aperçu avec légende, visionneuse | Fait (web) |
-| 2 quinquies. Quotidien | Bloquer, signaler ; sourdine, favoris, archives, épingles, effacer, supprimer, exporter une discussion ; transférer, sélectionner, modifier, messages importants, épingler un message, rechercher dans une discussion ; emoji, liens cliquables et aperçus, mentions @ | En cours (web) |
+| 2 quinquies. Quotidien | Bloquer, signaler ; sourdine, favoris, archives, épingles, effacer, supprimer, exporter une discussion ; transférer, sélectionner, modifier, messages importants, épingler un message, rechercher dans une discussion ; emoji, liens cliquables et aperçus, mentions @ ; confidentialité de la présence et des confirmations de lecture, ajout aux groupes, photo et lien d'invitation des groupes | En cours (web) |
 | 2 quater. Android | Application Android | À venir |
 | 3. Sécurité | Chiffrement de bout en bout (protocole Signal), notifications, appareils liés | À venir |
 | 4. Appels et statuts | Appels audio et vidéo (WebRTC), statuts | À venir |

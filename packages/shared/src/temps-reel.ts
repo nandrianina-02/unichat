@@ -104,7 +104,7 @@ export const schemaApercuLien = z
 /** Mentions par message : autant que de membres dans un groupe. */
 export const MENTIONS_MAX = 40;
 
-export type ActionGroupe = "creation" | "ajout" | "retrait" | "depart" | "renommage" | "description";
+export type ActionGroupe = "creation" | "ajout" | "retrait" | "depart" | "renommage" | "description" | "photo" | "lien";
 
 export interface EvenementGroupe {
   id: string;

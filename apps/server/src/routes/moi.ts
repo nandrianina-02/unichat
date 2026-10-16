@@ -1,11 +1,9 @@
 import { Hono, type Context } from "hono";
-import { LIMITES, schemaMajProfil, schemaPseudo, schemaSuppressionCompte, type MajProfil } from "@unichat/shared";
+import { schemaMajProfil, schemaPseudo, schemaSuppressionCompte, type MajProfil } from "@unichat/shared";
 import { lireUtilisateur } from "../lib/comptes";
-import { lireCorpsBorne } from "../lib/corps";
 import { refus } from "../lib/erreurs";
 import { journaliser } from "../lib/evenements";
-import { typeImage } from "../lib/images";
-import { enregistrerPhoto, supprimerPhoto } from "../lib/photos";
+import { enregistrerPhoto, lirePhotoEnvoyee, supprimerPhoto } from "../lib/photos";
 import { versMoi } from "../lib/profils";
 import { supprimerCompte } from "../lib/suppression";
 import type { AppEnv } from "../types";
@@ -45,7 +43,12 @@ const COLONNES: Record<keyof MajProfil, string> = {
   visibilitePhoto: "visibilite_photo",
   visibiliteInfos: "visibilite_infos",
   trouvableParEmail: "trouvable_email",
+  visibiliteVu: "visibilite_vu",
+  enLigne: "en_ligne",
+  confirmationsLecture: "confirmations_lecture",
+  ajoutGroupes: "ajout_groupes",
 };
+
 
 moi.patch("/", async (c) => {
   const changements = await corpsJson(c, schemaMajProfil);
@@ -56,7 +59,7 @@ moi.patch("/", async (c) => {
   const cles = (Object.keys(changements) as (keyof MajProfil)[]).filter((k) => changements[k] !== undefined);
   if (cles.length === 0) return c.json(versMoi(avant, session.id));
 
-  const valeurs = cles.map((k) => (k === "trouvableParEmail" ? (changements[k] ? 1 : 0) : changements[k]));
+  const valeurs = cles.map((k) => (typeof changements[k] === "boolean" ? (changements[k] ? 1 : 0) : changements[k]));
   const affectations = cles.map((k, i) => `${COLONNES[k]} = ?${i + 1}`).join(", ");
   const maintenant = c.get("deps").maintenant();
   const instructions = [
@@ -106,23 +109,8 @@ moi.get("/pseudo-disponible", async (c) => {
 });
 
 moi.put("/photo", async (c) => {
-  const brut = await lireCorpsBorne(c.req.raw, LIMITES.photoGrande + LIMITES.photoPetite + 4096);
-  if (!brut) throw refus.requete("Photo trop lourde.");
-  let corps: FormData;
-  try {
-    corps = await new Response(brut, { headers: { "Content-Type": c.req.header("Content-Type") ?? "" } }).formData();
-  } catch {
-    throw refus.requete("Envoi de photo invalide.");
-  }
-  const fichiers = [corps.get("grande"), corps.get("petite")];
-  if (!fichiers.every((f): f is File => f instanceof File)) throw refus.requete("Photo manquante.");
-  const [grande, petite] = await Promise.all(fichiers.map(async (f) => new Uint8Array(await f.arrayBuffer())));
-  if (grande!.length > LIMITES.photoGrande || petite!.length > LIMITES.photoPetite) {
-    throw refus.requete("Photo trop lourde.");
-  }
-  const type = typeImage(grande!);
-  if (!type || typeImage(petite!) !== type) throw refus.requete("Format d'image non pris en charge.");
-  await enregistrerPhoto(c.env.DB, c.get("session").utilisateur_id, grande!, petite!, type, c.get("deps").maintenant());
+  const { grande, petite, type } = await lirePhotoEnvoyee(c.req.raw);
+  await enregistrerPhoto(c.env.DB, c.get("session").utilisateur_id, grande, petite, type, c.get("deps").maintenant());
   return c.json(await moiActuel(c));
 });
 

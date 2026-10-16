@@ -1,7 +1,7 @@
 import clsx from "clsx";
 import { User, UsersRound } from "lucide-react";
 import { useState } from "react";
-import { urlPhoto } from "../lib/api";
+import { urlPhoto, urlPhotoGroupe } from "../lib/api";
 
 interface Props {
   id: string;
@@ -11,15 +11,40 @@ interface Props {
   className?: string;
 }
 
-/** Icône d'un groupe (les groupes n'ont pas encore de photo). */
-export function AvatarGroupe({ taille, className }: { taille: number; className?: string }) {
+/** Photo d'un groupe, ou pictogramme quand il n'en a pas. */
+export function AvatarGroupe({
+  taille,
+  className,
+  groupeId,
+  photo,
+}: {
+  taille: number;
+  className?: string;
+  groupeId?: string;
+  photo?: string | null;
+}) {
+  const [echec, setEchec] = useState<string | null>(null);
+  const afficherPhoto = groupeId && photo && echec !== photo;
   return (
     <span
-      className={clsx("inline-flex shrink-0 items-center justify-center rounded-full bg-avatar", className)}
+      className={clsx("relative inline-flex shrink-0 items-center justify-center overflow-hidden rounded-full bg-avatar", className)}
       style={{ width: taille, height: taille }}
       aria-hidden="true"
     >
-      <UsersRound className="text-avatar-icone" style={{ width: taille * 0.55, height: taille * 0.55 }} />
+      {afficherPhoto ? (
+        <img
+          src={urlPhotoGroupe(groupeId, photo, taille > 96 ? "grande" : "petite")}
+          alt=""
+          width={taille}
+          height={taille}
+          loading="lazy"
+          decoding="async"
+          onError={() => setEchec(photo)}
+          className="size-full object-cover"
+        />
+      ) : (
+        <UsersRound className="text-avatar-icone" style={{ width: taille * 0.55, height: taille * 0.55 }} />
+      )}
     </span>
   );
 }

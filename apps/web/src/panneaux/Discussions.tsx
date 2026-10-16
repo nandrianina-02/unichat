@@ -375,6 +375,8 @@ function LigneConversation({
   className?: string;
 }) {
   const actions = useActionsDiscussion(c.id, { onAvis });
+  const { etat } = useMessagerie();
+  const groupe = estGroupe(c.id) ? etat.groupes[c.autre] : undefined;
   const [menu, setMenu] = useState<"bas" | "haut" | null>(null);
   const cadre = useRef<HTMLDivElement>(null);
   useFermetureExterieure(menu !== null, cadre, () => setMenu(null));
@@ -413,7 +415,7 @@ function LigneConversation({
       )}
     >
       {estGroupe(c.id) ? (
-        <AvatarGroupe taille={49} />
+        <AvatarGroupe taille={49} groupeId={c.autre} photo={groupe?.photo} />
       ) : (
         <Avatar id={c.autre} photo={personne?.photo ?? photoMoi} nom={nom || "Contact"} taille={49} />
       )}

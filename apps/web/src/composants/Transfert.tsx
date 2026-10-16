@@ -16,6 +16,7 @@ interface Choix {
   nom: string;
   detail: string;
   photo: { id: string; version: string | null } | null;
+  groupe?: { id: string; photo: string | null };
 }
 
 /**
@@ -57,7 +58,7 @@ export function DialogueTransfert({
       if (estGroupe(c.id)) {
         const g = etat.groupes[c.autre];
         if (!g || !g.moiMembre) continue;
-        liste.push({ conversation: c.id, nom: g.nom, detail: `${g.membres.length} membres`, photo: null });
+        liste.push({ conversation: c.id, nom: g.nom, detail: `${g.membres.length} membres`, photo: null, groupe: { id: g.id, photo: g.photo } });
       } else {
         const p = c.autre === moi.id ? null : etat.personnes[c.autre];
         if (c.autre !== moi.id && (!p || p.bloque)) continue;
@@ -137,7 +138,7 @@ export function DialogueTransfert({
               {c.photo ? (
                 <Avatar id={c.photo.id} photo={c.photo.version} nom={c.nom} taille={40} />
               ) : (
-                <AvatarGroupe taille={40} />
+                <AvatarGroupe taille={40} groupeId={c.groupe?.id} photo={c.groupe?.photo} />
               )}
               <span className="min-w-0 flex-1">
                 <span className="block truncate text-[15.5px] text-texte">{c.nom}</span>

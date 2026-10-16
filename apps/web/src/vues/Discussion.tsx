@@ -256,7 +256,7 @@ export function Discussion({ conversation, cible, onInfos, onRechercher, onFerme
       }}
     >
       <EnTete
-        avatar={enGroupe ? <AvatarGroupe taille={40} /> : <Avatar id={autre!} photo={personne?.photo ?? null} nom={titre || "Contact"} taille={40} />}
+        avatar={enGroupe ? <AvatarGroupe taille={40} groupeId={groupe?.id} photo={groupe?.photo} /> : <Avatar id={autre!} photo={personne?.photo ?? null} nom={titre || "Contact"} taille={40} />}
         titre={titre}
         statut={statut}
         ecrit={Boolean(ecrit)}

@@ -942,7 +942,7 @@ export class Messagerie {
       // Groupe quitté ou supprimé : on garde son nom, sans les membres.
       if (erreur instanceof ErreurApi && erreur.statut === 404) {
         const connu = this.etat.groupes[id];
-        if (connu) this.retenirGroupe({ ...connu, membres: [], moiMembre: false, moiAdmin: false });
+        if (connu) this.retenirGroupe({ ...connu, membres: [], moiMembre: false, moiAdmin: false, photo: null });
       }
     }
   }

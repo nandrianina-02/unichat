@@ -53,5 +53,19 @@ export interface Groupe {
   membres: MembreGroupe[];
   moiAdmin: boolean;
   moiMembre: boolean;
+  /** Version de la photo du groupe, absente sans photo. */
+  photo: string | null;
 }
+
+/** Ce qu'on voit d'un groupe avant de le rejoindre par un lien d'invitation. */
+export interface ApercuInvitation {
+  id: string;
+  nom: string;
+  description: string;
+  membres: number;
+  photo: string | null;
+  dejaMembre: boolean;
+}
+
+export const schemaCodeInvitation = z.string().regex(/^[A-Za-z0-9_-]{22}$/, "Lien d'invitation invalide.");
 

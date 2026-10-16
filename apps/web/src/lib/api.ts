@@ -1,4 +1,5 @@
 import type {
+  ApercuInvitation,
   ApercuLien,
   AppareilConnecte,
   CarteProfil,
@@ -92,10 +93,25 @@ export const api = {
     appel<Groupe>(`/groupes/${encodeURIComponent(id)}/membres`, json("POST", { membres })),
   retirerMembre: (id: string, membre: string) =>
     appel<void>(`/groupes/${encodeURIComponent(id)}/membres/${encodeURIComponent(membre)}`, { method: "DELETE" }),
+  envoyerPhotoGroupe: (id: string, grande: Blob, petite: Blob) => {
+    const formulaire = new FormData();
+    formulaire.append("grande", grande, "grande");
+    formulaire.append("petite", petite, "petite");
+    return appel<Groupe>(`/groupes/${encodeURIComponent(id)}/photo`, { method: "PUT", body: formulaire });
+  },
+  supprimerPhotoGroupe: (id: string) => appel<Groupe>(`/groupes/${encodeURIComponent(id)}/photo`, { method: "DELETE" }),
+  invitationGroupe: (id: string) => appel<{ code: string }>(`/groupes/${encodeURIComponent(id)}/invitation`),
+  reinitialiserInvitation: (id: string) => appel<{ code: string }>(`/groupes/${encodeURIComponent(id)}/invitation`, { method: "POST" }),
+  apercuInvitation: (code: string) => appel<ApercuInvitation>(`/invitations/${encodeURIComponent(code)}`),
+  rejoindre: (code: string) => appel<Groupe>(`/invitations/${encodeURIComponent(code)}`, { method: "POST" }),
   nommerAdmin: (id: string, membre: string) =>
     appel<Groupe>(`/groupes/${encodeURIComponent(id)}/admins/${encodeURIComponent(membre)}`, { method: "POST" }),
 };
 
 export function urlPhoto(id: string, version: string, taille: "petite" | "grande"): string {
   return `/api/personnes/${encodeURIComponent(id)}/photo?taille=${taille}&v=${version}`;
+}
+
+export function urlPhotoGroupe(id: string, version: string, taille: "petite" | "grande"): string {
+  return `/api/groupes/${encodeURIComponent(id)}/photo?taille=${taille}&v=${version}`;
 }

@@ -1,6 +1,8 @@
 import { LIMITES_GROUPE, conversationGroupe, schemaNomGroupe, type Groupe, type MembreGroupe } from "@unichat/shared";
 import clsx from "clsx";
-import { Crown, Flag, LogOut, MessageSquareText, UserMinus, UserPlus, X } from "lucide-react";
+import { Crown, Flag, Link2, LogOut, MessageSquareText, UserMinus, UserPlus, X } from "lucide-react";
+import { ChoixPhotoGroupe } from "../composants/ChoixPhoto";
+import { DialogueLienGroupe } from "../composants/LienGroupe";
 import { useActionsDiscussion } from "../composants/ActionsDiscussion";
 import { useEffect, useRef, useState } from "react";
 import { Avatar, AvatarGroupe } from "../composants/Avatar";
@@ -29,6 +31,7 @@ export function InfosGroupe({
   const [retrait, setRetrait] = useState<MembreGroupe | null>(null);
   const [erreur, setErreur] = useState<string | null>(null);
   const [avis, setAvis] = useState<string | null>(null);
+  const [lien, setLien] = useState(false);
   const actions = useActionsDiscussion(conversationGroupe(groupeId), { onAvis: setAvis });
 
   useEffect(() => {
@@ -88,7 +91,7 @@ export function InfosGroupe({
       ) : (
         <div className="min-h-0 flex-1 overflow-y-auto">
           <div className="animate-fade flex flex-col items-center bg-panneau px-8 pt-7 pb-2 text-center">
-            <AvatarGroupe taille={140} />
+            {groupe.moiAdmin ? <ChoixPhotoGroupe groupe={groupe} taille={140} /> : <AvatarGroupe taille={140} groupeId={groupe.id} photo={groupe.photo} />}
             {!groupe.moiAdmin && <h3 className="mt-4 text-[24px] text-texte">{groupe.nom}</h3>}
             <p className="mt-1 text-[15px] text-texte-2">
               Groupe · {groupe.moiMembre ? `${groupe.membres.length} membre${groupe.membres.length > 1 ? "s" : ""}` : "vous n'en faites plus partie"}
@@ -140,6 +143,14 @@ export function InfosGroupe({
                   <span className="flex-1 py-3 text-[16px] text-texte">Ajouter des membres</span>
                 </button>
               )}
+              {groupe.moiAdmin && (
+                <button type="button" onClick={() => setLien(true)} className="flex w-full items-center gap-4 px-6 text-left hover:bg-survol">
+                  <span className="flex size-10 shrink-0 items-center justify-center rounded-full bg-primaire text-sur-primaire">
+                    <Link2 size={19} />
+                  </span>
+                  <span className="flex-1 py-3 text-[16px] text-texte">Inviter avec un lien</span>
+                </button>
+              )}
               {groupe.membres.map((m) => (
                 <LigneMembre
                   key={m.id}
@@ -174,6 +185,7 @@ export function InfosGroupe({
             </button>
           </div>
           {avis && <p role="status" className="animate-fade px-8 pb-6 text-sm text-texte-2">{avis}</p>}
+          {lien && <DialogueLienGroupe groupe={groupe} onFermer={() => setLien(false)} />}
         </div>
       )}
 

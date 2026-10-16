@@ -18,6 +18,8 @@ export async function nettoyer(env: Bindings, maintenant: number, recuperer: typ
     db.prepare("DELETE FROM evenements_securite WHERE cree_le < ?1").bind(maintenant - 180 * JOUR),
     // Signalements : six mois, le temps de les examiner et de traiter une récidive.
     db.prepare("DELETE FROM signalements WHERE cree_le < ?1").bind(maintenant - 180 * JOUR),
+    // Groupe sans plus aucun membre (tous partis, comptes supprimés) : effacé, photo comprise.
+    db.prepare("DELETE FROM groupes WHERE NOT EXISTS (SELECT 1 FROM membres m WHERE m.groupe_id = groupes.id)"),
   ]);
   await nettoyerMedias(env, maintenant, recuperer);
 }

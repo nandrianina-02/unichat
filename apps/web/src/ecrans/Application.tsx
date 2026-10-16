@@ -14,7 +14,9 @@ import { Activite } from "../panneaux/Activite";
 import { Appareils } from "../panneaux/Appareils";
 import { Compte } from "../panneaux/Compte";
 import { Bloques } from "../panneaux/Bloques";
-import { ChoixVisibilite, Confidentialite } from "../panneaux/Confidentialite";
+import { ChoixAjoutGroupes, ChoixVisibilite, ChoixVu, Confidentialite } from "../panneaux/Confidentialite";
+import { DialogueRejoindre } from "../composants/LienGroupe";
+import { invitationGroupeEnAttente, oublierInvitationGroupe } from "../lib/invitation";
 import { Discussions } from "../panneaux/Discussions";
 import { NouveauGroupe } from "../panneaux/NouveauGroupe";
 import { NouvelleDiscussion } from "../panneaux/NouvelleDiscussion";
@@ -57,6 +59,7 @@ export function Application() {
   const [theme, setTheme] = useState(false);
   const [deconnexion, setDeconnexion] = useState(false);
   const [invitation] = useState(invitationEnAttente);
+  const [invitationGroupe, setInvitationGroupe] = useState(invitationGroupeEnAttente);
 
   const ouvrirDiscussion = useCallback(
     (conversation: string, cible?: string) => setPrincipal({ type: "discussion", conversation, cote: null, ...(cible ? { cible } : {}) }),
@@ -143,6 +146,10 @@ export function Application() {
         return <SupprimerCompte onRetour={retour} />;
       case "bloques":
         return <Bloques onRetour={retour} />;
+      case "visibilite-vu":
+        return <ChoixVu onRetour={retour} />;
+      case "ajout-groupes":
+        return <ChoixAjoutGroupes onRetour={retour} />;
       case "importants":
         return <Importants onRetour={retour} onOuvrir={(conversation, message) => ouvrirDiscussion(conversation, message)} />;
     }
@@ -240,6 +247,21 @@ export function Application() {
       </main>
 
       {theme && <DialogueTheme onFermer={() => setTheme(false)} />}
+      {invitationGroupe && (
+        <DialogueRejoindre
+          code={invitationGroupe}
+          onFermer={() => {
+            oublierInvitationGroupe();
+            setInvitationGroupe(null);
+          }}
+          onRejoint={(groupe) => {
+            oublierInvitationGroupe();
+            setInvitationGroupe(null);
+            messagerie.retenirGroupe(groupe);
+            ouvrirDiscussion(conversationGroupe(groupe.id));
+          }}
+        />
+      )}
       {deconnexion && (
         <Dialogue
           titre="Se déconnecter ?"

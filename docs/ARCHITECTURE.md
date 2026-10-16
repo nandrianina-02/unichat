@@ -198,6 +198,22 @@ de WhatsApp.
 - **Mentions** : identifiants des membres joints au message (groupes
   seulement) ; une mention fait sonner une discussion en sourdine.
 
+### Confidentialité de la présence, groupes
+
+- **Dernière connexion, en ligne, confirmations de lecture** : réglages du
+  compte (colonnes de `utilisateurs`), appliqués par la boîte de celui qui
+  demande la présence ou qui lit. Réciprocité de WhatsApp : qui cache sa
+  dernière connexion ne voit plus celle des autres ; les confirmations ne
+  circulent que si les deux les ont gardées (toujours dans les groupes).
+  Relus à chaque demande, sans cache : un réglage vaut tout de suite.
+- **Ajout aux groupes** : « Mes contacts » refuse l'ajout direct par
+  quelqu'un que la personne n'a pas ajouté ; reste le lien d'invitation.
+- **Photo de groupe** : table `photos_groupes`, mêmes tailles et même adresse
+  versionnée que les photos de profil, servie aux seuls membres.
+- **Lien d'invitation** : code aléatoire de 128 bits dans `groupes`,
+  `/g/<code>` dans l'application, réinitialisable par un administrateur.
+  Un groupe sans membre est effacé par la tâche horaire.
+
 ## Chiffrement de bout en bout (étape 3)
 
 Protocole Signal (X3DH ou PQXDH, puis Double Ratchet), clés par appareil.

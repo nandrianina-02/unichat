@@ -1,17 +1,31 @@
 import { Camera, ImagePlus, LoaderCircle, Trash2 } from "lucide-react";
-import { useRef, useState } from "react";
-import type { Moi } from "@unichat/shared";
+import { useRef, useState, type ReactNode } from "react";
+import type { Groupe, Moi } from "@unichat/shared";
 import { api } from "../lib/api";
 import { useCompte } from "../lib/compte";
 import { preparerPhoto } from "../lib/images";
-import { Avatar } from "./Avatar";
+import { useMessagerie } from "../lib/messagerie-react";
+import { Avatar, AvatarGroupe } from "./Avatar";
 
 /**
- * Photo de profil cliquable : au survol, « Changer la photo » ; un menu
- * propose d'en importer une nouvelle ou de supprimer l'actuelle.
+ * Image ronde cliquable : au survol, « Changer la photo » ; un menu propose
+ * d'en importer une nouvelle ou de supprimer l'actuelle. Sert au profil et
+ * aux groupes.
  */
-export function ChoixPhoto({ moi, taille }: { moi: Moi; taille: number }) {
-  const { remplacer, sessionPerdue } = useCompte();
+function ChoixImage({
+  image,
+  aPhoto,
+  libelle,
+  onEnvoyer,
+  onSupprimer,
+}: {
+  image: ReactNode;
+  aPhoto: boolean;
+  libelle: string;
+  onEnvoyer: (grande: Blob, petite: Blob) => Promise<void>;
+  onSupprimer: () => Promise<void>;
+}) {
+  const { sessionPerdue } = useCompte();
   const [menu, setMenu] = useState(false);
   const [enCours, setEnCours] = useState(false);
   const [erreur, setErreur] = useState<string | null>(null);
@@ -22,7 +36,7 @@ export function ChoixPhoto({ moi, taille }: { moi: Moi; taille: number }) {
     setErreur(null);
     try {
       const { grande, petite } = await preparerPhoto(f);
-      remplacer(await api.envoyerPhoto(grande, petite));
+      await onEnvoyer(grande, petite);
     } catch (e) {
       if (!sessionPerdue(e)) setErreur(e instanceof Error ? e.message : "La photo n'a pas pu être enregistrée.");
     } finally {
@@ -34,7 +48,7 @@ export function ChoixPhoto({ moi, taille }: { moi: Moi; taille: number }) {
     setMenu(false);
     setEnCours(true);
     try {
-      remplacer(await api.supprimerPhoto());
+      await onSupprimer();
     } catch (e) {
       if (!sessionPerdue(e)) setErreur("La photo n'a pas pu être supprimée.");
     } finally {
@@ -51,9 +65,9 @@ export function ChoixPhoto({ moi, taille }: { moi: Moi; taille: number }) {
           aria-haspopup="menu"
           aria-expanded={menu}
           className="group relative block rounded-full"
-          title="Changer la photo de profil"
+          title={libelle}
         >
-          <Avatar id={moi.id} photo={moi.photo} nom={moi.nom} taille={taille} />
+          {image}
           <span className="absolute inset-0 flex flex-col items-center justify-center gap-1 rounded-full bg-voile text-center text-xs uppercase leading-snug text-sur-primaire opacity-0 transition-opacity group-hover:opacity-100 group-focus-visible:opacity-100">
             {enCours ? <LoaderCircle size={24} className="animate-spin" /> : <Camera size={24} />}
             <span className="px-6">Changer la photo</span>
@@ -80,7 +94,7 @@ export function ChoixPhoto({ moi, taille }: { moi: Moi; taille: number }) {
             >
               <ImagePlus size={18} className="text-texte-2" /> Importer une photo
             </button>
-            {moi.photo && (
+            {aPhoto && (
               <button
                 role="menuitem"
                 type="button"
@@ -106,5 +120,32 @@ export function ChoixPhoto({ moi, taille }: { moi: Moi; taille: number }) {
       />
       {erreur && <p className="animate-fade mt-3 text-center text-xs text-danger">{erreur}</p>}
     </div>
+  );
+}
+
+export function ChoixPhoto({ moi, taille }: { moi: Moi; taille: number }) {
+  const { remplacer } = useCompte();
+  return (
+    <ChoixImage
+      image={<Avatar id={moi.id} photo={moi.photo} nom={moi.nom} taille={taille} />}
+      aPhoto={Boolean(moi.photo)}
+      libelle="Changer la photo de profil"
+      onEnvoyer={async (grande, petite) => remplacer(await api.envoyerPhoto(grande, petite))}
+      onSupprimer={async () => remplacer(await api.supprimerPhoto())}
+    />
+  );
+}
+
+/** Photo d'un groupe, modifiable par ses administrateurs. */
+export function ChoixPhotoGroupe({ groupe, taille }: { groupe: Groupe; taille: number }) {
+  const { messagerie } = useMessagerie();
+  return (
+    <ChoixImage
+      image={<AvatarGroupe taille={taille} groupeId={groupe.id} photo={groupe.photo} />}
+      aPhoto={Boolean(groupe.photo)}
+      libelle="Changer la photo du groupe"
+      onEnvoyer={async (grande, petite) => messagerie.retenirGroupe(await api.envoyerPhotoGroupe(groupe.id, grande, petite))}
+      onSupprimer={async () => messagerie.retenirGroupe(await api.supprimerPhotoGroupe(groupe.id))}
+    />
   );
 }

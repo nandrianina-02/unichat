@@ -1,12 +1,24 @@
 import { schemaPseudo } from "@unichat/shared";
 
 const CLE = "unichat.invitation";
+const CLE_GROUPE = "unichat.invitation-groupe";
 
 /**
  * Lien de contact `/@pseudo` : retenu le temps de la connexion Google (qui
  * repasse par la page d'accueil), puis repris par l'application.
  */
 export function lireLienContact(): void {
+  // Lien d'invitation à un groupe : `/g/<code>`, retenu de la même façon.
+  const groupe = /^\/g\/([A-Za-z0-9_-]{22})\/?$/.exec(window.location.pathname);
+  if (groupe) {
+    try {
+      sessionStorage.setItem(CLE_GROUPE, groupe[1]!);
+    } catch {
+      // Stockage indisponible : l'invitation est simplement ignorée.
+    }
+    window.history.replaceState(null, "", "/");
+    return;
+  }
   const correspondance = /^\/@([^/]+)\/?$/.exec(window.location.pathname);
   if (!correspondance) return;
   const pseudo = schemaPseudo.safeParse(decodeURIComponent(correspondance[1]!));
@@ -36,4 +48,24 @@ export function oublierInvitation(): void {
 
 export function lienContact(pseudo: string): string {
   return `${window.location.origin}/@${pseudo}`;
+}
+
+export function invitationGroupeEnAttente(): string | null {
+  try {
+    return sessionStorage.getItem(CLE_GROUPE);
+  } catch {
+    return null;
+  }
+}
+
+export function oublierInvitationGroupe(): void {
+  try {
+    sessionStorage.removeItem(CLE_GROUPE);
+  } catch {
+    // rien à faire
+  }
+}
+
+export function lienGroupe(code: string): string {
+  return `${window.location.origin}/g/${code}`;
 }

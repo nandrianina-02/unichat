@@ -1,4 +1,4 @@
-import type { CarteProfil, Moi, Visibilite } from "@unichat/shared";
+import type { AjoutGroupes, CarteProfil, Moi, Visibilite, VisibiliteEnLigne } from "@unichat/shared";
 
 export interface LigneUtilisateur {
   id: string;
@@ -11,6 +11,10 @@ export interface LigneUtilisateur {
   visibilite_photo: Visibilite;
   visibilite_infos: Visibilite;
   trouvable_email: number;
+  visibilite_vu: Visibilite;
+  en_ligne: VisibiliteEnLigne;
+  confirmations_lecture: number;
+  ajout_groupes: AjoutGroupes;
   cree_le: number;
 }
 
@@ -25,6 +29,10 @@ export function versMoi(u: LigneUtilisateur, sessionId: string): Moi {
     visibilitePhoto: u.visibilite_photo,
     visibiliteInfos: u.visibilite_infos,
     trouvableParEmail: u.trouvable_email === 1,
+    visibiliteVu: u.visibilite_vu,
+    enLigne: u.en_ligne,
+    confirmationsLecture: u.confirmations_lecture === 1,
+    ajoutGroupes: u.ajout_groupes,
     sessionId,
   };
 }

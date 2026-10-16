@@ -6,6 +6,7 @@ import { apercu } from "./routes/apercu";
 import { appareils } from "./routes/appareils";
 import { auth } from "./routes/auth";
 import { groupes } from "./routes/groupes";
+import { invitations } from "./routes/invitations";
 import { medias } from "./routes/medias";
 import { blocages, signalements } from "./routes/moderation";
 import { moi } from "./routes/moi";
@@ -45,6 +46,7 @@ export function creerApp(remplacements: Partial<Dependances> = {}) {
   app.route("/api/blocages", blocages);
   app.route("/api/signalements", signalements);
   app.route("/api/apercu", apercu);
+  app.route("/api/invitations", invitations);
 
   app.notFound((c) => c.json({ erreur: "introuvable", message: "Adresse inconnue." }, 404));
   app.onError((erreur, c) => {

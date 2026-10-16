@@ -8,6 +8,8 @@ import {
 } from "@unichat/shared";
 import { refus } from "../lib/erreurs";
 import { annoncer, garantirAdmin, groupePour, membresDe } from "../lib/groupes";
+import { enregistrerPhotoGroupe, lirePhotoEnvoyee, supprimerPhotoGroupe } from "../lib/photos";
+import { versOctets } from "../lib/images";
 import type { AppEnv } from "../types";
 import { exigerSession } from "./garde";
 import { MINUTE, corpsJson, limiter } from "./outils";
@@ -34,6 +36,17 @@ async function verifierContacts(db: D1Database, proprietaire: string, ids: strin
     .bind(proprietaire, JSON.stringify(ids))
     .first<{ nom: string }>();
   if (bloqueur) throw refus.interdit(`${bloqueur.nom} ne peut pas être ajouté à ce groupe.`);
+  // Réglage « Mes contacts » : seules les personnes qu'elle a ajoutées peuvent l'inviter directement.
+  const reserve = await db
+    .prepare(
+      `SELECT u.nom FROM utilisateurs u
+       WHERE u.id IN (SELECT value FROM json_each(?2)) AND u.ajout_groupes = 'contacts'
+         AND NOT EXISTS (SELECT 1 FROM contacts k WHERE k.proprietaire_id = u.id AND k.contact_id = ?1)
+       LIMIT 1`,
+    )
+    .bind(proprietaire, JSON.stringify(ids))
+    .first<{ nom: string }>();
+  if (reserve) throw refus.interdit(`${reserve.nom} n'accepte d'être ajouté que par ses contacts. Invitez cette personne avec le lien du groupe.`);
 }
 
 async function exigerGroupe(c: Context<AppEnv>, admin = false): Promise<Groupe> {
@@ -145,4 +158,69 @@ groupes.post("/:id/admins/:membre", async (c) => {
   if (!groupe.membres.some((m) => m.id === cible)) throw refus.introuvable("Cette personne ne fait pas partie du groupe.");
   await c.env.DB.prepare("UPDATE membres SET role = 'admin' WHERE groupe_id = ?1 AND utilisateur_id = ?2").bind(groupe.id, cible).run();
   return c.json(await groupePour(c.env.DB, groupe.id, c.get("session").utilisateur_id));
+});
+
+// --- Photo du groupe ------------------------------------------------------------------
+
+groupes.put("/:id/photo", async (c) => {
+  const groupe = await exigerGroupe(c, true);
+  const moi = c.get("session").utilisateur_id;
+  await limiter(c, `photo-groupe:${moi}`, 30, 60 * MINUTE);
+  const { grande, petite, type } = await lirePhotoEnvoyee(c.req.raw);
+  const maintenant = c.get("deps").maintenant();
+  await enregistrerPhotoGroupe(c.env.DB, groupe.id, grande, petite, type, maintenant);
+  await annoncer(c.env, groupe.membres.map((m) => m.id), { groupeId: groupe.id, action: "photo", par: moi, cibles: [], le: maintenant });
+  return c.json(await groupePour(c.env.DB, groupe.id, moi));
+});
+
+groupes.delete("/:id/photo", async (c) => {
+  const groupe = await exigerGroupe(c, true);
+  const moi = c.get("session").utilisateur_id;
+  await supprimerPhotoGroupe(c.env.DB, groupe.id);
+  await annoncer(c.env, groupe.membres.map((m) => m.id), { groupeId: groupe.id, action: "photo", par: moi, cibles: [], le: c.get("deps").maintenant() });
+  return c.json(await groupePour(c.env.DB, groupe.id, moi));
+});
+
+/** Réservée aux membres, avec la même adresse versionnée que les photos de profil. */
+groupes.get("/:id/photo", async (c) => {
+  await exigerGroupe(c);
+  const colonne = c.req.query("taille") === "grande" ? "grande" : "petite";
+  const ligne = await c.env.DB.prepare(`SELECT version, type, ${colonne} AS image FROM photos_groupes WHERE groupe_id = ?1`)
+    .bind(c.req.param("id"))
+    .first<{ version: string; type: string; image: number[] | ArrayBuffer }>();
+  if (!ligne) throw refus.introuvable("Photo introuvable.");
+  const etiquette = `"${ligne.version}-${colonne}"`;
+  const enTetes = {
+    "Content-Type": ligne.type,
+    ETag: etiquette,
+    "Cache-Control": c.req.query("v") === ligne.version ? "private, max-age=31536000, immutable" : "private, no-cache",
+  };
+  if (c.req.header("If-None-Match") === etiquette) return c.body(null, 304, enTetes);
+  return c.body(versOctets(ligne.image), 200, enTetes);
+});
+
+// --- Lien d'invitation ----------------------------------------------------------------
+
+/** 128 bits aléatoires, en base64 sans remplissage : 22 caractères, introuvables par essais. */
+function nouveauCode(): string {
+  const octets = crypto.getRandomValues(new Uint8Array(16));
+  return btoa(String.fromCharCode(...octets)).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+}
+
+/** Le lien du groupe, créé à la première demande d'un administrateur. */
+groupes.get("/:id/invitation", async (c) => {
+  const groupe = await exigerGroupe(c, true);
+  const ligne = await c.env.DB.prepare("SELECT invitation FROM groupes WHERE id = ?1").bind(groupe.id).first<{ invitation: string | null }>();
+  if (ligne?.invitation) return c.json({ code: ligne.invitation });
+  const code = nouveauCode();
+  await c.env.DB.prepare("UPDATE groupes SET invitation = ?1 WHERE id = ?2").bind(code, groupe.id).run();
+  return c.json({ code });
+});
+
+/** Réinitialiser : l'ancien lien cesse aussitôt de fonctionner. */
+groupes.post("/:id/invitation", async (c) => {
+  const groupe = await exigerGroupe(c, true);
+  const code = nouveauCode();
+  await c.env.DB.prepare("UPDATE groupes SET invitation = ?1 WHERE id = ?2").bind(code, groupe.id).run();
+  return c.json({ code });
 });

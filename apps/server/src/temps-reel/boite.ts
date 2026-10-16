@@ -15,6 +15,7 @@ import {
   type Preference,
 } from "@unichat/shared";
 import { blocageEntre } from "../lib/blocages";
+import { visibilites, type Visibilites } from "../lib/confidentialite";
 import { membresDe } from "../lib/groupes";
 import type { Bindings } from "../types";
 
@@ -158,8 +159,11 @@ export class Boite extends DurableObject<Bindings> {
         const maintenant = Date.now();
         // L'auteur ne fait confiance à cet accusé que pour ses propres messages
         // de cette discussion (vérifié par son application).
-        const bloque = !estGroupe(m.conversation) && this.bloqueDansUnSens(await this.blocage(moi, m.auteur));
-        if (m.auteur !== moi && !bloque) {
+        // Discussion à deux : ni blocage, et les deux ont gardé les confirmations
+        // de lecture. Dans un groupe, la lecture est toujours confirmée.
+        const direct = !estGroupe(m.conversation) && m.auteur !== moi;
+        const retenu = direct && (this.bloqueDansUnSens(await this.blocage(moi, m.auteur)) || !(await this.visibilite(moi, m.auteur)).lectures);
+        if (m.auteur !== moi && !retenu) {
           await this.boite(m.auteur).recevoir({
             type: "accuse",
             conversation: m.conversation,
@@ -184,8 +188,17 @@ export class Boite extends DurableObject<Bindings> {
           this.envoyer(ws, { t: "presence", de: m.de, enLigne: false, vuLe: null });
           return;
         }
-        const etat = m.de === moi ? await this.presence() : await this.boite(m.de).presence();
-        this.envoyer(ws, { t: "presence", de: m.de, ...etat });
+        if (m.de === moi) {
+          this.envoyer(ws, { t: "presence", de: m.de, ...(await this.presence()) });
+          return;
+        }
+        const permis = await this.visibilite(moi, m.de);
+        if (!permis.vu && !permis.enLigne) {
+          this.envoyer(ws, { t: "presence", de: m.de, enLigne: false, vuLe: null });
+          return;
+        }
+        const etat = await this.boite(m.de).presence();
+        this.envoyer(ws, { t: "presence", de: m.de, enLigne: permis.enLigne && etat.enLigne, vuLe: permis.vu ? etat.vuLe : null });
         return;
       }
       case "reagir":
@@ -463,6 +476,15 @@ export class Boite extends DurableObject<Bindings> {
     const relation = await blocageEntre(this.env.DB, moi, autre);
     this.blocagesConnus.set(autre, { ...relation, expire: Date.now() + DUREE_CACHE_BLOCAGES });
     return relation;
+  }
+
+  /**
+   * Relu à chaque fois, sans cache : quand quelqu'un cache sa présence, cela
+   * doit valoir tout de suite pour tous. Une lecture D1 par demande de
+   * présence (toutes les 30 s par discussion ouverte) reste peu de chose.
+   */
+  private visibilite(moi: string, autre: string): Promise<Visibilites> {
+    return visibilites(this.env.DB, moi, autre);
   }
 
   private bloqueDansUnSens(r: { jeBloque: boolean; ilBloque: boolean }): boolean {

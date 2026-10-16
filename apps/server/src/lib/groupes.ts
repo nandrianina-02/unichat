@@ -23,9 +23,9 @@ export async function membresDe(db: D1Database, groupeId: string): Promise<{ id:
 
 export async function groupePour(db: D1Database, groupeId: string, lecteurId: string): Promise<Groupe | null> {
   const g = await db
-    .prepare("SELECT id, nom, description, cree_le FROM groupes WHERE id = ?1")
+    .prepare("SELECT id, nom, description, cree_le, photo_version FROM groupes WHERE id = ?1")
     .bind(groupeId)
-    .first<{ id: string; nom: string; description: string; cree_le: number }>();
+    .first<{ id: string; nom: string; description: string; cree_le: number; photo_version: string | null }>();
   if (!g) return null;
   const { results } = await db
     .prepare(
@@ -57,6 +57,7 @@ export async function groupePour(db: D1Database, groupeId: string, lecteurId: st
     membres,
     moiAdmin: moi?.role === "admin",
     moiMembre: Boolean(moi),
+    photo: g.photo_version,
   };
 }
 

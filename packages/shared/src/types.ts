@@ -1,4 +1,4 @@
-import type { Visibilite } from "./profil";
+import type { AjoutGroupes, Visibilite, VisibiliteEnLigne } from "./profil";
 
 export type Plateforme = "web" | "android" | "desktop";
 
@@ -15,6 +15,12 @@ export interface Moi {
   visibilitePhoto: Visibilite;
   visibiliteInfos: Visibilite;
   trouvableParEmail: boolean;
+  /** Qui voit ma dernière connexion ; « personne » m'empêche aussi de voir celle des autres. */
+  visibiliteVu: Visibilite;
+  enLigne: VisibiliteEnLigne;
+  /** Désactivées : je n'envoie ni ne vois les confirmations de lecture (discussions à deux). */
+  confirmationsLecture: boolean;
+  ajoutGroupes: AjoutGroupes;
   sessionId: string;
 }
 
