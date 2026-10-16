@@ -12,6 +12,9 @@ export interface Bindings {
   /** Web Push : clé privée VAPID (JWK, secret) et contact annoncé aux services de notification. */
   VAPID_PRIVEE?: string;
   VAPID_CONTACT?: string;
+  /** Application Android : identifiant et empreintes SHA-256 de ses clés de signature (séparées par des virgules). */
+  ANDROID_PAQUET?: string;
+  ANDROID_EMPREINTES?: string;
 }
 
 /**

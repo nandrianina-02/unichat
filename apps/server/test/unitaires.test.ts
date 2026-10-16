@@ -55,3 +55,19 @@ describe("règles partagées", () => {
     expect(lireRecherche("")).toBeNull();
   });
 });
+
+describe("lien avec l'application Android", () => {
+  it("publie les empreintes déclarées, et rien sans configuration", async () => {
+    const { creerApp } = await import("../src/app");
+    const app = creerApp();
+    const vide = await app.request("/.well-known/assetlinks.json", {}, { ANDROID_PAQUET: "io.exemple", ANDROID_EMPREINTES: "" });
+    expect(await vide.json()).toEqual([]);
+    const r = await app.request("/.well-known/assetlinks.json", {}, { ANDROID_PAQUET: "io.exemple", ANDROID_EMPREINTES: "AA:BB, CC:DD" });
+    expect(await r.json()).toEqual([
+      {
+        relation: ["delegate_permission/common.handle_all_urls"],
+        target: { namespace: "android_app", package_name: "io.exemple", sha256_cert_fingerprints: ["AA:BB", "CC:DD"] },
+      },
+    ]);
+  });
+});

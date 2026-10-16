@@ -1,0 +1,12 @@
+{
+  "name": "unichat-android",
+  "private": true,
+  "description": "Application Android d'UniChat : la PWA enveloppée dans une Trusted Web Activity (Bubblewrap).",
+  "type": "module",
+  "scripts": {
+    "construire": "node construire.mjs"
+  },
+  "dependencies": {
+    "@bubblewrap/core": "1.27.0"
+  }
+}

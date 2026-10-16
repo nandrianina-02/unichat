@@ -10,3 +10,9 @@ dist/
 *.tsbuildinfo
 coverage/
 .DS_Store
+
+# Application Android : outils, projet généré et fichiers construits (la clé
+# de signature vit hors du dépôt, dans ~/.unichat-android).
+apps/android/node_modules/
+apps/android/projet/
+apps/android/sortie/

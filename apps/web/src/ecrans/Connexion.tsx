@@ -1,7 +1,8 @@
-import { CircleAlert, KeyRound, MonitorSmartphone, ShieldCheck } from "lucide-react";
+import { CircleAlert, KeyRound, MonitorSmartphone, ShieldCheck, Smartphone } from "lucide-react";
 import { useMemo } from "react";
 import { BoutonGoogle } from "../composants/BoutonGoogle";
 import { Cadre } from "../composants/Cadre";
+import { LIEN_ANDROID, estAndroid, estApplication } from "../lib/installation";
 import { invitationEnAttente } from "../lib/invitation";
 
 const MESSAGES: Record<string, string> = {
@@ -85,6 +86,11 @@ export function Connexion({ motif }: { motif: string | null }) {
       </section>
       <footer className="mt-8 flex flex-col items-center gap-2 text-center text-[13px] text-texte-3">
         <p>UniChat, messagerie gratuite sur le web, Android et ordinateur.</p>
+        {estAndroid() && !estApplication() && (
+          <a href={LIEN_ANDROID} className="inline-flex items-center gap-1.5 font-medium text-primaire-texte hover:underline">
+            <Smartphone size={15} /> Télécharger l'application Android
+          </a>
+        )}
         <p className="flex gap-4">
           <a href="/confidentialite" className="hover:text-texte-2 hover:underline">
             Règles de confidentialité

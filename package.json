@@ -3,7 +3,8 @@
   "private": true,
   "description": "UniChat : messagerie web, Android et desktop, avec une API d'intégration.",
   "workspaces": [
-    "apps/*",
+    "apps/server",
+    "apps/web",
     "packages/*"
   ],
   "scripts": {

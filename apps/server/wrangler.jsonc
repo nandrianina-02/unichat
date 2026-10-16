@@ -10,7 +10,7 @@
   "assets": {
     "directory": "../web/dist",
     "not_found_handling": "single-page-application",
-    "run_worker_first": ["/api/*"]
+    "run_worker_first": ["/api/*", "/.well-known/*"]
   },
 
   // `wrangler dev` et `wrangler deploy` construisent d'abord l'application web.
@@ -39,7 +39,10 @@
   // Stockage des fichiers joints. La clé est un secret :
   // `wrangler secret put KARAKS_STORAGE_CLE`.
   "vars": { "KARAKS_STORAGE_URL": "https://nuvora-cloud.vercel.app",
-    "VAPID_CONTACT": "mailto:randriantsoa54@gmail.com" },
+    "VAPID_CONTACT": "mailto:randriantsoa54@gmail.com",
+    // Application Android (apps/android) : identifiant et empreinte publique de sa clé de signature.
+    "ANDROID_PAQUET": "io.github.nandrianina02.unichat",
+    "ANDROID_EMPREINTES": "4D:E7:9D:63:2A:A4:B7:55:8A:95:DC:A3:A0:2F:29:99:2D:7F:9A:3A:DC:07:C0:4E:7F:E3:AC:36:20:F2:A8:D4" },
 
   // Nettoyage horaire : états de connexion, compteurs, vieilles sessions, et
   // fichiers expirés (un nombre limité à chaque passage).

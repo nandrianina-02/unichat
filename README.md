@@ -77,6 +77,30 @@ signe de vrais jetons.
    fonctionne sauf l'envoi de fichiers.
 5. **Déploiement** : `npm run deploy` (migrations, construction, envoi).
 
+## Application Android
+
+L'application Android est l'application web installable, enveloppée dans une
+Trusted Web Activity (méthode de Google, outil Bubblewrap) : chaque mise en
+ligne du site la met à jour. Prérequis : Android Studio (JDK et SDK, avec
+Android 36 et les build-tools 36.1.0).
+
+```bash
+cd apps/android
+npm install
+npm run construire   # sortie/UniChat.apk (installation directe) et sortie/UniChat.aab (Play Store)
+node publier.mjs     # met l'APK en ligne sur les versions GitHub du dépôt
+```
+
+La clé de signature est créée au premier lancement dans `~/.unichat-android`
+(hors du dépôt). **Sauvegardez ce dossier** : sans lui, aucune mise à jour de
+l'application installée n'est possible. Son empreinte SHA-256, publique,
+figure dans `ANDROID_EMPREINTES` (`wrangler.jsonc`) et dans
+`/.well-known/assetlinks.json` : c'est ce lien qui ouvre l'application en
+plein écran, sans barre d'adresse.
+
+Publication sur le Play Store : facultative (inscription de 25 $, une seule
+fois) ; elle utilise `UniChat.aab`.
+
 ## Modération
 
 Les signalements arrivent dans la table `signalements` (six mois au plus),

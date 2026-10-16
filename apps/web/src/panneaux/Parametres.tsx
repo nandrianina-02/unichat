@@ -1,8 +1,9 @@
-import { KeyRound, Lock, LogOut, Palette, Wallpaper } from "lucide-react";
+import { Download, KeyRound, Lock, LogOut, Palette, Smartphone, Wallpaper } from "lucide-react";
 import { Avatar } from "../composants/Avatar";
 import { LigneReglage } from "../composants/Lignes";
 import { EnTetePanneau } from "../composants/Panneau";
 import { useMoi } from "../lib/compte";
+import { LIEN_ANDROID, estAndroid, estApplication, useInstallation } from "../lib/installation";
 import type { Vue } from "./vues";
 
 interface Props {
@@ -15,6 +16,8 @@ interface Props {
 
 export function Parametres({ onRetour, onOuvrir, onTheme, onFond, onDeconnexion }: Props) {
   const moi = useMoi();
+  const installation = useInstallation();
+  const application = estApplication();
   return (
     <>
       <EnTetePanneau titre="Paramètres" onRetour={onRetour} />
@@ -40,6 +43,24 @@ export function Parametres({ onRetour, onOuvrir, onTheme, onFond, onDeconnexion 
           />
           <LigneReglage icone={Palette} titre="Thème" detail="Clair, sombre ou selon le système" onClick={onTheme} fleche={false} />
           <LigneReglage icone={Wallpaper} titre="Fond des discussions" detail="Teinte et motif, sur cet appareil" onClick={onFond} fleche={false} />
+          {estAndroid() && !application && (
+            <LigneReglage
+              icone={Smartphone}
+              titre="Application Android"
+              detail="Notifications, ouverture directe depuis l'écran d'accueil"
+              onClick={() => (window.location.href = LIEN_ANDROID)}
+              fleche={false}
+            />
+          )}
+          {installation.possible && !application && !estAndroid() && (
+            <LigneReglage
+              icone={Download}
+              titre="Installer UniChat"
+              detail="Une fenêtre à part, ouverte depuis le bureau"
+              onClick={() => void installation.installer()}
+              fleche={false}
+            />
+          )}
           <LigneReglage icone={LogOut} titre="Se déconnecter" onClick={onDeconnexion} danger fleche={false} />
         </div>
         <p className="animate-fade stagger-2 flex flex-wrap gap-x-4 gap-y-1 px-7 py-6 text-[13px] text-texte-3">

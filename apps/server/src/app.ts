@@ -50,6 +50,20 @@ export function creerApp(remplacements: Partial<Dependances> = {}) {
   app.route("/api/invitations", invitations);
   app.route("/api/push", push);
 
+  // Lien entre le site et l'application Android : sans lui, elle s'ouvrirait
+  // avec une barre d'adresse, comme un simple onglet.
+  app.get("/.well-known/assetlinks.json", (c) => {
+    const empreintes = (c.env.ANDROID_EMPREINTES ?? "").split(",").map((e) => e.trim()).filter(Boolean);
+    if (!c.env.ANDROID_PAQUET || empreintes.length === 0) return c.json([]);
+    c.header("Cache-Control", "public, max-age=3600");
+    return c.json([
+      {
+        relation: ["delegate_permission/common.handle_all_urls"],
+        target: { namespace: "android_app", package_name: c.env.ANDROID_PAQUET, sha256_cert_fingerprints: empreintes },
+      },
+    ]);
+  });
+
   app.notFound((c) => c.json({ erreur: "introuvable", message: "Adresse inconnue." }, 404));
   app.onError((erreur, c) => {
     if (erreur instanceof Refus) return c.json({ erreur: erreur.code, message: erreur.message }, erreur.statut);
