@@ -3,6 +3,7 @@ import clsx from "clsx";
 import { Check, FileText, Globe, Images, ListChecks, LoaderCircle, MapPin, Mic, Paperclip, Pencil, SendHorizontal, Smile, UserRound, X } from "lucide-react";
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { BoutonIcone } from "../composants/BoutonIcone";
+import { Anime, Apparition } from "../composants/Apparition";
 import { ChoixEmoji } from "../composants/ChoixEmoji";
 import { Enregistrement } from "../composants/Enregistrement";
 import { ACCEPTE_DOCUMENTS, ACCEPTE_VISUELS } from "../composants/EnvoiFichiers";
@@ -175,47 +176,53 @@ export function Composeur({
 
   return (
     <footer className="shrink-0 bg-entete">
-      {edition && (
-        <div className="animate-rise flex items-center gap-3 px-3 pt-2.5 md:px-4">
-          <div className="min-w-0 flex-1 rounded-md border-l-4 border-primaire bg-panneau px-3 py-2">
-            <p className="flex items-center gap-1.5 text-[12.5px] font-medium text-primaire-texte">
-              <Pencil size={13} /> Modifier le message
-            </p>
-            <p className="truncate text-[13px] text-texte-2">{edition.texte}</p>
-          </div>
-          <BoutonIcone libelle="Annuler la modification" onClick={onAnnulerEdition}>
-            <X size={20} />
-          </BoutonIcone>
-        </div>
-      )}
-      {reponse && (
-        <div className="animate-rise flex items-center gap-3 px-3 pt-2.5 md:px-4">
-          <div className="min-w-0 flex-1 rounded-md border-l-4 border-primaire bg-panneau px-3 py-2">
-            <p className="text-[12.5px] font-medium text-primaire-texte">Réponse à {nom(reponse.de)}</p>
-            <p className="truncate text-[13px] text-texte-2">{resumeMessage(reponse)}</p>
-          </div>
-          <BoutonIcone libelle="Annuler la réponse" onClick={onAnnulerReponse}>
-            <X size={20} />
-          </BoutonIcone>
-        </div>
-      )}
-      {apercu && (
-        <div className="animate-rise flex items-center gap-3 px-3 pt-2.5 md:px-4">
-          <div className="flex min-w-0 flex-1 items-center gap-3 rounded-md bg-panneau px-3 py-2">
-            <span className="flex size-10 shrink-0 items-center justify-center rounded bg-primaire-doux text-primaire-texte">
-              {apercu.resultat ? <Globe size={20} /> : <LoaderCircle size={18} className="animate-spin" />}
-            </span>
-            <span className="min-w-0 flex-1">
-              <span className="block truncate text-[14px] font-medium text-texte">{apercu.resultat?.titre ?? apercu.resultat?.site ?? "Aperçu du lien…"}</span>
-              <span className="block truncate text-[12.5px] text-texte-2">{apercu.resultat?.description ?? apercu.url}</span>
-            </span>
-          </div>
-          <BoutonIcone libelle="Retirer l'aperçu" onClick={() => setIgnores((s) => new Set(s).add(apercu.url))}>
-            <X size={20} />
-          </BoutonIcone>
-        </div>
-      )}
-      {emoji && !enregistre && <ChoixEmoji onChoisir={insererEmoji} />}
+      <Apparition>
+        {edition && (
+          <Anime className="flex items-center gap-3 px-3 pt-2.5 md:px-4">
+            <div className="min-w-0 flex-1 rounded-md border-l-4 border-primaire bg-panneau px-3 py-2">
+              <p className="flex items-center gap-1.5 text-[12.5px] font-medium text-primaire-texte">
+                <Pencil size={13} /> Modifier le message
+              </p>
+              <p className="truncate text-[13px] text-texte-2">{edition.texte}</p>
+            </div>
+            <BoutonIcone libelle="Annuler la modification" onClick={onAnnulerEdition}>
+              <X size={20} />
+            </BoutonIcone>
+          </Anime>
+        )}
+      </Apparition>
+      <Apparition>
+        {reponse && (
+          <Anime className="flex items-center gap-3 px-3 pt-2.5 md:px-4">
+            <div className="min-w-0 flex-1 rounded-md border-l-4 border-primaire bg-panneau px-3 py-2">
+              <p className="text-[12.5px] font-medium text-primaire-texte">Réponse à {nom(reponse.de)}</p>
+              <p className="truncate text-[13px] text-texte-2">{resumeMessage(reponse)}</p>
+            </div>
+            <BoutonIcone libelle="Annuler la réponse" onClick={onAnnulerReponse}>
+              <X size={20} />
+            </BoutonIcone>
+          </Anime>
+        )}
+      </Apparition>
+      <Apparition>
+        {apercu && (
+          <Anime className="flex items-center gap-3 px-3 pt-2.5 md:px-4">
+            <div className="flex min-w-0 flex-1 items-center gap-3 rounded-md bg-panneau px-3 py-2">
+              <span className="flex size-10 shrink-0 items-center justify-center rounded bg-primaire-doux text-primaire-texte">
+                {apercu.resultat ? <Globe size={20} /> : <LoaderCircle size={18} className="animate-spin" />}
+              </span>
+              <span className="min-w-0 flex-1">
+                <span className="block truncate text-[14px] font-medium text-texte">{apercu.resultat?.titre ?? apercu.resultat?.site ?? "Aperçu du lien…"}</span>
+                <span className="block truncate text-[12.5px] text-texte-2">{apercu.resultat?.description ?? apercu.url}</span>
+              </span>
+            </div>
+            <BoutonIcone libelle="Retirer l'aperçu" onClick={() => setIgnores((s) => new Set(s).add(apercu.url))}>
+              <X size={20} />
+            </BoutonIcone>
+          </Anime>
+        )}
+      </Apparition>
+      <Apparition>{emoji && !enregistre && <ChoixEmoji onChoisir={insererEmoji} />}</Apparition>
       {enregistre ? (
         <Enregistrement
           onAnnuler={() => setEnregistre(false)}
@@ -234,19 +241,21 @@ export function Composeur({
             <BoutonIcone libelle="Joindre" actif={menu} onClick={() => setMenu((m) => !m)} aria-haspopup="menu" aria-expanded={menu} className="mb-px">
               <Paperclip size={22} />
             </BoutonIcone>
-            {menu && (
-              <Menu
-                className="bottom-full left-0 mb-2"
-                elements={[
-                  { icone: Images, libelle: "Photos et vidéos", action: () => visuels.current?.click() },
-                  { icone: FileText, libelle: "Document", action: () => documents.current?.click() },
-                  { icone: MapPin, libelle: "Position", action: () => onSpecial("position") },
-                  { icone: UserRound, libelle: "Contact", action: () => onSpecial("contact") },
-                  { icone: ListChecks, libelle: "Sondage", action: () => onSpecial("sondage") },
-                ]}
-                onChoix={() => setMenu(false)}
-              />
-            )}
+            <Apparition>
+              {menu && (
+                <Menu
+                  className="bottom-full left-0 mb-2"
+                  elements={[
+                    { icone: Images, libelle: "Photos et vidéos", action: () => visuels.current?.click() },
+                    { icone: FileText, libelle: "Document", action: () => documents.current?.click() },
+                    { icone: MapPin, libelle: "Position", action: () => onSpecial("position") },
+                    { icone: UserRound, libelle: "Contact", action: () => onSpecial("contact") },
+                    { icone: ListChecks, libelle: "Sondage", action: () => onSpecial("sondage") },
+                  ]}
+                  onChoix={() => setMenu(false)}
+                />
+              )}
+            </Apparition>
             {[
               { ref: visuels, accept: ACCEPTE_VISUELS },
               { ref: documents, accept: ACCEPTE_DOCUMENTS },
@@ -278,26 +287,28 @@ export function Composeur({
             {emoji ? <X size={22} /> : <Smile size={22} />}
           </BoutonIcone>
           <div className="relative flex min-h-[42px] flex-1 items-center rounded-lg bg-panneau px-3.5 py-[10px]">
-            {candidats.length > 0 && suggestion && (
-              <div role="listbox" aria-label="Mentionner un membre" className="animate-pop absolute right-0 bottom-full left-0 z-30 mb-2 overflow-hidden rounded-lg bg-panneau py-1.5 shadow-xl ring-1 ring-bordure">
-                {candidats.map((m, i) => (
-                  <button
-                    key={m.id}
-                    type="button"
-                    role="option"
-                    aria-selected={i === suggestion.rang}
-                    onMouseDown={(e) => {
-                      e.preventDefault();
-                      choisirMention(m);
-                    }}
-                    className={clsx("flex w-full items-center gap-3 px-4 py-2 text-left text-[14.5px] text-texte", i === suggestion.rang ? "bg-survol" : "hover:bg-survol")}
-                  >
-                    <span className="text-primaire-texte">@</span>
-                    {m.nom}
-                  </button>
-                ))}
-              </div>
-            )}
+            <Apparition>
+              {candidats.length > 0 && suggestion && (
+                <Anime effet="surgit" role="listbox" aria-label="Mentionner un membre" className="absolute right-0 bottom-full left-0 z-30 mb-2 overflow-hidden rounded-lg bg-panneau py-1.5 shadow-xl ring-1 ring-bordure">
+                  {candidats.map((m, i) => (
+                    <button
+                      key={m.id}
+                      type="button"
+                      role="option"
+                      aria-selected={i === suggestion.rang}
+                      onMouseDown={(e) => {
+                        e.preventDefault();
+                        choisirMention(m);
+                      }}
+                      className={clsx("flex w-full items-center gap-3 px-4 py-2 text-left text-[14.5px] text-texte", i === suggestion.rang ? "bg-survol" : "hover:bg-survol")}
+                    >
+                      <span className="text-primaire-texte">@</span>
+                      {m.nom}
+                    </button>
+                  ))}
+                </Anime>
+              )}
+            </Apparition>
             <textarea
               ref={champ}
               rows={1}

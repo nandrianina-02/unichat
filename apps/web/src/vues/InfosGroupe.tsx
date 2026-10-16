@@ -9,6 +9,7 @@ import { useEffect, useRef, useState } from "react";
 import { Avatar, AvatarGroupe } from "../composants/Avatar";
 import { ChampModifiable } from "../composants/ChampModifiable";
 import { Dialogue } from "../composants/Dialogue";
+import { Anime, Apparition } from "../composants/Apparition";
 import { ErreurApi, api } from "../lib/api";
 import { useCompte } from "../lib/compte";
 import { useMessagerie } from "../lib/messagerie-react";
@@ -59,7 +60,7 @@ export function InfosGroupe({
 
   if (ajout && groupe) {
     return (
-      <section className="vue-entree relative flex h-full w-full flex-col bg-panneau">
+      <section className="relative flex h-full w-full flex-col bg-panneau">
         <NouveauGroupe
           titre="Ajouter des membres"
           exclure={groupe.membres.map((m) => m.id)}
@@ -75,7 +76,7 @@ export function InfosGroupe({
   }
 
   return (
-    <section className="vue-entree flex h-full w-full flex-col bg-fond">
+    <section className="flex h-full w-full flex-col bg-fond">
       <header className="flex h-[60px] shrink-0 items-center gap-6 bg-entete px-5">
         <button
           type="button"
@@ -188,38 +189,42 @@ export function InfosGroupe({
               <Flag size={22} /> Signaler le groupe
             </button>
           </div>
-          {avis && <p role="status" className="animate-fade px-8 pb-6 text-sm text-texte-2">{avis}</p>}
-          {lien && <DialogueLienGroupe groupe={groupe} onFermer={() => setLien(false)} />}
+          <Apparition>{avis && <Anime effet="fondu" role="status" className="px-8 pb-6 text-sm text-texte-2">{avis}</Anime>}</Apparition>
+          <Apparition>{lien && <DialogueLienGroupe groupe={groupe} onFermer={() => setLien(false)} />}</Apparition>
         </div>
       )}
 
-      {quitter && groupe && (
-        <Dialogue
-          titre={`Quitter « ${groupe.nom} » ?`}
-          confirmer="Quitter"
-          danger
-          onConfirmer={() => {
-            setQuitter(false);
-            void agir(() => api.retirerMembre(groupeId, messagerie.moi));
-          }}
-          onFermer={() => setQuitter(false)}
-        >
-          Les membres verront que vous êtes parti. Vous garderez l'historique déjà reçu, sans pouvoir y écrire.
-        </Dialogue>
-      )}
-      {retrait && groupe && (
-        <Dialogue
-          titre={`Retirer ${retrait.nom} du groupe ?`}
-          confirmer="Retirer"
-          danger
-          onConfirmer={() => {
-            const cible = retrait;
-            setRetrait(null);
-            void agir(() => api.retirerMembre(groupeId, cible.id));
-          }}
-          onFermer={() => setRetrait(null)}
-        />
-      )}
+      <Apparition>
+        {quitter && groupe && (
+          <Dialogue
+            titre={`Quitter « ${groupe.nom} » ?`}
+            confirmer="Quitter"
+            danger
+            onConfirmer={() => {
+              setQuitter(false);
+              void agir(() => api.retirerMembre(groupeId, messagerie.moi));
+            }}
+            onFermer={() => setQuitter(false)}
+          >
+            Les membres verront que vous êtes parti. Vous garderez l'historique déjà reçu, sans pouvoir y écrire.
+          </Dialogue>
+        )}
+      </Apparition>
+      <Apparition>
+        {retrait && groupe && (
+          <Dialogue
+            titre={`Retirer ${retrait.nom} du groupe ?`}
+            confirmer="Retirer"
+            danger
+            onConfirmer={() => {
+              const cible = retrait;
+              setRetrait(null);
+              void agir(() => api.retirerMembre(groupeId, cible.id));
+            }}
+            onFermer={() => setRetrait(null)}
+          />
+        )}
+      </Apparition>
     </section>
   );
 }
@@ -269,24 +274,26 @@ function LigneMembre({
           <span className="shrink-0 rounded-md bg-primaire-doux px-2 py-0.5 text-[12px] text-primaire-texte">Admin</span>
         )}
       </button>
-      {menu && (
-        <div role="menu" className="animate-pop absolute top-full right-6 z-30 w-60 rounded-lg bg-panneau py-2 shadow-xl ring-1 ring-bordure">
-          {actions.map(({ icone: Icone, libelle, action, danger }) => (
-            <button
-              key={libelle}
-              role="menuitem"
-              type="button"
-              onClick={() => {
-                setMenu(false);
-                action();
-              }}
-              className={clsx("flex w-full items-center gap-3 px-5 py-2.5 text-left text-sm hover:bg-survol", danger ? "text-danger" : "text-texte")}
-            >
-              <Icone size={18} className={danger ? "text-danger" : "text-texte-2"} /> {libelle}
-            </button>
-          ))}
-        </div>
-      )}
+      <Apparition>
+        {menu && (
+          <Anime effet="surgit" role="menu" className="absolute top-full right-6 z-30 w-60 rounded-lg bg-panneau py-2 shadow-xl ring-1 ring-bordure">
+            {actions.map(({ icone: Icone, libelle, action, danger }) => (
+              <button
+                key={libelle}
+                role="menuitem"
+                type="button"
+                onClick={() => {
+                  setMenu(false);
+                  action();
+                }}
+                className={clsx("flex w-full items-center gap-3 px-5 py-2.5 text-left text-sm hover:bg-survol", danger ? "text-danger" : "text-texte")}
+              >
+                <Icone size={18} className={danger ? "text-danger" : "text-texte-2"} /> {libelle}
+              </button>
+            ))}
+          </Anime>
+        )}
+      </Apparition>
     </div>
   );
 }

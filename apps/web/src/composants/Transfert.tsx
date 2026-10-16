@@ -8,6 +8,7 @@ import { useMoi } from "../lib/compte";
 import { useMessagerie } from "../lib/messagerie-react";
 import { estTactile } from "../lib/appui";
 import { useRetourSysteme } from "../lib/retour";
+import { useSortie } from "./Apparition";
 import type { MessageLocal } from "../lib/stockage";
 import { Avatar, AvatarGroupe } from "./Avatar";
 import { BoutonIcone } from "./BoutonIcone";
@@ -41,7 +42,9 @@ export function DialogueTransfert({
   const [choisis, setChoisis] = useState<string[]>([]);
   const [enCours, setEnCours] = useState(false);
   const champ = useRef<HTMLInputElement>(null);
-  useRetourSysteme(true, onFermer);
+  // Pendant sa sortie, la couche a déjà rendu son entrée d'historique.
+  const sortie = useSortie();
+  useRetourSysteme(!sortie, onFermer);
 
   useEffect(() => {
     if (!estTactile()) champ.current?.focus();
@@ -102,12 +105,12 @@ export function DialogueTransfert({
   }
 
   return createPortal(
-    <div className="animate-fade fixed inset-0 z-50 flex items-center justify-center bg-voile p-4" onMouseDown={onFermer}>
+    <div className={clsx(sortie ? "animate-fade-out pointer-events-none" : "animate-fade", "fixed inset-0 z-50 flex items-center justify-center bg-voile p-4")} onMouseDown={onFermer}>
       <div
         role="dialog"
         aria-modal="true"
         aria-label="Transférer le message"
-        className="animate-rise flex h-[min(640px,90vh)] w-full max-w-md flex-col overflow-hidden rounded-lg bg-panneau shadow-xl"
+        className={clsx(sortie ? "animate-sink" : "animate-rise", "flex h-[min(640px,90vh)] w-full max-w-md flex-col overflow-hidden rounded-lg bg-panneau shadow-xl")}
         onMouseDown={(e) => e.stopPropagation()}
       >
         <header className="flex h-[60px] shrink-0 items-center gap-3 px-3">

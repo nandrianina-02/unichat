@@ -3,6 +3,7 @@ import clsx from "clsx";
 import { Globe, Laptop, LoaderCircle, LogOut, MonitorSmartphone, Smartphone } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import { Dialogue } from "../composants/Dialogue";
+import { Apparition } from "../composants/Apparition";
 import { TitreSection } from "../composants/Lignes";
 import { EnTetePanneau } from "../composants/Panneau";
 import { ErreurApi, api } from "../lib/api";
@@ -107,20 +108,22 @@ export function Appareils({ onRetour }: { onRetour: () => void }) {
         )}
       </div>
 
-      {cible && (
-        <Dialogue
-          titre={cible === "autres" ? `Déconnecter ${autres} appareil${autres > 1 ? "s" : ""} ?` : cible.actuel ? "Se déconnecter de cet appareil ?" : "Déconnecter cet appareil ?"}
-          confirmer="Déconnecter"
-          danger
-          enCours={enCours}
-          onConfirmer={() => void confirmer()}
-          onFermer={() => setCible(null)}
-        >
-          {cible === "autres"
-            ? "Tous vos autres appareils seront déconnectés. Cet appareil reste connecté."
-            : `${cible.appareil}${lieu(cible.ville, cible.pays) ? `, ${lieu(cible.ville, cible.pays)}` : ""}. Il devra se reconnecter avec Google.`}
-        </Dialogue>
-      )}
+      <Apparition>
+        {cible && (
+          <Dialogue
+            titre={cible === "autres" ? `Déconnecter ${autres} appareil${autres > 1 ? "s" : ""} ?` : cible.actuel ? "Se déconnecter de cet appareil ?" : "Déconnecter cet appareil ?"}
+            confirmer="Déconnecter"
+            danger
+            enCours={enCours}
+            onConfirmer={() => void confirmer()}
+            onFermer={() => setCible(null)}
+          >
+            {cible === "autres"
+              ? "Tous vos autres appareils seront déconnectés. Cet appareil reste connecté."
+              : `${cible.appareil}${lieu(cible.ville, cible.pays) ? `, ${lieu(cible.ville, cible.pays)}` : ""}. Il devra se reconnecter avec Google.`}
+          </Dialogue>
+        )}
+      </Apparition>
     </>
   );
 }

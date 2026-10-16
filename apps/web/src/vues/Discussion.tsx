@@ -47,6 +47,7 @@ import {
   X,
 } from "lucide-react";
 import { Dialogue } from "../composants/Dialogue";
+import { Anime, Apparition, useEncoreVisible, useSortie } from "../composants/Apparition";
 import { DialogueTransfert } from "../composants/Transfert";
 import { TexteMessage } from "../composants/TexteMessage";
 import { Composeur } from "./Composeur";
@@ -299,17 +300,21 @@ export function Discussion({ conversation, cible, onInfos, onRechercher, onFerme
         onRechercher={onRechercher}
         onFermer={onFermer}
       />
-      {epingles.length > 0 && messages && (
-        <BandeauEpingles
-          epingles={epingles}
-          messages={messages}
-          nom={nom}
-          onDesepingler={(m) => void messagerie.epingler(m, null)}
-        />
-      )}
-      {personne && !personne.estContact && !estSoi && !personne.bloque && (
-        <BanniereInconnu personne={personne} onBloquer={() => actions.ouvrir("bloquer")} onSignaler={() => actions.ouvrir("signaler")} />
-      )}
+      <Apparition>
+        {epingles.length > 0 && messages && (
+          <BandeauEpingles
+            epingles={epingles}
+            messages={messages}
+            nom={nom}
+            onDesepingler={(m) => void messagerie.epingler(m, null)}
+          />
+        )}
+      </Apparition>
+      <Apparition>
+        {personne && !personne.estContact && !estSoi && !personne.bloque && (
+          <BanniereInconnu personne={personne} onBloquer={() => actions.ouvrir("bloquer")} onSignaler={() => actions.ouvrir("signaler")} />
+        )}
+      </Apparition>
       <ListeMessages
         messages={messages}
         moiId={moi.id}
@@ -338,11 +343,13 @@ export function Discussion({ conversation, cible, onInfos, onRechercher, onFerme
         onBasculerSelection={basculerSelection}
         envois={etat.envois}
       />
-      {avis && (
-        <p role="status" className="animate-fade shrink-0 bg-entete px-4 pt-2 text-center text-[13px] text-texte-2">
-          {avis}
-        </p>
-      )}
+      <Apparition>
+        {avis && (
+          <Anime effet="fondu" role="status" className="shrink-0 bg-entete px-4 pt-2 text-center text-[13px] text-texte-2">
+            {avis}
+          </Anime>
+        )}
+      </Apparition>
       {selection ? (
         <BarreSelection
           nombre={selection.size}
@@ -394,128 +401,150 @@ export function Discussion({ conversation, cible, onInfos, onRechercher, onFerme
           onAvis={setAvis}
         />
       )}
-      {depot && (
-        <div className="animate-fade pointer-events-none absolute inset-0 z-30 flex items-center justify-center bg-voile p-8">
-          <p className="flex items-center gap-3 rounded-lg bg-panneau px-6 py-4 text-[15px] text-texte shadow-xl">
-            <Paperclip size={20} className="text-primaire" /> Déposez les fichiers pour les envoyer
-          </p>
-        </div>
-      )}
-      {aJoindre && (
-        <EnvoiFichiers
-          fichiers={aJoindre}
-          destinataire={titre || "ce contact"}
-          onAnnuler={() => setAJoindre(null)}
-          onEnvoyer={(envois) => {
-            for (const [i, { fichier, legende }] of envois.entries()) {
-              // La réponse s'attache au premier fichier, comme une légende.
-              void messagerie.envoyerFichier(conversation, fichier, legende, i === 0 ? (reponse ?? undefined) : undefined);
-            }
-            setReponse(null);
-            setAJoindre(null);
-          }}
-        />
-      )}
-      {visionne && (
-        <Visionneuse
-          message={visionne.message}
-          url={visionne.url}
-          auteur={visionne.message.de === moi.id ? "Vous" : nom(visionne.message.de)}
-          vueUnique={visionne.vueUnique}
-          onFermer={() => {
-            if (visionne.vueUnique) {
-              URL.revokeObjectURL(visionne.url);
-              void messagerie.fermerVueUnique(visionne.message);
-            }
-            setVisionne(null);
-          }}
-        />
-      )}
+      <Apparition>
+        {depot && (
+          <Anime effet="fondu" className="pointer-events-none absolute inset-0 z-30 flex items-center justify-center bg-voile p-8">
+            <p className="flex items-center gap-3 rounded-lg bg-panneau px-6 py-4 text-[15px] text-texte shadow-xl">
+              <Paperclip size={20} className="text-primaire" /> Déposez les fichiers pour les envoyer
+            </p>
+          </Anime>
+        )}
+      </Apparition>
+      <Apparition>
+        {aJoindre && (
+          <EnvoiFichiers
+            fichiers={aJoindre}
+            destinataire={titre || "ce contact"}
+            onAnnuler={() => setAJoindre(null)}
+            onEnvoyer={(envois) => {
+              for (const [i, { fichier, legende }] of envois.entries()) {
+                // La réponse s'attache au premier fichier, comme une légende.
+                void messagerie.envoyerFichier(conversation, fichier, legende, i === 0 ? (reponse ?? undefined) : undefined);
+              }
+              setReponse(null);
+              setAJoindre(null);
+            }}
+          />
+        )}
+      </Apparition>
+      <Apparition>
+        {visionne && (
+          <Visionneuse
+            message={visionne.message}
+            url={visionne.url}
+            auteur={visionne.message.de === moi.id ? "Vous" : nom(visionne.message.de)}
+            vueUnique={visionne.vueUnique}
+            onFermer={() => {
+              if (visionne.vueUnique) {
+                URL.revokeObjectURL(visionne.url);
+                void messagerie.fermerVueUnique(visionne.message);
+              }
+              setVisionne(null);
+            }}
+          />
+        )}
+      </Apparition>
       {actions.dialogue}
-      {special === "position" && (
-        <DialoguePosition
-          onFermer={() => setSpecial(null)}
-          onEnvoyer={(position) => {
-            void messagerie.envoyerContenu(conversation, { position });
-            setSpecial(null);
-          }}
-        />
-      )}
-      {special === "contact" && (
-        <DialogueContact
-          onFermer={() => setSpecial(null)}
-          onEnvoyer={(c) => {
-            void messagerie.envoyerContenu(conversation, { contact: { id: c.id, nom: c.nom, pseudo: c.pseudo } });
-            setSpecial(null);
-          }}
-        />
-      )}
-      {special === "sondage" && (
-        <DialogueSondage
-          onFermer={() => setSpecial(null)}
-          onEnvoyer={(sondage) => {
-            void messagerie.envoyerContenu(conversation, { sondage });
-            setSpecial(null);
-          }}
-        />
-      )}
-      {special === "ephemere" && (
-        <DialogueEphemere
-          actuelle={discussion?.ephemere}
-          onFermer={() => setSpecial(null)}
-          onChoisir={(duree) => {
-            if ((duree ?? undefined) !== discussion?.ephemere && !messagerie.reglerEphemere(conversation, duree)) {
-              setAvis("Hors connexion : réessayez une fois reconnecté.");
-            }
-            setSpecial(null);
-          }}
-        />
-      )}
-      {aSupprimer && (
-        <DialogueSuppression
-          messages={aSupprimer}
-          moiId={moi.id}
-          onPourTous={async () => {
-            let echec = false;
-            for (const m of aSupprimer) if (!(await messagerie.supprimerPourTous(m))) echec = true;
-            if (echec) setAvis("Hors connexion : réessayez une fois reconnecté.");
-            setASupprimer(null);
-            setSelection(null);
-          }}
-          onPourMoi={async () => {
-            for (const m of aSupprimer) await messagerie.supprimerPourMoi(m);
-            setASupprimer(null);
-            setSelection(null);
-          }}
-          onFermer={() => setASupprimer(null)}
-        />
-      )}
-      {aTransferer && aTransferer.length > 0 && (
-        <DialogueTransfert
-          messages={aTransferer}
-          onAvis={setAvis}
-          onFermer={() => {
-            setATransferer(null);
-            setSelection(null);
-          }}
-        />
-      )}
-      {infosMessage && (
-        <DialogueInfosMessage
-          message={messages?.find((m) => m.id === infosMessage.id) ?? infosMessage}
-          membres={groupe?.membres.filter((m) => !m.estSoi) ?? []}
-          onFermer={() => setInfosMessage(null)}
-        />
-      )}
-      {aEpingler && (
-        <DialogueEpingle
-          onFermer={() => setAEpingler(null)}
-          onEpingler={async (duree) => {
-            if (!(await messagerie.epingler(aEpingler, duree))) setAvis("Hors connexion : réessayez une fois reconnecté.");
-            setAEpingler(null);
-          }}
-        />
-      )}
+      <Apparition>
+        {special === "position" && (
+          <DialoguePosition
+            onFermer={() => setSpecial(null)}
+            onEnvoyer={(position) => {
+              void messagerie.envoyerContenu(conversation, { position });
+              setSpecial(null);
+            }}
+          />
+        )}
+      </Apparition>
+      <Apparition>
+        {special === "contact" && (
+          <DialogueContact
+            onFermer={() => setSpecial(null)}
+            onEnvoyer={(c) => {
+              void messagerie.envoyerContenu(conversation, { contact: { id: c.id, nom: c.nom, pseudo: c.pseudo } });
+              setSpecial(null);
+            }}
+          />
+        )}
+      </Apparition>
+      <Apparition>
+        {special === "sondage" && (
+          <DialogueSondage
+            onFermer={() => setSpecial(null)}
+            onEnvoyer={(sondage) => {
+              void messagerie.envoyerContenu(conversation, { sondage });
+              setSpecial(null);
+            }}
+          />
+        )}
+      </Apparition>
+      <Apparition>
+        {special === "ephemere" && (
+          <DialogueEphemere
+            actuelle={discussion?.ephemere}
+            onFermer={() => setSpecial(null)}
+            onChoisir={(duree) => {
+              if ((duree ?? undefined) !== discussion?.ephemere && !messagerie.reglerEphemere(conversation, duree)) {
+                setAvis("Hors connexion : réessayez une fois reconnecté.");
+              }
+              setSpecial(null);
+            }}
+          />
+        )}
+      </Apparition>
+      <Apparition>
+        {aSupprimer && (
+          <DialogueSuppression
+            messages={aSupprimer}
+            moiId={moi.id}
+            onPourTous={async () => {
+              let echec = false;
+              for (const m of aSupprimer) if (!(await messagerie.supprimerPourTous(m))) echec = true;
+              if (echec) setAvis("Hors connexion : réessayez une fois reconnecté.");
+              setASupprimer(null);
+              setSelection(null);
+            }}
+            onPourMoi={async () => {
+              for (const m of aSupprimer) await messagerie.supprimerPourMoi(m);
+              setASupprimer(null);
+              setSelection(null);
+            }}
+            onFermer={() => setASupprimer(null)}
+          />
+        )}
+      </Apparition>
+      <Apparition>
+        {aTransferer && aTransferer.length > 0 && (
+          <DialogueTransfert
+            messages={aTransferer}
+            onAvis={setAvis}
+            onFermer={() => {
+              setATransferer(null);
+              setSelection(null);
+            }}
+          />
+        )}
+      </Apparition>
+      <Apparition>
+        {infosMessage && (
+          <DialogueInfosMessage
+            message={messages?.find((m) => m.id === infosMessage.id) ?? infosMessage}
+            membres={groupe?.membres.filter((m) => !m.estSoi) ?? []}
+            onFermer={() => setInfosMessage(null)}
+          />
+        )}
+      </Apparition>
+      <Apparition>
+        {aEpingler && (
+          <DialogueEpingle
+            onFermer={() => setAEpingler(null)}
+            onEpingler={async (duree) => {
+              if (!(await messagerie.epingler(aEpingler, duree))) setAvis("Hors connexion : réessayez une fois reconnecté.");
+              setAEpingler(null);
+            }}
+          />
+        )}
+      </Apparition>
     </section>
   );
 }
@@ -568,9 +597,11 @@ function EnTete({
         <BoutonIcone libelle="Menu" actif={menu} onClick={() => setMenu((m) => !m)} aria-haspopup="menu" aria-expanded={menu}>
           <EllipsisVertical size={22} />
         </BoutonIcone>
-        {menu && (
-          <Menu className="right-0 top-11 max-h-[calc(100vh-80px)] overflow-y-auto" elements={elements} onChoix={() => setMenu(false)} />
-        )}
+        <Apparition>
+          {menu && (
+            <Menu className="right-0 top-11 max-h-[calc(100vh-80px)] overflow-y-auto" elements={elements} onChoix={() => setMenu(false)} />
+          )}
+        </Apparition>
       </div>
     </header>
   );
@@ -601,8 +632,9 @@ function BanniereInconnu({
       setEnCours(false);
     }
   }
+  const sortie = useSortie();
   return (
-    <div className="animate-fade flex shrink-0 flex-wrap items-center justify-center gap-x-4 gap-y-2 border-b border-bordure bg-panneau px-4 py-2.5 text-sm">
+    <div className={clsx(sortie ? "animate-fade-out pointer-events-none" : "animate-fade", "flex shrink-0 flex-wrap items-center justify-center gap-x-4 gap-y-2 border-b border-bordure bg-panneau px-4 py-2.5 text-sm")}>
       <span className="text-texte-2">{personne.nom} n'est pas dans vos contacts.</span>
       <button
         type="button"
@@ -677,6 +709,11 @@ function ListeMessages({
     const nonLus = messages.filter((m) => m.de !== moiId && !m.lu && m.type !== "evenement");
     repere.current = nonLus[0] ? { id: nonLus[0].id, nombre: nonLus.length } : null;
   }
+  // L'historique présent à l'ouverture s'affiche d'un bloc ; seuls les messages
+  // arrivés ensuite entrent en douceur, pour qu'on les voie arriver.
+  const connus = useRef<Set<string> | null>(null);
+  if (messages && connus.current === null) connus.current = new Set(messages.map((m) => m.id));
+  const nouveau = (id: string) => connus.current !== null && !connus.current.has(id);
 
   useLayoutEffect(() => {
     const z = zone.current;
@@ -740,7 +777,7 @@ function ListeMessages({
     }
     if (m.type === "systeme" && m.systeme) {
       elements.push(
-        <div key={m.id} className="my-2 flex justify-center px-6">
+        <div key={m.id} className={clsx("my-2 flex justify-center px-6", nouveau(m.id) && "animate-fade")}>
           <span className="flex max-w-md items-start gap-2 rounded-lg bg-panneau/90 px-3 py-1.5 text-center text-[12.5px] text-texte-2 shadow-sm">
             <Timer size={14} className="mt-px shrink-0" />
             {texteEphemere(nom(m.de), m.systeme.duree)}
@@ -752,7 +789,7 @@ function ListeMessages({
     }
     if (m.type === "evenement" && m.evenement) {
       elements.push(
-        <div key={m.id} className="my-2 flex justify-center px-6">
+        <div key={m.id} className={clsx("my-2 flex justify-center px-6", nouveau(m.id) && "animate-fade")}>
           <span className="max-w-md rounded-lg bg-panneau/90 px-3 py-1.5 text-center text-[12.5px] text-texte-2 shadow-sm">
             {texteEvenement(m.evenement, nom)}
           </span>
@@ -769,6 +806,7 @@ function ListeMessages({
         mien={m.de === moiId}
         moiId={moiId}
         premier={premier}
+        nouveau={nouveau(m.id)}
         auteur={enGroupe && premier && m.de !== moiId ? nom(m.de) : null}
         nom={nom}
         progression={envois[m.id]}
@@ -831,6 +869,7 @@ function Bulle({
   mien,
   moiId,
   premier,
+  nouveau,
   auteur,
   nom,
   progression,
@@ -861,6 +900,8 @@ function Bulle({
   mien: boolean;
   moiId: string;
   premier: boolean;
+  /** Arrivé discussion ouverte : il entre au lieu d'apparaître. */
+  nouveau: boolean;
   auteur: string | null;
   nom: (id: string) => string;
   progression: number | undefined;
@@ -925,14 +966,17 @@ function Bulle({
     </>
   );
 
+  const auPremierPlan = useEncoreVisible(Boolean(menu) || reactionRapide);
+
   return (
     <div
       id={`message-${m.id}`}
       onClick={selectionActive ? () => onBasculerSelection(m) : undefined}
       className={clsx(
         "relative flex flex-col rounded-lg px-[5%] md:px-[7%]",
+        nouveau && "animate-rise",
         // Le menu ouvert reste au-dessus des bulles suivantes.
-        (menu || reactionRapide) && "z-20",
+        auPremierPlan && "z-20",
         mien ? "items-end" : "items-start",
         premier ? "mt-2.5" : "mt-0.5",
         // En sélection, toute la ligne se coche, la case à gauche comme dans WhatsApp.
@@ -1126,26 +1170,28 @@ function Bulle({
             )}
           </div>
         )}
-        {reactionRapide && (
-          <div
-            className={clsx(
-              "animate-pop absolute bottom-full z-30 mb-1 rounded-full bg-panneau px-1.5 py-1 shadow-xl ring-1 ring-bordure",
-              mien ? "right-0" : "left-0",
-            )}
-          >
-            <ChoixReaction actuelle={maReaction} onChoisir={(code) => (setReactionRapide(false), onReagir(m, code))} />
-          </div>
-        )}
-        {menu && (
-          <Menu
-            className={clsx(mien ? "right-0" : "left-0", menu === "haut" ? "bottom-full mb-1" : "top-full mt-1")}
-            entete={
-              m.supprime ? undefined : <ChoixReaction actuelle={maReaction} onChoisir={(code) => (setMenu(null), onReagir(m, code))} />
-            }
-            elements={[...elements, "separateur", { icone: Trash2, libelle: "Supprimer", action: () => onSupprimer(m), danger: true }]}
-            onChoix={() => setMenu(null)}
-          />
-        )}
+        <Apparition>
+          {reactionRapide && (
+            <Anime
+              effet="surgit"
+              className={clsx("absolute bottom-full z-30 mb-1 rounded-full bg-panneau px-1.5 py-1 shadow-xl ring-1 ring-bordure", mien ? "right-0" : "left-0")}
+            >
+              <ChoixReaction actuelle={maReaction} onChoisir={(code) => (setReactionRapide(false), onReagir(m, code))} />
+            </Anime>
+          )}
+        </Apparition>
+        <Apparition>
+          {menu && (
+            <Menu
+              className={clsx(mien ? "right-0" : "left-0", menu === "haut" ? "bottom-full mb-1" : "top-full mt-1")}
+              entete={
+                m.supprime ? undefined : <ChoixReaction actuelle={maReaction} onChoisir={(code) => (setMenu(null), onReagir(m, code))} />
+              }
+              elements={[...elements, "separateur", { icone: Trash2, libelle: "Supprimer", action: () => onSupprimer(m), danger: true }]}
+              onChoix={() => setMenu(null)}
+            />
+          )}
+        </Apparition>
         {reactions.length > 0 && (
           <button
             type="button"
@@ -1202,22 +1248,25 @@ function DialogueSuppression({
         Date.now() - message.le < DELAI_SUPPRESSION,
     );
   const premier = useRef<HTMLButtonElement>(null);
-  useRetourSysteme(true, onFermer);
+  // Pendant sa sortie, la couche a déjà rendu son entrée d'historique.
+  const sortie = useSortie();
+  useRetourSysteme(!sortie, onFermer);
   useEffect(() => {
+    if (sortie) return;
     premier.current?.focus();
     const echap = (e: KeyboardEvent) => e.key === "Escape" && onFermer();
     window.addEventListener("keydown", echap);
     return () => window.removeEventListener("keydown", echap);
-  }, [onFermer]);
+  }, [onFermer, sortie]);
 
   const bouton = "rounded-full px-5 py-2 text-sm font-medium transition-colors";
   return (
-    <div className="animate-fade fixed inset-0 z-50 flex items-center justify-center bg-voile p-4" onMouseDown={onFermer}>
+    <div className={clsx(sortie ? "animate-fade-out pointer-events-none" : "animate-fade", "fixed inset-0 z-50 flex items-center justify-center bg-voile p-4")} onMouseDown={onFermer}>
       <div
         role="alertdialog"
         aria-modal="true"
         aria-label={messages.length > 1 ? "Supprimer les messages" : "Supprimer le message"}
-        className="animate-rise w-full max-w-md rounded-lg bg-panneau p-6 shadow-xl"
+        className={clsx(sortie ? "animate-sink" : "animate-rise", "w-full max-w-md rounded-lg bg-panneau p-6 shadow-xl")}
         onMouseDown={(e) => e.stopPropagation()}
       >
         <h2 className="text-[17px] text-texte">{messages.length > 1 ? `Supprimer ${messages.length} messages ?` : "Supprimer le message ?"}</h2>
@@ -1262,6 +1311,7 @@ function BandeauEpingles({
   onDesepingler: (m: MessageLocal) => void;
 }) {
   const [rang, setRang] = useState(0);
+  const sortie = useSortie();
   const presents = [...epingles]
     .reverse()
     .map((p) => messages.find((m) => m.id === p.message && !m.supprime))
@@ -1272,7 +1322,7 @@ function BandeauEpingles({
     <div
       role="region"
       aria-label="Messages épinglés"
-      className="animate-fade flex shrink-0 items-center gap-3 border-b border-bordure bg-panneau py-1.5 pr-2 pl-4"
+      className={clsx(sortie ? "animate-fade-out pointer-events-none" : "animate-fade", "flex shrink-0 items-center gap-3 border-b border-bordure bg-panneau py-1.5 pr-2 pl-4")}
     >
       {presents.length > 1 && (
         <span className="flex flex-col gap-0.5" aria-hidden="true">

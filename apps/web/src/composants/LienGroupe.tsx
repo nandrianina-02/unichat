@@ -1,3 +1,4 @@
+import clsx from "clsx";
 import type { ApercuInvitation, Groupe } from "@unichat/shared";
 import { Copy, LoaderCircle, RotateCw, UsersRound, X } from "lucide-react";
 import { useEffect, useState } from "react";
@@ -6,24 +7,28 @@ import { ErreurApi, api } from "../lib/api";
 import { useCompte } from "../lib/compte";
 import { lienGroupe } from "../lib/invitation";
 import { useRetourSysteme } from "../lib/retour";
+import { Anime, Apparition, useSortie } from "./Apparition";
 import { AvatarGroupe } from "./Avatar";
 import { BoutonIcone } from "./BoutonIcone";
 import { Dialogue } from "./Dialogue";
 
 function Cadre({ titre, onFermer, children }: { titre: string; onFermer: () => void; children: React.ReactNode }) {
-  useRetourSysteme(true, onFermer);
+  // Pendant sa sortie, la couche a déjà rendu son entrée d'historique.
+  const sortie = useSortie();
+  useRetourSysteme(!sortie, onFermer);
   useEffect(() => {
+    if (sortie) return;
     const echap = (e: KeyboardEvent) => e.key === "Escape" && onFermer();
     window.addEventListener("keydown", echap);
     return () => window.removeEventListener("keydown", echap);
-  }, [onFermer]);
+  }, [onFermer, sortie]);
   return createPortal(
-    <div className="animate-fade fixed inset-0 z-50 flex items-center justify-center bg-voile p-4" onMouseDown={onFermer}>
+    <div className={clsx(sortie ? "animate-fade-out pointer-events-none" : "animate-fade", "fixed inset-0 z-50 flex items-center justify-center bg-voile p-4")} onMouseDown={onFermer}>
       <div
         role="dialog"
         aria-modal="true"
         aria-label={titre}
-        className="animate-rise w-full max-w-md rounded-lg bg-panneau shadow-xl"
+        className={clsx(sortie ? "animate-sink" : "animate-rise", "w-full max-w-md rounded-lg bg-panneau shadow-xl")}
         onMouseDown={(e) => e.stopPropagation()}
       >
         <header className="flex items-center gap-3 px-3 pt-3">
@@ -117,12 +122,14 @@ export function DialogueLienGroupe({ groupe, onFermer }: { groupe: Groupe; onFer
           </div>
         </>
       )}
-      {avis && <p role="status" className="animate-fade mt-3 text-[13px] text-texte-2">{avis}</p>}
-      {confirmer && (
-        <Dialogue titre="Réinitialiser le lien ?" confirmer="Réinitialiser" danger onConfirmer={() => void reinitialiser()} onFermer={() => setConfirmer(false)}>
-          Personne ne pourra plus rejoindre le groupe avec l'ancien lien.
-        </Dialogue>
-      )}
+      <Apparition>{avis && <Anime effet="fondu" role="status" className="mt-3 text-[13px] text-texte-2">{avis}</Anime>}</Apparition>
+      <Apparition>
+        {confirmer && (
+          <Dialogue titre="Réinitialiser le lien ?" confirmer="Réinitialiser" danger onConfirmer={() => void reinitialiser()} onFermer={() => setConfirmer(false)}>
+            Personne ne pourra plus rejoindre le groupe avec l'ancien lien.
+          </Dialogue>
+        )}
+      </Apparition>
     </Cadre>
   );
 }

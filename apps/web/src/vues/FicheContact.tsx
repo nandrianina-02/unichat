@@ -5,6 +5,7 @@ import { useActionsDiscussion } from "../composants/ActionsDiscussion";
 import { ApercuGalerie } from "./Galerie";
 import { Avatar } from "../composants/Avatar";
 import { Dialogue } from "../composants/Dialogue";
+import { Apparition } from "../composants/Apparition";
 import { contactsModifies } from "../composants/Lignes";
 import { ErreurApi, api } from "../lib/api";
 import { useCompte } from "../lib/compte";
@@ -70,7 +71,7 @@ export function FicheContact({
   }
 
   return (
-    <section className="vue-entree flex h-full w-full flex-col bg-fond">
+    <section className="flex h-full w-full flex-col bg-fond">
       <header className="flex h-[60px] shrink-0 items-center gap-6 bg-entete px-5">
         <button
           type="button"
@@ -164,19 +165,21 @@ export function FicheContact({
       </div>
       {actions.dialogue}
 
-      {retrait && carte && (
-        <Dialogue
-          titre={`Retirer ${carte.nom} de vos contacts ?`}
-          confirmer="Retirer"
-          danger
-          enCours={enCours}
-          onConfirmer={() => void basculer()}
-          onFermer={() => setRetrait(false)}
-        >
-          {carte.nom} ne sera pas prévenu. Si vos réglages réservent votre photo ou vos infos à vos contacts, il ne les verra
-          plus.
-        </Dialogue>
-      )}
+      <Apparition>
+        {retrait && carte && (
+          <Dialogue
+            titre={`Retirer ${carte.nom} de vos contacts ?`}
+            confirmer="Retirer"
+            danger
+            enCours={enCours}
+            onConfirmer={() => void basculer()}
+            onFermer={() => setRetrait(false)}
+          >
+            {carte.nom} ne sera pas prévenu. Si vos réglages réservent votre photo ou vos infos à vos contacts, il ne les verra
+            plus.
+          </Dialogue>
+        )}
+      </Apparition>
     </section>
   );
 }

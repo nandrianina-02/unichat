@@ -248,12 +248,59 @@
   to { transform: scaleX(0.92); }
 }
 
+/* Sorties : le chemin inverse des entrées, un peu plus court (on attend
+   moins ce qui part que ce qui arrive). Le composant Apparition garde
+   l'élément affiché le temps de sa sortie. */
+@keyframes fondu-sortie {
+  from { opacity: 1; }
+  to { opacity: 0; }
+}
+@keyframes descendre {
+  from { opacity: 1; transform: none; }
+  to { opacity: 0; transform: translateY(6px); }
+}
+@keyframes retrecir {
+  from { opacity: 1; transform: none; }
+  to { opacity: 0; transform: scale(0.96) translateY(-4px); }
+}
+@keyframes glisser-droite-sortie {
+  from { transform: none; opacity: 1; }
+  to { transform: translateX(24px); opacity: 0; }
+}
+/* Téléphone : une discussion, ou ses infos, arrivent de la droite et y repartent, comme dans WhatsApp. */
+@keyframes plein-droite-entree {
+  from { transform: translateX(100%); }
+  to { transform: none; }
+}
+@keyframes plein-droite-sortie {
+  from { transform: none; }
+  to { transform: translateX(100%); }
+}
+
 .panneau-entree { animation: glisser-entree 240ms cubic-bezier(0.1, 0.82, 0.25, 1) both; }
 .panneau-sortie { animation: glisser-sortie 200ms cubic-bezier(0.4, 0, 1, 1) both; }
 .vue-entree { animation: glisser-droite-entree 220ms ease-out both; }
 .animate-fade { animation: fondu 180ms ease-out both; }
 .animate-rise { animation: monter 240ms cubic-bezier(0.2, 0.7, 0.2, 1) both; }
 .animate-pop { animation: surgir 150ms ease-out both; transform-origin: top right; }
+.animate-fade-out { animation: fondu-sortie 150ms ease-in both; }
+.animate-sink { animation: descendre 160ms ease-in both; }
+.animate-pop-out { animation: retrecir 120ms ease-in both; transform-origin: top right; }
+/* Discussion : un fondu sur ordinateur (elle remplace l'accueil), la pleine
+   largeur depuis la droite sur téléphone (elle recouvre la liste). */
+.discussion-entree { animation: fondu 180ms ease-out both; }
+.discussion-sortie { animation: fondu-sortie 150ms ease-in both; }
+@media (max-width: 767px) {
+  .discussion-entree { animation: plein-droite-entree 260ms cubic-bezier(0.1, 0.82, 0.25, 1) both; }
+  .discussion-sortie { animation: plein-droite-sortie 220ms cubic-bezier(0.4, 0, 1, 1) both; }
+}
+/* Infos, recherche, médias : à côté sur grand écran, par-dessus en dessous. */
+.cote-entree { animation: glisser-droite-entree 220ms ease-out both; }
+.cote-sortie { animation: glisser-droite-sortie 180ms ease-in both; }
+@media (max-width: 1023px) {
+  .cote-entree { animation: plein-droite-entree 260ms cubic-bezier(0.1, 0.82, 0.25, 1) both; }
+  .cote-sortie { animation: plein-droite-sortie 220ms cubic-bezier(0.4, 0, 1, 1) both; }
+}
 .stagger-1 { animation-delay: 30ms; }
 .stagger-2 { animation-delay: 60ms; }
 .stagger-3 { animation-delay: 90ms; }

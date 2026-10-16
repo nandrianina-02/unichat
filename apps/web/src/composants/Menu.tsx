@@ -1,6 +1,7 @@
 import clsx from "clsx";
 import type { LucideIcon } from "lucide-react";
 import { useEffect, type ReactNode, type RefObject } from "react";
+import { useSortie } from "./Apparition";
 
 export type ElementMenu = { icone: LucideIcon; libelle: string; action: () => void; danger?: boolean } | "separateur";
 
@@ -16,8 +17,9 @@ export function Menu({
   className?: string;
   entete?: ReactNode;
 }) {
+  const sortie = useSortie();
   return (
-    <div role="menu" className={clsx("animate-pop absolute z-30 w-64 rounded-lg bg-panneau py-2 shadow-xl ring-1 ring-bordure", className)}>
+    <div role="menu" className={clsx(sortie ? "animate-pop-out pointer-events-none" : "animate-pop", "absolute z-30 w-64 rounded-lg bg-panneau py-2 shadow-xl ring-1 ring-bordure", className)}>
       {entete && <div className="border-b border-bordure px-2.5 pb-2">{entete}</div>}
       {elements.map((element, i) =>
         element === "separateur" ? (

@@ -22,6 +22,7 @@ import { useCompte } from "../lib/compte";
 import { EPINGLES_MAX, estMuette } from "../lib/messagerie";
 import { useMessagerie } from "../lib/messagerie-react";
 import { Case } from "./Case";
+import { Apparition } from "./Apparition";
 import { Dialogue } from "./Dialogue";
 import { enregistrer } from "./Media";
 import type { ElementMenu } from "./Menu";
@@ -256,7 +257,7 @@ export function useActionsDiscussion(
 
   return {
     ouvrir,
-    dialogue,
+    dialogue: <Apparition>{dialogue}</Apparition>,
     bloque,
     elements: { sourdine, favoris, archive, epingle, exporter: exporterDiscussion, moderation },
   };

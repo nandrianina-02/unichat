@@ -33,6 +33,7 @@ import {
 import { useEffect, useMemo, useRef, useState } from "react";
 import { estGroupe } from "@unichat/shared";
 import { useActionsDiscussion } from "../composants/ActionsDiscussion";
+import { Anime, Apparition } from "../composants/Apparition";
 import { Menu, useFermetureExterieure } from "../composants/Menu";
 import { Avatar, AvatarGroupe } from "../composants/Avatar";
 import { BoutonIcone } from "../composants/BoutonIcone";
@@ -157,29 +158,31 @@ export function Discussions({ selection, onOuvrir, onOuvrirPersonne, onNouvelle,
             <BoutonIcone libelle="Menu" actif={menu} onClick={() => setMenu((m) => !m)} aria-haspopup="menu" aria-expanded={menu}>
               <EllipsisVertical size={22} />
             </BoutonIcone>
-            {menu && (
-              <div role="menu" className="animate-pop absolute right-0 top-11 z-30 w-56 rounded-lg bg-panneau py-2 shadow-xl ring-1 ring-bordure">
-                {[
-                  { icone: UserPlus, libelle: "Nouveau contact", action: onNouvelle },
-                  { icone: Star, libelle: "Messages importants", action: onImportants },
-                  { icone: Settings, libelle: "Paramètres", action: onParametres },
-                  { icone: LogOut, libelle: "Se déconnecter", action: onDeconnexion },
-                ].map(({ icone: Icone, libelle, action }) => (
-                  <button
-                    key={libelle}
-                    role="menuitem"
-                    type="button"
-                    onClick={() => {
-                      setMenu(false);
-                      action();
-                    }}
-                    className="flex w-full items-center gap-3 px-5 py-2.5 text-left text-sm text-texte hover:bg-survol"
-                  >
-                    <Icone size={18} className="text-texte-2" /> {libelle}
-                  </button>
-                ))}
-              </div>
-            )}
+            <Apparition>
+              {menu && (
+                <Anime effet="surgit" role="menu" className="absolute right-0 top-11 z-30 w-56 rounded-lg bg-panneau py-2 shadow-xl ring-1 ring-bordure">
+                  {[
+                    { icone: UserPlus, libelle: "Nouveau contact", action: onNouvelle },
+                    { icone: Star, libelle: "Messages importants", action: onImportants },
+                    { icone: Settings, libelle: "Paramètres", action: onParametres },
+                    { icone: LogOut, libelle: "Se déconnecter", action: onDeconnexion },
+                  ].map(({ icone: Icone, libelle, action }) => (
+                    <button
+                      key={libelle}
+                      role="menuitem"
+                      type="button"
+                      onClick={() => {
+                        setMenu(false);
+                        action();
+                      }}
+                      className="flex w-full items-center gap-3 px-5 py-2.5 text-left text-sm text-texte hover:bg-survol"
+                    >
+                      <Icone size={18} className="text-texte-2" /> {libelle}
+                    </button>
+                  ))}
+                </Anime>
+              )}
+            </Apparition>
           </div>
         </div>
       </header>
@@ -236,24 +239,28 @@ export function Discussions({ selection, onOuvrir, onOuvrirPersonne, onNouvelle,
       )}
 
       <div className="min-h-0 flex-1 overflow-y-auto">
-        {etat.connexion === "hors-ligne" && (
-          <div role="status" className="animate-fade mx-3 mb-2 flex items-center gap-4 rounded-lg bg-entete px-4 py-3">
-            <span className="flex size-10 shrink-0 items-center justify-center rounded-full bg-texte-3 text-sur-primaire">
-              <WifiOff size={20} />
-            </span>
-            <span className="text-sm">
-              <span className="block font-medium text-texte">Hors connexion</span>
-              <span className="text-texte-2">Vos messages partiront dès le retour du réseau.</span>
-            </span>
-          </div>
-        )}
+        <Apparition>
+          {etat.connexion === "hors-ligne" && (
+            <Anime effet="fondu" role="status" className="mx-3 mb-2 flex items-center gap-4 rounded-lg bg-entete px-4 py-3">
+              <span className="flex size-10 shrink-0 items-center justify-center rounded-full bg-texte-3 text-sur-primaire">
+                <WifiOff size={20} />
+              </span>
+              <span className="text-sm">
+                <span className="block font-medium text-texte">Hors connexion</span>
+                <span className="text-texte-2">Vos messages partiront dès le retour du réseau.</span>
+              </span>
+            </Anime>
+          )}
+        </Apparition>
         <BanniereNotifications />
         <AlerteConnexion />
-        {avis && (
-          <p role="status" className="animate-fade mx-3 mb-2 rounded-lg bg-entete px-4 py-2.5 text-[13px] text-texte-2">
-            {avis}
-          </p>
-        )}
+        <Apparition>
+          {avis && (
+            <Anime effet="fondu" role="status" className="mx-3 mb-2 rounded-lg bg-entete px-4 py-2.5 text-[13px] text-texte-2">
+              {avis}
+            </Anime>
+          )}
+        </Apparition>
 
         {!archives && !texte && filtre === "toutes" && archivees.length > 0 && (
           <button
@@ -509,20 +516,21 @@ function LigneConversation({
           </button>
         </div>
       </div>
-      {menu && (
-        <div onClick={(e) => e.stopPropagation()}>
-          <Menu
-            className={clsx("right-3", menu === "haut" ? "bottom-full mb-1" : "top-full -mt-2")}
-            elements={elements}
-            onChoix={() => setMenu(null)}
-          />
-        </div>
-      )}
-      {actions.dialogue && (
-        <div onClick={(e) => e.stopPropagation()} onContextMenu={(e) => e.stopPropagation()}>
-          {actions.dialogue}
-        </div>
-      )}
+      <Apparition>
+        {menu && (
+          <div onClick={(e) => e.stopPropagation()}>
+            <Menu
+              className={clsx("right-3", menu === "haut" ? "bottom-full mb-1" : "top-full -mt-2")}
+              elements={elements}
+              onChoix={() => setMenu(null)}
+            />
+          </div>
+        )}
+      </Apparition>
+      {/* « contents » : l'enveloppe n'occupe aucune place dans la ligne. */}
+      <div className="contents" onClick={(e) => e.stopPropagation()} onContextMenu={(e) => e.stopPropagation()}>
+        {actions.dialogue}
+      </div>
     </div>
   );
 }

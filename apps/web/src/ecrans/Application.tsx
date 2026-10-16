@@ -1,7 +1,8 @@
 import { autreParticipant, conversationDirecte, conversationGroupe, estGroupe, idGroupe } from "@unichat/shared";
 import clsx from "clsx";
 import { MessageSquareText, Settings } from "lucide-react";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
+import { Apparition, useEncoreVisible, useSortie } from "../composants/Apparition";
 import { Avatar } from "../composants/Avatar";
 import { BoutonIcone } from "../composants/BoutonIcone";
 import { Dialogue } from "../composants/Dialogue";
@@ -95,6 +96,9 @@ export function Application() {
     if (conversation && /^(d|g):[0-9a-f:-]+$/i.test(conversation)) ouvrirDiscussion(conversation);
   }, [ouvrirDiscussion]);
 
+  // Le plein écran du téléphone tient jusqu'à ce que la discussion ait fini de partir.
+  const discussionVisible = useEncoreVisible(principal.type === "discussion");
+
   // Retour (Android, navigateur) : referme le panneau d'à côté, puis la discussion.
   useRetourSysteme(principal.type === "discussion", () => setPrincipal(ACCUEIL));
   useRetourSysteme(principal.type === "discussion" && principal.cote !== null, () =>
@@ -187,7 +191,7 @@ export function Application() {
   const selection = principal.type === "discussion" ? principal.conversation : null;
 
   return (
-    <div className="flex h-full overflow-hidden bg-fond">
+    <div className="animate-fade flex h-full overflow-hidden bg-fond">
       <nav aria-label="Navigation" className="hidden w-16 shrink-0 flex-col items-center justify-between border-r border-bordure bg-entete py-3 md:flex">
         <BoutonIcone libelle="Discussions" actif={onglet === "discussions"} onClick={() => allerA(null)}>
           <MessageSquareText size={22} />
@@ -229,89 +233,139 @@ export function Application() {
       <main
         className={clsx(
           "min-w-0",
-          principal.type === "accueil"
+          !discussionVisible
             ? "relative hidden flex-1 md:flex"
             : // Un seul positionnement par taille d'écran : « relative » et « fixed »
               // ensemble s'annulent selon l'ordre des règles CSS.
               "fixed inset-0 z-40 flex md:relative md:inset-auto md:z-auto md:flex-1",
+          // Discussion en train de partir sur téléphone : la liste reçoit déjà les doigts.
+          principal.type === "accueil" && "pointer-events-none md:pointer-events-auto",
         )}
       >
-        {principal.type === "accueil" && <Accueil onAjouter={() => allerA("nouvelle")} />}
-        {principal.type === "discussion" && (
-          <>
-            <Discussion
-              key={`${principal.conversation}|${principal.cible ?? ""}`}
-              conversation={principal.conversation}
-              cible={principal.cible}
-              onInfos={() => setPrincipal({ ...principal, cote: "infos" })}
-              onRechercher={() => setPrincipal({ ...principal, cote: "recherche" })}
-              onFermer={() => setPrincipal(ACCUEIL)}
-              onEcrireA={ouvrirPersonne}
-            />
-            {principal.cote && (
-              <aside className="absolute inset-0 z-10 flex lg:static lg:w-[400px] lg:shrink-0 lg:border-l lg:border-bordure">
-                {principal.cote === "galerie" ? (
-                  <Galerie
-                    key={`galerie-${principal.conversation}`}
-                    conversation={principal.conversation}
-                    onFermer={() => setPrincipal({ ...principal, cote: "infos" })}
-                  />
-                ) : principal.cote === "recherche" ? (
-                  <RechercheMessages
-                    key={`recherche-${principal.conversation}`}
-                    conversation={principal.conversation}
-                    onFermer={() => setPrincipal({ ...principal, cote: null })}
-                  />
-                ) : estGroupe(principal.conversation) ? (
-                  <InfosGroupe
-                    key={`infos-${principal.conversation}`}
-                    groupeId={idGroupe(principal.conversation)}
-                    onFermer={() => setPrincipal({ ...principal, cote: null })}
-                    onMessage={ouvrirPersonne}
-                    onGalerie={() => setPrincipal({ ...principal, cote: "galerie" })}
-                  />
-                ) : (
-                  <FicheContact
-                    key={`infos-${principal.conversation}`}
-                    id={autreParticipant(principal.conversation, moi.id)}
-                    onFermer={() => setPrincipal({ ...principal, cote: null })}
-                    onGalerie={() => setPrincipal({ ...principal, cote: "galerie" })}
-                  />
-                )}
-              </aside>
-            )}
-          </>
+        {principal.type === "accueil" && (
+          // Sur téléphone, c'est la liste qui doit apparaître sous la discussion qui s'en va.
+          <div className="hidden min-w-0 flex-1 md:flex">
+            <Accueil onAjouter={() => allerA("nouvelle")} />
+          </div>
         )}
+        <Apparition>
+          {principal.type === "discussion" && (
+            <VueDiscussion key={principal.conversation}>
+              <Discussion
+                key={`${principal.conversation}|${principal.cible ?? ""}`}
+                conversation={principal.conversation}
+                cible={principal.cible}
+                onInfos={() => setPrincipal({ ...principal, cote: "infos" })}
+                onRechercher={() => setPrincipal({ ...principal, cote: "recherche" })}
+                onFermer={() => setPrincipal(ACCUEIL)}
+                onEcrireA={ouvrirPersonne}
+              />
+              <Apparition>
+                {principal.cote && (
+                  <PanneauCote cote={principal.cote}>
+                    {principal.cote === "galerie" ? (
+                      <Galerie
+                        key={`galerie-${principal.conversation}`}
+                        conversation={principal.conversation}
+                        onFermer={() => setPrincipal({ ...principal, cote: "infos" })}
+                      />
+                    ) : principal.cote === "recherche" ? (
+                      <RechercheMessages
+                        key={`recherche-${principal.conversation}`}
+                        conversation={principal.conversation}
+                        onFermer={() => setPrincipal({ ...principal, cote: null })}
+                      />
+                    ) : estGroupe(principal.conversation) ? (
+                      <InfosGroupe
+                        key={`infos-${principal.conversation}`}
+                        groupeId={idGroupe(principal.conversation)}
+                        onFermer={() => setPrincipal({ ...principal, cote: null })}
+                        onMessage={ouvrirPersonne}
+                        onGalerie={() => setPrincipal({ ...principal, cote: "galerie" })}
+                      />
+                    ) : (
+                      <FicheContact
+                        key={`infos-${principal.conversation}`}
+                        id={autreParticipant(principal.conversation, moi.id)}
+                        onFermer={() => setPrincipal({ ...principal, cote: null })}
+                        onGalerie={() => setPrincipal({ ...principal, cote: "galerie" })}
+                      />
+                    )}
+                  </PanneauCote>
+                )}
+              </Apparition>
+            </VueDiscussion>
+          )}
+        </Apparition>
       </main>
 
-      {theme && <DialogueTheme onFermer={() => setTheme(false)} />}
-      {fond && <DialogueFond onFermer={() => setFond(false)} />}
-      {invitationGroupe && (
-        <DialogueRejoindre
-          code={invitationGroupe}
-          onFermer={() => {
-            oublierInvitationGroupe();
-            setInvitationGroupe(null);
-          }}
-          onRejoint={(groupe) => {
-            oublierInvitationGroupe();
-            setInvitationGroupe(null);
-            messagerie.retenirGroupe(groupe);
-            ouvrirDiscussion(conversationGroupe(groupe.id));
-          }}
-        />
-      )}
-      {deconnexion && (
-        <Dialogue
-          titre="Se déconnecter ?"
-          confirmer="Se déconnecter"
-          danger
-          onConfirmer={() => void deconnecter()}
-          onFermer={() => setDeconnexion(false)}
-        >
-          Cet appareil sera déconnecté. Ses messages restent enregistrés dans ce navigateur pour votre prochaine connexion.
-        </Dialogue>
-      )}
+      <Apparition>{theme && <DialogueTheme onFermer={() => setTheme(false)} />}</Apparition>
+      <Apparition>{fond && <DialogueFond onFermer={() => setFond(false)} />}</Apparition>
+      <Apparition>
+        {invitationGroupe && (
+          <DialogueRejoindre
+            code={invitationGroupe}
+            onFermer={() => {
+              oublierInvitationGroupe();
+              setInvitationGroupe(null);
+            }}
+            onRejoint={(groupe) => {
+              oublierInvitationGroupe();
+              setInvitationGroupe(null);
+              messagerie.retenirGroupe(groupe);
+              ouvrirDiscussion(conversationGroupe(groupe.id));
+            }}
+          />
+        )}
+      </Apparition>
+      <Apparition>
+        {deconnexion && (
+          <Dialogue
+            titre="Se déconnecter ?"
+            confirmer="Se déconnecter"
+            danger
+            onConfirmer={() => void deconnecter()}
+            onFermer={() => setDeconnexion(false)}
+          >
+            Cet appareil sera déconnecté. Ses messages restent enregistrés dans ce navigateur pour votre prochaine connexion.
+          </Dialogue>
+        )}
+      </Apparition>
     </div>
+  );
+}
+
+/**
+ * La discussion arrive de la droite sur téléphone, comme un écran qu'on
+ * empile, et en fondu sur ordinateur où sa place est déjà là. En partant,
+ * elle se pose au-dessus de l'accueil le temps de s'effacer.
+ */
+function VueDiscussion({ children }: { children: ReactNode }) {
+  const sortie = useSortie();
+  return (
+    <div className={clsx("flex min-w-0 flex-1", sortie ? "discussion-sortie pointer-events-none absolute inset-0 z-10" : "discussion-entree relative")}>
+      {children}
+    </div>
+  );
+}
+
+/** Infos, recherche ou médias, à côté de la discussion (par-dessus sur téléphone). */
+function PanneauCote({ cote, children }: { cote: string; children: ReactNode }) {
+  const sortie = useSortie();
+  // Des infos aux médias, le panneau reste ouvert : seul son contenu glisse.
+  const [premier] = useState(cote);
+  const [change, setChange] = useState(false);
+  if (cote !== premier && !change) setChange(true);
+  return (
+    <aside
+      className={clsx(
+        "absolute inset-0 z-10 flex lg:static lg:w-[400px] lg:shrink-0 lg:border-l lg:border-bordure",
+        sortie ? "cote-sortie pointer-events-none" : "cote-entree",
+      )}
+    >
+      <div key={cote} className={clsx("flex min-w-0 flex-1", change && "vue-entree")}>
+        {children}
+      </div>
+    </aside>
   );
 }

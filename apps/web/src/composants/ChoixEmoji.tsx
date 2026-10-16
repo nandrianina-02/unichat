@@ -2,6 +2,7 @@ import clsx from "clsx";
 import { Apple, Car, Clock, Hash, Lightbulb, LoaderCircle, PawPrint, Smile, Trophy, UserRound, type LucideIcon } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import type { CategorieEmoji } from "../lib/emoji";
+import { useSortie } from "./Apparition";
 
 const ICONES: Record<string, LucideIcon> = {
   recents: Clock,
@@ -62,13 +63,15 @@ export function ChoixEmoji({ onChoisir }: { onChoisir: (emoji: string) => void }
     ...(categories ?? []),
   ];
 
+  const sortie = useSortie();
+
   function aller(id: string) {
     setActive(id);
     zone.current?.querySelector(`[data-categorie="${id}"]`)?.scrollIntoView({ block: "start" });
   }
 
   return (
-    <div className="animate-rise mx-2 mb-1 flex h-[300px] flex-col overflow-hidden rounded-lg bg-panneau shadow-sm ring-1 ring-bordure md:mx-4">
+    <div className={clsx(sortie ? "animate-sink pointer-events-none" : "animate-rise", "mx-2 mb-1 flex h-[300px] flex-col overflow-hidden rounded-lg bg-panneau shadow-sm ring-1 ring-bordure md:mx-4")}>
       <div role="tablist" aria-label="Catégories d'emoji" className="flex shrink-0 justify-between gap-1 border-b border-bordure px-2 py-1">
         {sections.map((s) => {
           const Icone = ICONES[s.id] ?? Smile;

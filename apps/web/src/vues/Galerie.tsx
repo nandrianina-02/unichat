@@ -3,6 +3,7 @@ import { Download, FileText, Globe, Image as IconeImage, LoaderCircle, Play, X }
 import { useEffect, useMemo, useState } from "react";
 import { Visionneuse, enregistrer, type MessageAvecMedia } from "../composants/Media";
 import { premierLien } from "../composants/TexteMessage";
+import { Apparition } from "../composants/Apparition";
 import { dateListe, tailleFichier } from "../lib/format";
 import { useMessagerie, useMessages } from "../lib/messagerie-react";
 import type { MessageLocal } from "../lib/stockage";
@@ -113,7 +114,7 @@ export function Galerie({ conversation, onFermer }: { conversation: string; onFe
   ];
 
   return (
-    <section className="vue-entree flex h-full w-full flex-col bg-panneau">
+    <section className="flex h-full w-full flex-col bg-panneau">
       <header className="flex h-[60px] shrink-0 items-center gap-6 bg-entete px-5">
         <button
           type="button"
@@ -204,14 +205,16 @@ export function Galerie({ conversation, onFermer }: { conversation: string; onFe
             );
           })}
       </div>
-      {visionne && (
-        <Visionneuse
-          message={visionne.message}
-          url={visionne.url}
-          auteur={messagerie.nom(visionne.message.de, conversation)}
-          onFermer={() => setVisionne(null)}
-        />
-      )}
+      <Apparition>
+        {visionne && (
+          <Visionneuse
+            message={visionne.message}
+            url={visionne.url}
+            auteur={messagerie.nom(visionne.message.de, conversation)}
+            onFermer={() => setVisionne(null)}
+          />
+        )}
+      </Apparition>
     </section>
   );
 }

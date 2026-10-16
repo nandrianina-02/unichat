@@ -7,6 +7,7 @@ import { urlOuvertureMedia } from "../lib/api-medias";
 import { dureeCourte, heureCourte, jourMessage, tailleFichier } from "../lib/format";
 import { useMessagerie } from "../lib/messagerie-react";
 import { useRetourSysteme } from "../lib/retour";
+import { useSortie } from "./Apparition";
 import type { MessageLocal } from "../lib/stockage";
 
 export type MessageAvecMedia = MessageLocal & { media: MediaMessage };
@@ -454,18 +455,22 @@ export function Visionneuse({
   onFermer: () => void;
 }) {
   const fermer = useRef<HTMLButtonElement>(null);
-  useRetourSysteme(true, onFermer);
+  // Pendant sa sortie, la couche a déjà rendu son entrée d'historique.
+  const sortie = useSortie();
+  useRetourSysteme(!sortie, onFermer);
   useEffect(() => {
+    // Une vue unique ne se referme qu'une fois : Échap pendant la sortie est sans effet.
+    if (sortie) return;
     fermer.current?.focus();
     const echap = (e: KeyboardEvent) => e.key === "Escape" && onFermer();
     window.addEventListener("keydown", echap);
     return () => window.removeEventListener("keydown", echap);
-  }, [onFermer]);
+  }, [onFermer, sortie]);
 
   const bouton = "inline-flex size-10 shrink-0 items-center justify-center rounded-full text-sur-visionneuse/80 transition-colors hover:bg-sur-visionneuse/10 hover:text-sur-visionneuse";
   const m = message.media;
   return (
-    <div role="dialog" aria-modal="true" aria-label={m.type === "image" ? "Photo" : "Vidéo"} className="animate-fade fixed inset-0 z-50 flex flex-col bg-visionneuse text-sur-visionneuse">
+    <div role="dialog" aria-modal="true" aria-label={m.type === "image" ? "Photo" : "Vidéo"} className={clsx(sortie ? "animate-fade-out pointer-events-none" : "animate-fade", "fixed inset-0 z-50 flex flex-col bg-visionneuse text-sur-visionneuse")}>
       <header className="flex h-[60px] shrink-0 items-center gap-2 px-3 md:px-5">
         <div className="min-w-0 flex-1">
           <p className="truncate text-[15px]">{auteur}</p>

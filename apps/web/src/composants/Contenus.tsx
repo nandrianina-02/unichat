@@ -9,6 +9,7 @@ import { Avatar } from "./Avatar";
 import { BoutonIcone } from "./BoutonIcone";
 import { Case } from "./Case";
 import { Dialogue } from "./Dialogue";
+import { Apparition } from "./Apparition";
 
 // --- Position -------------------------------------------------------------------------
 
@@ -268,25 +269,27 @@ export function BlocSondage({
       >
         {votants === 0 ? "Aucun vote" : `Voir les votes (${votants})`}
       </button>
-      {details && (
-        <Dialogue titre="Votes" confirmer="Fermer" annuler={false} onConfirmer={() => setDetails(false)} onFermer={() => setDetails(false)}>
-          <p className="font-medium text-texte">{s.question}</p>
-          {s.options.map((option, i) => {
-            const qui = Object.entries(votes).filter(([, c]) => c.includes(i)).map(([id]) => nom(id));
-            return (
-              <div key={i} className="mt-3">
-                <p className="flex justify-between text-[14px] text-texte">
-                  <span>{option}</span>
-                  <span className="tabular-nums text-texte-2">
-                    {qui.length} vote{qui.length > 1 ? "s" : ""}
-                  </span>
-                </p>
-                {qui.length > 0 && <p className="mt-0.5 text-[13px] text-texte-2">{qui.join(", ")}</p>}
-              </div>
-            );
-          })}
-        </Dialogue>
-      )}
+      <Apparition>
+        {details && (
+          <Dialogue titre="Votes" confirmer="Fermer" annuler={false} onConfirmer={() => setDetails(false)} onFermer={() => setDetails(false)}>
+            <p className="font-medium text-texte">{s.question}</p>
+            {s.options.map((option, i) => {
+              const qui = Object.entries(votes).filter(([, c]) => c.includes(i)).map(([id]) => nom(id));
+              return (
+                <div key={i} className="mt-3">
+                  <p className="flex justify-between text-[14px] text-texte">
+                    <span>{option}</span>
+                    <span className="tabular-nums text-texte-2">
+                      {qui.length} vote{qui.length > 1 ? "s" : ""}
+                    </span>
+                  </p>
+                  {qui.length > 0 && <p className="mt-0.5 text-[13px] text-texte-2">{qui.join(", ")}</p>}
+                </div>
+              );
+            })}
+          </Dialogue>
+        )}
+      </Apparition>
     </div>
   );
 }

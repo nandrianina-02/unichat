@@ -6,6 +6,7 @@ import { useCompte } from "../lib/compte";
 import { preparerPhoto } from "../lib/images";
 import { useMessagerie } from "../lib/messagerie-react";
 import { Avatar, AvatarGroupe } from "./Avatar";
+import { Anime, Apparition } from "./Apparition";
 
 /**
  * Image ronde cliquable : au survol, « Changer la photo » ; un menu propose
@@ -78,34 +79,37 @@ function ChoixImage({
             </span>
           )}
         </button>
-        {menu && (
-          <div
-            role="menu"
-            className="animate-pop absolute top-1/2 left-1/2 z-20 w-56 rounded-lg bg-panneau py-2 shadow-xl ring-1 ring-bordure"
-          >
-            <button
-              role="menuitem"
-              type="button"
-              onClick={() => {
-                setMenu(false);
-                fichier.current?.click();
-              }}
-              className="flex w-full items-center gap-3 px-5 py-2.5 text-left text-sm text-texte hover:bg-survol"
+        <Apparition>
+          {menu && (
+            <Anime
+              effet="surgit"
+              role="menu"
+              className="absolute top-1/2 left-1/2 z-20 w-56 rounded-lg bg-panneau py-2 shadow-xl ring-1 ring-bordure"
             >
-              <ImagePlus size={18} className="text-texte-2" /> Importer une photo
-            </button>
-            {aPhoto && (
               <button
                 role="menuitem"
                 type="button"
-                onClick={() => void supprimer()}
+                onClick={() => {
+                  setMenu(false);
+                  fichier.current?.click();
+                }}
                 className="flex w-full items-center gap-3 px-5 py-2.5 text-left text-sm text-texte hover:bg-survol"
               >
-                <Trash2 size={18} className="text-texte-2" /> Supprimer la photo
+                <ImagePlus size={18} className="text-texte-2" /> Importer une photo
               </button>
-            )}
-          </div>
-        )}
+              {aPhoto && (
+                <button
+                  role="menuitem"
+                  type="button"
+                  onClick={() => void supprimer()}
+                  className="flex w-full items-center gap-3 px-5 py-2.5 text-left text-sm text-texte hover:bg-survol"
+                >
+                  <Trash2 size={18} className="text-texte-2" /> Supprimer la photo
+                </button>
+              )}
+            </Anime>
+          )}
+        </Apparition>
       </div>
       <input
         ref={fichier}

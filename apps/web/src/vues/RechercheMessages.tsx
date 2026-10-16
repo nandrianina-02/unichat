@@ -47,7 +47,7 @@ export function RechercheMessages({ conversation, onFermer }: { conversation: st
   }, [messages, recherche]);
 
   return (
-    <section className="vue-entree flex h-full w-full flex-col bg-panneau">
+    <section className="flex h-full w-full flex-col bg-panneau">
       <header className="flex h-[60px] shrink-0 items-center gap-6 bg-entete px-5">
         <button
           type="button"

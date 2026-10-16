@@ -6,6 +6,7 @@ import { tailleFichier } from "../lib/format";
 import { preparerFichier, type FichierPrepare } from "../lib/medias";
 import { estTactile } from "../lib/appui";
 import { useRetourSysteme } from "../lib/retour";
+import { useSortie } from "./Apparition";
 import { BoutonIcone } from "./BoutonIcone";
 
 /** Au-delà, l'envoi groupé ressemble à un transfert de dossier : mieux vaut plusieurs fois. */
@@ -74,7 +75,9 @@ export function EnvoiFichiers({
     };
   }, []);
 
-  useRetourSysteme(true, onAnnuler);
+  // Pendant sa sortie, la couche a déjà rendu son entrée d'historique.
+  const sortie = useSortie();
+  useRetourSysteme(!sortie, onAnnuler);
   useEffect(() => {
     // Sur téléphone, le clavier couvrirait l'aperçu : il attend qu'on touche la légende.
     if (!estTactile()) champ.current?.focus();
@@ -112,7 +115,7 @@ export function EnvoiFichiers({
   }
 
   return (
-    <div className="animate-rise absolute inset-0 z-20 flex flex-col bg-entete" role="dialog" aria-modal="true" aria-label="Envoyer des fichiers">
+    <div className={clsx(sortie ? "animate-sink pointer-events-none" : "animate-rise", "absolute inset-0 z-20 flex flex-col bg-entete")} role="dialog" aria-modal="true" aria-label="Envoyer des fichiers">
       <header className="flex h-[60px] shrink-0 items-center gap-2 px-2 md:px-4">
         <BoutonIcone libelle="Annuler" onClick={onAnnuler}>
           <X size={22} />
