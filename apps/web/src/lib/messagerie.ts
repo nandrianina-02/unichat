@@ -1,4 +1,6 @@
 import {
+  DELAI_MODIFICATION,
+  EPINGLES_MESSAGES_MAX,
   FERMETURE_SESSION,
   LIMITE_EXTRAIT,
   MESSAGES_SIGNALES,
@@ -15,13 +17,14 @@ import {
   type Reaction,
 } from "@unichat/shared";
 import { ErreurApi, api } from "./api";
-import { retirerMedia, telechargerMedia } from "./api-medias";
+import { retirerMedia, telechargerMedia, transfererMedia } from "./api-medias";
 import { heureCourte, resumeMessage } from "./format";
 import { envoyerParMorceaux, type FichierPrepare } from "./medias";
 import {
   ouvrirStockage,
   plageConversation,
   type ConversationLocale,
+  type Epingle,
   type EtatMessage,
   type MessageLocal,
   type Stockage,
@@ -353,6 +356,22 @@ export class Messagerie {
           supprimes.push(msg.id);
           touchees.add(e.conversation);
         }
+      } else if (e.type === "modification") {
+        const msg = await messages.get(e.message);
+        // Seul l'auteur modifie, et seulement dans le délai : on ne fait pas confiance au seul serveur.
+        if (msg && msg.conversation === e.conversation && msg.de === e.par && !msg.supprime && e.le - msg.le <= DELAI_MODIFICATION + 60_000) {
+          await messages.put({ ...msg, texte: e.texte, modifieLe: e.le });
+          touchees.add(e.conversation);
+        }
+      } else if (e.type === "epingle") {
+        await this.appliquerEpingle(tx, e.conversation, { message: e.message, par: e.par, jusqua: e.jusqua, le: e.le });
+        touchees.add(e.conversation);
+      } else if (e.type === "important") {
+        const msg = await messages.get(e.message);
+        if (msg && msg.conversation === e.conversation) {
+          await messages.put({ ...msg, importantLe: e.important ? e.le : undefined });
+          touchees.add(e.conversation);
+        }
       } else if (e.type === "blocage") {
         blocages.push({ personne: e.personne, bloque: e.bloque });
       } else if (e.type === "preference") {
@@ -468,7 +487,103 @@ export class Messagerie {
       texte: m.texte,
       ...(media ? { media } : {}),
       ...(m.reponseA ? { reponseA: m.reponseA } : {}),
+      ...(m.transfere ? { transfere: m.transfere } : {}),
     });
+  }
+
+  // --- Modifier, épingler, important, transférer ---------------------------------------
+
+  /** Modifier un de mes messages, dans les 15 minutes. Les autres le voient « Modifié ». */
+  async modifier(message: MessageLocal, texte: string): Promise<boolean> {
+    const propre = texte.trim();
+    if (!propre || message.de !== this.moi || message.supprime || Date.now() - message.le > DELAI_MODIFICATION) return false;
+    if (!this.brut({ t: "modifier", conversation: message.conversation, message: message.id, texte: propre })) return false;
+    await this.modifierMessage(message.id, (m) => ({ ...m, texte: propre, modifieLe: Date.now() }));
+    return true;
+  }
+
+  /** Épingler pour tous (ou désépingler avec null). Trois épingles au plus : la plus ancienne cède la place. */
+  async epingler(message: MessageLocal, duree: number | null): Promise<boolean> {
+    const jusqua = duree === null ? null : Date.now() + duree;
+    if (!this.brut({ t: "epingler", conversation: message.conversation, message: message.id, jusqua })) return false;
+    const tx = this.db.transaction(["messages", "conversations"], "readwrite");
+    await this.appliquerEpingle(tx, message.conversation, { message: message.id, par: this.moi, jusqua, le: Date.now() });
+    await tx.done;
+    await this.publierConversations(new Set([message.conversation]));
+    return true;
+  }
+
+  private async appliquerEpingle(
+    tx: TransactionMessages,
+    conversation: string,
+    e: { message: string; par: string; jusqua: number | null; le: number },
+  ): Promise<void> {
+    const conversations = tx.objectStore("conversations");
+    const existante = await conversations.get(conversation);
+    if (!existante) return;
+    const restantes = (existante.epingles ?? []).filter((p) => p.message !== e.message && p.jusqua > Date.now());
+    const epingles: Epingle[] = e.jusqua ? [...restantes, { message: e.message, par: e.par, jusqua: e.jusqua, le: e.le }] : restantes;
+    await conversations.put({ ...existante, epingles: epingles.slice(-EPINGLES_MESSAGES_MAX) });
+  }
+
+  /** Important : une étoile sur le message, retrouvée dans « Messages importants » sur tous mes appareils. */
+  async marquerImportant(message: MessageLocal, important: boolean): Promise<void> {
+    await this.modifierMessage(message.id, (m) => ({ ...m, importantLe: important ? Date.now() : undefined }));
+    this.brut({ t: "important", conversation: message.conversation, message: message.id, important });
+  }
+
+  async importants(): Promise<MessageLocal[]> {
+    const tous = await this.db.getAllFromIndex("messages", "important");
+    return tous.sort((a, b) => (b.importantLe ?? 0) - (a.importantLe ?? 0));
+  }
+
+  /**
+   * Transférer des messages vers d'autres discussions. Un fichier n'est pas
+   * renvoyé : le serveur fait pointer le nouveau message vers le même.
+   * Renvoie le nombre de messages qui n'ont pas pu partir.
+   */
+  async transferer(sources: MessageLocal[], destinations: string[]): Promise<number> {
+    let echecs = 0;
+    for (const conversation of destinations) {
+      const groupe = estGroupe(conversation);
+      for (const source of [...sources].sort((a, b) => a.le - b.le)) {
+        if (source.supprime || source.type === "evenement") continue;
+        let media = source.media;
+        if (media) {
+          if (!media.id) {
+            echecs += 1;
+            continue;
+          }
+          try {
+            media = { ...media, id: await transfererMedia(media.id, conversation) };
+          } catch {
+            echecs += 1;
+            continue;
+          }
+        }
+        const message: MessageLocal = {
+          id: crypto.randomUUID(),
+          conversation,
+          de: this.moi,
+          a: groupe ? idGroupe(conversation) : autreParticipant(conversation, this.moi),
+          texte: source.texte,
+          le: Date.now(),
+          type: "texte",
+          etat: "attente",
+          transfere: (source.transfere ?? 0) + 1,
+          ...(media ? { media } : {}),
+        };
+        const blob = media ? await this.fichierLocal(source.id) : undefined;
+        if (blob) await this.db.put("fichiers", { id: message.id, blob });
+        const tx = this.db.transaction(["messages", "conversations"], "readwrite");
+        await tx.objectStore("messages").put(message);
+        await this.recalculer(tx, conversation);
+        await tx.done;
+        this.envoyerMessage(message);
+      }
+    }
+    await this.publierConversations(new Set(destinations));
+    return echecs;
   }
 
   // --- Fichiers -------------------------------------------------------------------------
@@ -862,6 +977,7 @@ export class Messagerie {
     const resume: ConversationLocale = {
       ...(existante?.reglages ? { reglages: existante.reglages } : {}),
       ...(existante?.videeLe ? { videeLe: existante.videeLe } : {}),
+      ...(existante?.epingles?.length ? { epingles: existante.epingles } : {}),
       id: conversation,
       autre: estGroupe(conversation) ? idGroupe(conversation) : autreParticipant(conversation, this.moi),
       dernier: dernier

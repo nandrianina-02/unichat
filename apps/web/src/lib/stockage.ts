@@ -30,6 +30,20 @@ export interface MessageLocal {
   luPar?: string[];
   /** Pour les messages reçus : lu sur l'un de mes appareils. */
   lu?: boolean;
+  /** Modifié par son auteur, à cette heure. */
+  modifieLe?: number;
+  /** Nombre de transferts avant d'arriver ici (« Transféré »). */
+  transfere?: number;
+  /** Marqué important, à cette heure (sert d'index : un booléen ne peut pas en être un). */
+  importantLe?: number;
+}
+
+/** Message épinglé en haut d'une discussion, pour tous ses participants. */
+export interface Epingle {
+  message: string;
+  par: string;
+  jusqua: number;
+  le: number;
 }
 
 export interface ConversationLocale {
@@ -52,6 +66,8 @@ export interface ConversationLocale {
   videeLe?: number;
   /** Sourdine, favori, archive, épingle : réglages propres à moi, partagés entre mes appareils. */
   reglages?: ReglagesDiscussion;
+  /** Messages épinglés en haut de la discussion, du plus ancien au plus récent. */
+  epingles?: Epingle[];
 }
 
 export type ReglagesDiscussion = Pick<Preference, "muetJusqua" | "favori" | "archive" | "epingle">;
@@ -71,7 +87,7 @@ export interface FichierLocal {
 }
 
 export interface Schema extends DBSchema {
-  messages: { key: string; value: MessageLocal; indexes: { conversation: [string, number]; etat: string } };
+  messages: { key: string; value: MessageLocal; indexes: { conversation: [string, number]; etat: string; important: number } };
   conversations: { key: string; value: ConversationLocale };
   personnes: { key: string; value: PersonneLocale };
   groupes: { key: string; value: GroupeLocal };
@@ -84,8 +100,8 @@ export type TransactionMessages = IDBPTransaction<Schema, ["messages", "conversa
 
 /** Une base par compte : deux comptes sur le même navigateur ne se mélangent pas. */
 export function ouvrirStockage(utilisateurId: string): Promise<Stockage> {
-  return openDB<Schema>(`unichat-${utilisateurId}`, 3, {
-    upgrade(db, ancienne) {
+  return openDB<Schema>(`unichat-${utilisateurId}`, 4, {
+    upgrade(db, ancienne, _nouvelle, transaction) {
       if (ancienne < 1) {
         const messages = db.createObjectStore("messages", { keyPath: "id" });
         messages.createIndex("conversation", ["conversation", "le"]);
@@ -98,6 +114,8 @@ export function ouvrirStockage(utilisateurId: string): Promise<Stockage> {
       if (ancienne < 2) db.createObjectStore("groupes", { keyPath: "id" });
       // Version 3 : les fichiers reçus et envoyés, gardés sur l'appareil.
       if (ancienne < 3) db.createObjectStore("fichiers", { keyPath: "id" });
+      // Version 4 : les messages importants, retrouvés sans parcourir tout l'historique.
+      if (ancienne < 4) transaction.objectStore("messages").createIndex("important", "importantLe");
     },
   });
 }

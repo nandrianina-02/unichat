@@ -91,6 +91,10 @@ export interface MediaMessage {
   vocal?: boolean;
 }
 
+export const schemaTransfertMedia = z
+  .object({ conversation: z.string().regex(motifConversation, "Discussion invalide.") })
+  .strict();
+
 /** Ce que l'application déclare d'un fichier à l'envoi ; le reste vient du serveur. */
 export const schemaMediaEnvoye = z
   .object({

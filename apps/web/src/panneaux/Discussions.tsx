@@ -17,6 +17,7 @@ import {
   Search,
   Settings,
   ShieldAlert,
+  Star,
   UserPlus,
   Video,
   WifiOff,
@@ -46,13 +47,14 @@ interface Props {
   onOuvrirPersonne: (id: string) => void;
   onNouvelle: () => void;
   onParametres: () => void;
+  onImportants: () => void;
   onDeconnexion: () => void;
 }
 
 type Filtre = "toutes" | "non-lues" | "favoris" | "groupes";
 
 /** Colonne de gauche : en-tête, recherche, alertes, liste des discussions. */
-export function Discussions({ selection, onOuvrir, onOuvrirPersonne, onNouvelle, onParametres, onDeconnexion }: Props) {
+export function Discussions({ selection, onOuvrir, onOuvrirPersonne, onNouvelle, onParametres, onImportants, onDeconnexion }: Props) {
   const moi = useMoi();
   const { sessionPerdue } = useCompte();
   const { messagerie, etat } = useMessagerie();
@@ -151,6 +153,7 @@ export function Discussions({ selection, onOuvrir, onOuvrirPersonne, onNouvelle,
               <div role="menu" className="animate-pop absolute right-0 top-11 z-30 w-56 rounded-lg bg-panneau py-2 shadow-xl ring-1 ring-bordure">
                 {[
                   { icone: UserPlus, libelle: "Nouveau contact", action: onNouvelle },
+                  { icone: Star, libelle: "Messages importants", action: onImportants },
                   { icone: Settings, libelle: "Paramètres", action: onParametres },
                   { icone: LogOut, libelle: "Se déconnecter", action: onDeconnexion },
                 ].map(({ icone: Icone, libelle, action }) => (

@@ -7,6 +7,7 @@ import {
   idGroupe,
   mimeSimple,
   schemaNouveauMedia,
+  schemaTransfertMedia,
 } from "@unichat/shared";
 import { lireCorpsBorne } from "../lib/corps";
 import { Refus, refus } from "../lib/erreurs";
@@ -107,6 +108,31 @@ medias.post("/", async (c) => {
   return c.json({ id, tailleMorceau: TAILLE_MORCEAU }, 201);
 });
 
+/**
+ * Transfert d'un fichier reçu ou envoyé vers une autre discussion : une
+ * nouvelle ligne pointe vers le même fichier chez Karaks Storage, sans le
+ * renvoyer. Le nettoyage ne l'efface qu'une fois la dernière ligne expirée.
+ */
+medias.post("/:id/transfert", async (c) => {
+  const { conversation } = await corpsJson(c, schemaTransfertMedia);
+  const moi = c.get("session").utilisateur_id;
+  await limiter(c, `media:${moi}`, 60, 60 * MINUTE);
+  const maintenant = c.get("deps").maintenant();
+  const source = await c.env.DB.prepare("SELECT * FROM medias WHERE id = ?1").bind(c.req.param("id")).first<LigneMedia>();
+  if (!source || !source.fichier_id || source.expire_le <= maintenant || !(await participe(c.env.DB, source.conversation, moi))) {
+    throw refus.introuvable("Fichier expiré ou introuvable.");
+  }
+  if (!(await participe(c.env.DB, conversation, moi))) throw refus.interdit("Vous ne faites pas partie de cette discussion.");
+  const id = crypto.randomUUID();
+  await c.env.DB.prepare(
+    `INSERT INTO medias (id, conversation, proprietaire, type, mime, nom, taille, envoi_id, fichier_id, cree_le, termine_le, expire_le)
+     VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?10, ?11)`,
+  )
+    .bind(id, conversation, moi, source.type, source.mime, source.nom, source.taille, source.envoi_id, source.fichier_id, maintenant, maintenant + CONSERVATION_MEDIA)
+    .run();
+  return c.json({ id }, 201);
+});
+
 async function monMedia(c: Context<AppEnv>): Promise<LigneMedia> {
   const ligne = await c.env.DB.prepare("SELECT * FROM medias WHERE id = ?1 AND proprietaire = ?2")
     .bind(c.req.param("id"), c.get("session").utilisateur_id)
@@ -166,13 +192,18 @@ medias.get("/:id", async (c) => {
   const source = await c.get("deps").recuperer(url, { headers: plage ? { Range: plage } : {} });
   if (!source.ok || !source.body) throw new Refus(502, "stockage_indisponible", "Le fichier n'a pas pu être lu. Réessayez.");
 
+  // « Ouvrir » un document : affiché dans l'onglet plutôt que téléchargé. Un
+  // PDF a besoin de la visionneuse du navigateur, que « sandbox » bloquerait ;
+  // le type est vérifié par le stockage et « nosniff » empêche toute autre lecture.
+  const ouvrir = c.req.query("ouvrir") === "1";
+  const pdf = media.mime === "application/pdf";
   const enTetes = new Headers({
     "Content-Type": media.mime,
     "Cache-Control": "private, max-age=3600",
     "X-Content-Type-Options": "nosniff",
     // Ouvert seul dans un onglet, un fichier ne peut rien exécuter.
-    "Content-Security-Policy": "default-src 'none'; sandbox",
-    "Content-Disposition": `${media.type === "document" ? "attachment" : "inline"}; filename*=UTF-8''${encodeURIComponent(media.nom)}`,
+    "Content-Security-Policy": ouvrir && pdf ? "default-src 'none'; frame-ancestors 'none'" : "default-src 'none'; sandbox",
+    "Content-Disposition": `${media.type === "document" && !ouvrir ? "attachment" : "inline"}; filename*=UTF-8''${encodeURIComponent(media.nom)}`,
   });
   for (const nom of ["Content-Length", "Content-Range", "Accept-Ranges"]) {
     const valeur = source.headers.get(nom);

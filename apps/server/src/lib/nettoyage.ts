@@ -36,8 +36,14 @@ export async function nettoyerMedias(env: Bindings, maintenant: number, recupere
   let effaces = 0;
   for (const m of results) {
     try {
-      if (m.fichier_id) await supprimerFichier(recuperer, config, m.fichier_id);
-      else await abandonnerEnvoi(recuperer, config, m.envoi_id).catch(() => {});
+      // Fichier transféré ailleurs : il reste tant qu'une autre ligne en a besoin.
+      const partage = m.fichier_id
+        ? await env.DB.prepare("SELECT 1 AS ok FROM medias WHERE fichier_id = ?1 AND id <> ?2 AND expire_le >= ?3 LIMIT 1")
+            .bind(m.fichier_id, m.id, maintenant)
+            .first()
+        : null;
+      if (m.fichier_id && !partage) await supprimerFichier(recuperer, config, m.fichier_id);
+      else if (!m.fichier_id) await abandonnerEnvoi(recuperer, config, m.envoi_id).catch(() => {});
       await env.DB.prepare("DELETE FROM medias WHERE id = ?1").bind(m.id).run();
       effaces += 1;
     } catch (erreur) {

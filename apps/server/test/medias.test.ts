@@ -150,6 +150,50 @@ describe("fichiers joints", () => {
     expect(reste?.n).toBe(0);
   });
 
+  it("transfère un fichier sans le renvoyer, et ne l'efface qu'avec sa dernière copie", async () => {
+    const t = await preparer();
+    const ana = await personne(t, "ana");
+    const bob = await personne(t, "bob");
+    const lova = await personne(t, "lova");
+    const mediaId = await envoyerFichier(ana.appareil, conversationDirecte(ana.id, bob.id));
+    const fichiersAvant = t.karaks.fichiers.size;
+
+    // Bob a reçu le fichier : il peut le transférer à Lova, mais pas un intrus.
+    const vers = conversationDirecte(bob.id, lova.id);
+    expect((await lova.appareil.appel(`/api/medias/${mediaId}/transfert`, { method: "POST", json: { conversation: vers } })).status).toBe(404);
+    const r = await bob.appareil.appel(`/api/medias/${mediaId}/transfert`, { method: "POST", json: { conversation: vers } });
+    expect(r.status).toBe(201);
+    const { id: copie } = (await r.json()) as { id: string };
+    expect(t.karaks.fichiers.size).toBe(fichiersAvant);
+    expect((await lova.appareil.appel(`/api/medias/${copie}`)).status).toBe(200);
+    // Vers une discussion dont il ne fait pas partie : refusé.
+    const ailleurs = conversationDirecte(ana.id, lova.id);
+    expect((await bob.appareil.appel(`/api/medias/${mediaId}/transfert`, { method: "POST", json: { conversation: ailleurs } })).status).toBe(403);
+
+    // L'original retiré : le fichier reste, la copie en a encore besoin.
+    await ana.appareil.appel(`/api/medias/${mediaId}`, { method: "DELETE" });
+    await nettoyerMedias(t.environnement, Date.now(), t.recuperer);
+    expect(t.karaks.fichiers.size).toBe(fichiersAvant);
+    expect((await lova.appareil.appel(`/api/medias/${copie}`)).status).toBe(200);
+    // La copie retirée à son tour : cette fois, il part.
+    await bob.appareil.appel(`/api/medias/${copie}`, { method: "DELETE" });
+    await nettoyerMedias(t.environnement, Date.now(), t.recuperer);
+    expect(t.karaks.fichiers.size).toBe(fichiersAvant - 1);
+  });
+
+  it("ouvre un PDF dans l'onglet, sans bac à sable qui bloquerait la visionneuse", async () => {
+    const t = await preparer();
+    const ana = await personne(t, "ana");
+    const bob = await personne(t, "bob");
+    const mediaId = await envoyerFichier(ana.appareil, conversationDirecte(ana.id, bob.id), { nom: "programme.pdf", mime: "application/pdf" });
+    const telecharge = await bob.appareil.appel(`/api/medias/${mediaId}`);
+    expect(telecharge.headers.get("Content-Disposition")).toMatch(/^attachment/);
+    const ouvert = await bob.appareil.appel(`/api/medias/${mediaId}?ouvrir=1`);
+    expect(ouvert.headers.get("Content-Disposition")).toMatch(/^inline/);
+    expect(ouvert.headers.get("Content-Security-Policy")).not.toContain("sandbox");
+    expect(ouvert.headers.get("X-Content-Type-Options")).toBe("nosniff");
+  });
+
   it("explique quand le stockage n'est pas configuré", async () => {
     const t = await preparer({ stockage: false });
     const ana = await personne(t, "ana");

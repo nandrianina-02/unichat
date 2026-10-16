@@ -11,6 +11,20 @@ export const LIMITE_TEXTE = 4096;
 export const LIMITE_EXTRAIT = 200;
 /** Délai pendant lequel on peut supprimer un message pour tout le monde. */
 export const DELAI_SUPPRESSION = 48 * 60 * 60 * 1000;
+/** Délai pendant lequel on peut modifier un message envoyé, comme dans WhatsApp. */
+export const DELAI_MODIFICATION = 15 * 60 * 1000;
+/** Destinataires d'un même transfert : au-delà, c'est de la diffusion. */
+export const TRANSFERT_MAX = 5;
+/** Transféré au moins autant de fois : « Transféré plusieurs fois ». */
+export const TRANSFERTS_NOMBREUX = 5;
+/** Messages épinglés en haut d'une discussion. */
+export const EPINGLES_MESSAGES_MAX = 3;
+const JOUR = 24 * 60 * 60 * 1000;
+export const DUREES_EPINGLE = [
+  { libelle: "24 heures", duree: JOUR },
+  { libelle: "7 jours", duree: 7 * JOUR },
+  { libelle: "30 jours", duree: 30 * JOUR },
+] as const;
 
 // --- Discussions -----------------------------------------------------------------
 
@@ -62,6 +76,8 @@ export interface Message {
   /** Heure du serveur à l'acceptation du message. */
   le: number;
   reponseA?: Citation;
+  /** Nombre de fois que ce contenu a été transféré avant d'arriver ici. */
+  transfere?: number;
 }
 
 export type ActionGroupe = "creation" | "ajout" | "retrait" | "depart" | "renommage" | "description";
@@ -111,6 +127,12 @@ export type Entree =
   | { seq: number; type: "lu"; conversation: string; ids: string[]; le: number }
   | { seq: number; type: "reaction"; conversation: string; message: string; par: string; code: Reaction | null; le: number }
   | { seq: number; type: "suppression"; conversation: string; message: string; par: string; le: number }
+  /** Message modifié par son auteur (dans les 15 minutes, vérifié par chaque application). */
+  | { seq: number; type: "modification"; conversation: string; message: string; par: string; texte: string; le: number }
+  /** Message épinglé (ou désépinglé avec null) pour tous les participants. */
+  | { seq: number; type: "epingle"; conversation: string; message: string; par: string; jusqua: number | null; le: number }
+  /** Message marqué important sur l'un de mes appareils : il l'est sur tous. */
+  | { seq: number; type: "important"; conversation: string; message: string; important: boolean; le: number }
   | { seq: number; type: "groupe"; evenement: EvenementGroupe }
   /** Blocage ou déblocage fait sur l'un de mes appareils : les autres se mettent à jour. */
   | { seq: number; type: "blocage"; conversation: string; personne: string; bloque: boolean; le: number }
@@ -134,6 +156,7 @@ export const schemaClient = z.discriminatedUnion("t", [
       texte: z.string().max(LIMITE_TEXTE, `${LIMITE_TEXTE} caractères au maximum.`),
       media: schemaMediaEnvoye.optional(),
       reponseA: z.object({ id: uuid, de: uuid, extrait: z.string().max(LIMITE_EXTRAIT) }).optional(),
+      transfere: z.number().int().min(1).max(10_000).optional(),
     })
     .refine((m) => Boolean(m.a) !== Boolean(m.groupe), "Destinataire manquant.")
     .refine((m) => m.texte.trim().length > 0 || m.media, "Message vide."),
@@ -144,6 +167,14 @@ export const schemaClient = z.discriminatedUnion("t", [
   z.object({ t: z.literal("reagir"), conversation, message: uuid, code: z.enum(REACTIONS).nullable() }),
   z.object({ t: z.literal("supprimer"), conversation, message: uuid }),
   z.object({ t: z.literal("preference"), conversation, preference: schemaPreference }),
+  z.object({
+    t: z.literal("modifier"),
+    conversation,
+    message: uuid,
+    texte: z.string().trim().min(1, "Message vide.").max(LIMITE_TEXTE, `${LIMITE_TEXTE} caractères au maximum.`),
+  }),
+  z.object({ t: z.literal("epingler"), conversation, message: uuid, jusqua: z.number().int().positive().nullable() }),
+  z.object({ t: z.literal("important"), conversation, message: uuid, important: z.boolean() }),
 ]);
 export type MessageClient = z.infer<typeof schemaClient>;
 

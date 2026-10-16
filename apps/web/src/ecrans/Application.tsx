@@ -26,11 +26,20 @@ import { Accueil } from "../vues/Accueil";
 import { Discussion } from "../vues/Discussion";
 import { FicheContact } from "../vues/FicheContact";
 import { InfosGroupe } from "../vues/InfosGroupe";
+import { RechercheMessages } from "../vues/RechercheMessages";
+import { Importants } from "../panneaux/Importants";
 
 /** Ce qu'affiche la zone principale. */
 type Principal =
   | { type: "accueil" }
-  | { type: "discussion"; conversation: string; infos: boolean };
+  | {
+      type: "discussion";
+      conversation: string;
+      /** Panneau à côté de la discussion : infos, ou recherche dans les messages. */
+      cote: "infos" | "recherche" | null;
+      /** Message à montrer en ouvrant la discussion. */
+      cible?: string;
+    };
 
 const ACCUEIL: Principal = { type: "accueil" };
 
@@ -50,7 +59,7 @@ export function Application() {
   const [invitation] = useState(invitationEnAttente);
 
   const ouvrirDiscussion = useCallback(
-    (conversation: string) => setPrincipal({ type: "discussion", conversation, infos: false }),
+    (conversation: string, cible?: string) => setPrincipal({ type: "discussion", conversation, cote: null, ...(cible ? { cible } : {}) }),
     [],
   );
   const ouvrirPersonne = useCallback(
@@ -134,6 +143,8 @@ export function Application() {
         return <SupprimerCompte onRetour={retour} />;
       case "bloques":
         return <Bloques onRetour={retour} />;
+      case "importants":
+        return <Importants onRetour={retour} onOuvrir={(conversation, message) => ouvrirDiscussion(conversation, message)} />;
     }
   }
 
@@ -168,6 +179,7 @@ export function Application() {
           onOuvrirPersonne={ouvrirPersonne}
           onNouvelle={() => allerA("nouvelle")}
           onParametres={() => allerA("parametres")}
+          onImportants={() => allerA("importants")}
           onDeconnexion={() => setDeconnexion(true)}
         />
         {pile.map((e, i) => (
@@ -192,25 +204,33 @@ export function Application() {
         {principal.type === "discussion" && (
           <>
             <Discussion
-              key={principal.conversation}
+              key={`${principal.conversation}|${principal.cible ?? ""}`}
               conversation={principal.conversation}
-              onInfos={() => setPrincipal({ ...principal, infos: true })}
+              cible={principal.cible}
+              onInfos={() => setPrincipal({ ...principal, cote: "infos" })}
+              onRechercher={() => setPrincipal({ ...principal, cote: "recherche" })}
               onFermer={() => setPrincipal(ACCUEIL)}
             />
-            {principal.infos && (
+            {principal.cote && (
               <aside className="absolute inset-0 z-10 flex lg:static lg:w-[400px] lg:shrink-0 lg:border-l lg:border-bordure">
-                {estGroupe(principal.conversation) ? (
+                {principal.cote === "recherche" ? (
+                  <RechercheMessages
+                    key={`recherche-${principal.conversation}`}
+                    conversation={principal.conversation}
+                    onFermer={() => setPrincipal({ ...principal, cote: null })}
+                  />
+                ) : estGroupe(principal.conversation) ? (
                   <InfosGroupe
                     key={`infos-${principal.conversation}`}
                     groupeId={idGroupe(principal.conversation)}
-                    onFermer={() => setPrincipal({ ...principal, infos: false })}
+                    onFermer={() => setPrincipal({ ...principal, cote: null })}
                     onMessage={ouvrirPersonne}
                   />
                 ) : (
                   <FicheContact
                     key={`infos-${principal.conversation}`}
                     id={autreParticipant(principal.conversation, moi.id)}
-                    onFermer={() => setPrincipal({ ...principal, infos: false })}
+                    onFermer={() => setPrincipal({ ...principal, cote: null })}
                   />
                 )}
               </aside>

@@ -169,6 +169,21 @@ de WhatsApp.
   mes appareils ; personne d'autre n'en sait rien. Hors connexion, ils
   partent au retour du réseau.
 
+### Modifier, épingler, transférer, important
+
+- **Modifier** (15 minutes) et **épingler** (24 h, 7 ou 30 jours, trois par
+  discussion) passent comme les réactions : à chaque participant. Chaque
+  application vérifie que la modification vient de l'auteur et dans le délai.
+- **Important** : comme les réglages, seulement dans ma boîte ; index
+  `important` d'IndexedDB (version 4) pour la liste.
+- **Transférer** : cinq discussions au plus à la fois. Le message porte le
+  nombre de transferts (« Transféré », « Transféré plusieurs fois » à partir
+  de cinq). Un fichier n'est pas renvoyé : `POST /api/medias/:id/transfert`
+  crée une ligne qui pointe vers le même fichier, effacé chez Karaks Storage
+  seulement quand la dernière ligne a expiré.
+- **Rechercher** : sur l'appareil, sans accents ni casse ; le serveur n'a pas
+  l'historique.
+
 ## Chiffrement de bout en bout (étape 3)
 
 Protocole Signal (X3DH ou PQXDH, puis Double Ratchet), clés par appareil.

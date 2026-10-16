@@ -207,6 +207,33 @@ export class Boite extends DurableObject<Bindings> {
         });
       case "preference":
         return this.preference(ws, moi, m.conversation, m.preference);
+      case "modifier":
+        return this.partager(ws, moi, m.conversation, {
+          type: "modification",
+          conversation: m.conversation,
+          message: m.message,
+          par: moi,
+          texte: m.texte,
+          le: Date.now(),
+        });
+      case "epingler":
+        return this.partager(ws, moi, m.conversation, {
+          type: "epingle",
+          conversation: m.conversation,
+          message: m.message,
+          par: moi,
+          jusqua: m.jusqua,
+          le: Date.now(),
+        });
+      case "important": {
+        // Comme les réglages : une affaire entre moi et mes appareils.
+        if ((await this.participants(m.conversation, moi)) === null && !estGroupe(m.conversation)) {
+          this.envoyer(ws, { t: "refuse", message: "Vous ne faites pas partie de cette discussion." });
+          return;
+        }
+        this.ajouter({ type: "important", conversation: m.conversation, message: m.message, important: m.important, le: Date.now() });
+        return;
+      }
     }
   }
 
@@ -371,6 +398,7 @@ export class Boite extends DurableObject<Bindings> {
       le: maintenant,
       ...(media ? { media } : {}),
       ...(m.reponseA ? { reponseA: m.reponseA } : {}),
+      ...(m.transfere ? { transfere: m.transfere } : {}),
     };
     await this.distribuer(destinataires, { type: "message", message });
     // Copie dans ma propre boîte : mes autres appareils voient ce que j'envoie.

@@ -1,8 +1,9 @@
-import type { MediaMessage } from "@unichat/shared";
+import { CONSERVATION_MEDIA, type MediaMessage } from "@unichat/shared";
 import clsx from "clsx";
 import { Download, FileText, Headphones, LoaderCircle, Mic, Pause, Play, RotateCw, Video, X } from "lucide-react";
 import { useEffect, useRef, useState, type ReactNode, type RefObject } from "react";
 import { ErreurApi } from "../lib/api";
+import { urlOuvertureMedia } from "../lib/api-medias";
 import { dureeCourte, heureCourte, jourMessage, tailleFichier } from "../lib/format";
 import { useMessagerie } from "../lib/messagerie-react";
 import type { MessageLocal } from "../lib/stockage";
@@ -214,7 +215,7 @@ function MediaVisuel({
   return (
     <div
       ref={cadre}
-      className="relative w-[min(330px,68vw)] overflow-hidden rounded-md bg-texte/10"
+      className="relative w-[330px] max-w-full overflow-hidden rounded-md bg-texte/10"
       style={{ aspectRatio: String(ratio) }}
     >
       {m.apercu && <img src={m.apercu} alt="" aria-hidden="true" className="absolute inset-0 size-full scale-110 object-cover blur-lg" />}
@@ -292,7 +293,7 @@ function MessageAudio({ message, progression }: { message: MessageAvecMedia; pro
   }
 
   return (
-    <div ref={cadre} className="flex w-[min(300px,64vw)] items-center gap-2.5 pt-1">
+    <div ref={cadre} className="flex w-[300px] max-w-full items-center gap-2.5 pt-1">
       <span
         className={clsx(
           "flex size-11 shrink-0 items-center justify-center rounded-full",
@@ -393,25 +394,46 @@ function DocumentJoint({ message, progression }: { message: MessageAvecMedia; pr
   else if (etat.statut === "erreur") indicateur = <RotateCw size={17} />;
   else indicateur = <Download size={18} />;
 
+  // « Ouvrir » passe par UniChat, qui garde le fichier 30 jours ; ensuite, seul l'enregistrement reste possible.
+  const ouvrable = Boolean(m.id) && progression === undefined && Date.now() - message.le < CONSERVATION_MEDIA;
+  const ouvrir = () => window.open(urlOuvertureMedia(m.id), "_blank", "noopener");
+  const bouton = "flex-1 py-2 text-center text-[13.5px] font-medium text-primaire-texte transition-colors hover:bg-texte/5";
+
   return (
-    <button
-      type="button"
-      onClick={cliquer}
-      title={etat.statut === "erreur" ? etat.message : `Télécharger ${m.nom}`}
-      className="flex w-[min(320px,66vw)] items-center gap-3 rounded-md bg-texte/5 p-2.5 text-left transition-colors hover:bg-texte/10"
-    >
-      <span className="flex size-10 shrink-0 items-center justify-center rounded bg-primaire-doux text-primaire-texte" aria-hidden="true">
-        <FileText size={22} />
-      </span>
-      <span className="min-w-0 flex-1">
-        <span className="block truncate text-[14px] text-texte">{m.nom}</span>
-        <span className="block text-[12px] text-texte-2">
-          {extension} · {tailleFichier(m.taille)}
-          {etat.statut === "erreur" && <span className="text-danger"> · {etat.message}</span>}
+    <div className="w-[320px] max-w-full overflow-hidden rounded-md bg-texte/5">
+      <button
+        type="button"
+        onClick={ouvrable ? ouvrir : cliquer}
+        title={etat.statut === "erreur" ? etat.message : ouvrable ? `Ouvrir ${m.nom}` : `Enregistrer ${m.nom}`}
+        className="flex w-full items-center gap-3 p-2.5 text-left transition-colors hover:bg-texte/5"
+      >
+        <span className="flex size-10 shrink-0 items-center justify-center rounded bg-primaire-doux text-primaire-texte" aria-hidden="true">
+          <FileText size={22} />
         </span>
-      </span>
-      <span className="flex size-8 shrink-0 items-center justify-center rounded-full text-texte-2 ring-1 ring-bordure">{indicateur}</span>
-    </button>
+        <span className="min-w-0 flex-1">
+          <span className="block truncate text-[14px] text-texte">{m.nom}</span>
+          <span className="block text-[12px] text-texte-2">
+            {extension} · {tailleFichier(m.taille)}
+            {etat.statut === "erreur" && <span className="text-danger"> · {etat.message}</span>}
+          </span>
+        </span>
+        {(progression !== undefined || etat.statut === "chargement") && (
+          <span className="flex size-8 shrink-0 items-center justify-center rounded-full text-texte-2">{indicateur}</span>
+        )}
+      </button>
+      {progression === undefined && (
+        <div className="flex border-t border-bordure">
+          {ouvrable && (
+            <button type="button" onClick={ouvrir} className={bouton}>
+              Ouvrir
+            </button>
+          )}
+          <button type="button" onClick={cliquer} className={clsx(bouton, ouvrable && "border-l border-bordure")}>
+            Enregistrer
+          </button>
+        </div>
+      )}
+    </div>
   );
 }
 

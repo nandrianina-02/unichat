@@ -1,5 +1,7 @@
 import {
+  DELAI_MODIFICATION,
   DELAI_SUPPRESSION,
+  DUREES_EPINGLE,
   LIMITES_MEDIA,
   LIMITE_TEXTE,
   autreParticipant,
@@ -7,6 +9,7 @@ import {
   formatMedia,
   idGroupe,
   mimeSimple,
+  TRANSFERTS_NOMBREUX,
   type CarteProfil,
   type Reaction,
 } from "@unichat/shared";
@@ -14,24 +17,36 @@ import clsx from "clsx";
 import {
   ArrowLeft,
   Ban,
+  Check,
   ChevronDown,
   CircleX,
   Copy,
   Flag,
   EllipsisVertical,
   FileText,
+  Forward,
   Images,
   Info,
   LoaderCircle,
   Mic,
   Paperclip,
+  Pencil,
+  Pin,
+  PinOff,
   Reply,
   RotateCw,
+  Search,
   SendHorizontal,
+  SmilePlus,
+  SquareCheck,
+  Star,
+  StarOff,
   Trash2,
   UserPlus,
   X,
 } from "lucide-react";
+import { Dialogue } from "../composants/Dialogue";
+import { DialogueTransfert } from "../composants/Transfert";
 import { useActionsDiscussion } from "../composants/ActionsDiscussion";
 import { Menu, useFermetureExterieure, type ElementMenu } from "../composants/Menu";
 import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
@@ -47,18 +62,33 @@ import { ErreurApi, api } from "../lib/api";
 import { useCompte, useMoi } from "../lib/compte";
 import { heureCourte, jourMessage, resumeMessage, tailleFichier, texteEvenement, vuLe } from "../lib/format";
 import { useMessagerie, useMessages } from "../lib/messagerie-react";
-import type { MessageLocal } from "../lib/stockage";
+import type { Epingle, MessageLocal } from "../lib/stockage";
 
 // Brouillons gardés le temps de la visite, par discussion, comme dans les messageries de référence.
 const brouillons = new Map<string, string>();
+const dateCopie = new Intl.DateTimeFormat("fr-FR", { day: "2-digit", month: "2-digit", year: "numeric" });
+
+/** Fait défiler jusqu'à un message et le surligne un instant (citation, épingle, recherche). */
+export function allerAuMessage(id: string): void {
+  const cible = document.getElementById(`message-${id}`);
+  if (!cible) return;
+  cible.scrollIntoView({ block: "center", behavior: "smooth" });
+  cible.classList.remove("surbrillance");
+  // Relancer l'animation même si on clique deux fois de suite.
+  void cible.offsetWidth;
+  cible.classList.add("surbrillance");
+}
 
 interface Props {
   conversation: string;
+  /** Message à montrer à l'ouverture (venu des messages importants). */
+  cible?: string;
   onInfos: () => void;
+  onRechercher: () => void;
   onFermer: () => void;
 }
 
-export function Discussion({ conversation, onInfos, onFermer }: Props) {
+export function Discussion({ conversation, cible, onInfos, onRechercher, onFermer }: Props) {
   const moi = useMoi();
   const { messagerie, etat } = useMessagerie();
   const messages = useMessages(conversation);
@@ -74,7 +104,11 @@ export function Discussion({ conversation, onInfos, onFermer }: Props) {
   const quitte = enGroupe && groupe !== undefined && !groupe.moiMembre;
 
   const [reponse, setReponse] = useState<MessageLocal | null>(null);
-  const [aSupprimer, setASupprimer] = useState<MessageLocal | null>(null);
+  const [aSupprimer, setASupprimer] = useState<MessageLocal[] | null>(null);
+  const [selection, setSelection] = useState<Set<string> | null>(null);
+  const [edition, setEdition] = useState<MessageLocal | null>(null);
+  const [aTransferer, setATransferer] = useState<MessageLocal[] | null>(null);
+  const [aEpingler, setAEpingler] = useState<MessageLocal | null>(null);
   const [avis, setAvis] = useState<string | null>(null);
   const [aJoindre, setAJoindre] = useState<File[] | null>(null);
   const [visionne, setVisionne] = useState<{ message: MessageAvecMedia; url: string } | null>(null);
@@ -130,6 +164,8 @@ export function Discussion({ conversation, onInfos, onFermer }: Props) {
   // Même ordre que le menu de WhatsApp ; les appels viendront avec l'étape 4.
   const elementsMenu: ElementMenu[] = [
     { icone: Info, libelle: libelleInfos, action: onInfos },
+    { icone: Search, libelle: "Rechercher", action: onRechercher },
+    { icone: SquareCheck, libelle: "Sélectionner des messages", action: () => setSelection(new Set()) },
     actions.elements.sourdine,
     actions.elements.favoris,
     actions.elements.exporter,
@@ -138,8 +174,46 @@ export function Discussion({ conversation, onInfos, onFermer }: Props) {
     ...actions.elements.moderation,
   ];
 
+  const discussion = etat.conversations.find((c) => c.id === conversation);
+  const epingles = (discussion?.epingles ?? []).filter((p) => p.jusqua > Date.now());
+  const epinglees = new Set(epingles.map((p) => p.message));
+  const selectionnes = (messages ?? []).filter((m) => selection?.has(m.id));
+
   async function reagir(message: MessageLocal, code: Reaction | null) {
     if (!(await messagerie.reagir(message, code))) setAvis("Hors connexion : la réaction n'a pas pu être envoyée.");
+  }
+
+  async function epingler(message: MessageLocal) {
+    if (epinglees.has(message.id)) {
+      if (!(await messagerie.epingler(message, null))) setAvis("Hors connexion : réessayez une fois reconnecté.");
+      return;
+    }
+    setAEpingler(message);
+  }
+
+  function copier(liste: MessageLocal[]) {
+    const avecTexte = liste.filter((m) => m.texte);
+    if (avecTexte.length === 0) return;
+    // Plusieurs messages : copiés comme WhatsApp, avec l'heure et l'auteur.
+    const texte =
+      avecTexte.length === 1
+        ? avecTexte[0]!.texte
+        : avecTexte
+            .map((m) => `[${dateCopie.format(new Date(m.le))} ${heureCourte(m.le)}] ${m.de === moi.id ? moi.nom : nom(m.de)} : ${m.texte}`)
+            .join("\n");
+    void navigator.clipboard.writeText(texte).then(
+      () => setAvis(avecTexte.length > 1 ? "Messages copiés." : "Message copié."),
+      () => setAvis("La copie a été refusée par le navigateur."),
+    );
+  }
+
+  function basculerSelection(m: MessageLocal) {
+    setSelection((actuelle) => {
+      const suite = new Set(actuelle ?? []);
+      if (suite.has(m.id)) suite.delete(m.id);
+      else suite.add(m.id);
+      return suite;
+    });
   }
 
   function joindre(fichiers: File[]) {
@@ -189,8 +263,17 @@ export function Discussion({ conversation, onInfos, onFermer }: Props) {
         libelleInfos={libelleInfos}
         elements={elementsMenu}
         onInfos={onInfos}
+        onRechercher={onRechercher}
         onFermer={onFermer}
       />
+      {epingles.length > 0 && messages && (
+        <BandeauEpingles
+          epingles={epingles}
+          messages={messages}
+          nom={nom}
+          onDesepingler={(m) => void messagerie.epingler(m, null)}
+        />
+      )}
       {personne && !personne.estContact && !estSoi && !personne.bloque && (
         <BanniereInconnu personne={personne} onBloquer={() => actions.ouvrir("bloquer")} onSignaler={() => actions.ouvrir("signaler")} />
       )}
@@ -199,18 +282,21 @@ export function Discussion({ conversation, onInfos, onFermer }: Props) {
         moiId={moi.id}
         enGroupe={enGroupe}
         nom={nom}
-        onRepondre={(m) => setReponse(m)}
+        cible={cible}
+        selection={selection}
+        epinglees={epinglees}
+        onRepondre={(m) => (setEdition(null), setReponse(m))}
         onReagir={(m, code) => void reagir(m, code)}
-        onSupprimer={(m) => setASupprimer(m)}
-        onCopier={(m) => {
-          if (!m.texte) return;
-          void navigator.clipboard.writeText(m.texte).then(
-            () => setAvis("Message copié."),
-            () => setAvis("La copie a été refusée par le navigateur."),
-          );
-        }}
+        onSupprimer={(m) => setASupprimer([m])}
+        onCopier={(m) => copier([m])}
         onRenvoyer={(id) => void messagerie.renvoyer(id)}
         onOuvrirMedia={(message, url) => setVisionne({ message, url })}
+        onTransferer={(m) => setATransferer([m])}
+        onEpingler={(m) => void epingler(m)}
+        onImportant={(m) => void messagerie.marquerImportant(m, !m.importantLe)}
+        onModifier={(m) => (setReponse(null), setEdition(m))}
+        onSelectionner={(m) => setSelection(new Set([m.id]))}
+        onBasculerSelection={basculerSelection}
         envois={etat.envois}
       />
       {avis && (
@@ -218,7 +304,21 @@ export function Discussion({ conversation, onInfos, onFermer }: Props) {
           {avis}
         </p>
       )}
-      {quitte ? (
+      {selection ? (
+        <BarreSelection
+          nombre={selection.size}
+          tousImportants={selectionnes.length > 0 && selectionnes.every((m) => m.importantLe)}
+          onFermer={() => setSelection(null)}
+          onCopier={() => copier(selectionnes)}
+          onImportant={() => {
+            const marquer = !selectionnes.every((m) => m.importantLe);
+            for (const m of selectionnes) void messagerie.marquerImportant(m, marquer);
+            setSelection(null);
+          }}
+          onSupprimer={() => setASupprimer(selectionnes)}
+          onTransferer={() => setATransferer(selectionnes.filter((m) => !m.supprime))}
+        />
+      ) : quitte ? (
         <footer className="shrink-0 bg-entete px-4 py-4 text-center text-sm text-texte-2">
           Vous ne pouvez plus envoyer de messages dans ce groupe.
         </footer>
@@ -233,8 +333,16 @@ export function Discussion({ conversation, onInfos, onFermer }: Props) {
         <Composeur
           conversation={conversation}
           reponse={reponse}
+          edition={edition}
           nom={nom}
           onAnnulerReponse={() => setReponse(null)}
+          onAnnulerEdition={() => setEdition(null)}
+          onModifier={async (texte) => {
+            if (edition && texte.trim() !== edition.texte && !(await messagerie.modifier(edition, texte))) {
+              setAvis("Le message n'a pas pu être modifié (hors connexion, ou plus de 15 minutes).");
+            }
+            setEdition(null);
+          }}
           onEnvoyer={(texte) => {
             void messagerie.envoyer(conversation, texte, reponse ?? undefined);
             setReponse(null);
@@ -278,17 +386,40 @@ export function Discussion({ conversation, onInfos, onFermer }: Props) {
       {actions.dialogue}
       {aSupprimer && (
         <DialogueSuppression
-          message={aSupprimer}
-          mien={aSupprimer.de === moi.id}
+          messages={aSupprimer}
+          moiId={moi.id}
           onPourTous={async () => {
-            if (!(await messagerie.supprimerPourTous(aSupprimer))) setAvis("Hors connexion : réessayez une fois reconnecté.");
+            let echec = false;
+            for (const m of aSupprimer) if (!(await messagerie.supprimerPourTous(m))) echec = true;
+            if (echec) setAvis("Hors connexion : réessayez une fois reconnecté.");
             setASupprimer(null);
+            setSelection(null);
           }}
           onPourMoi={async () => {
-            await messagerie.supprimerPourMoi(aSupprimer);
+            for (const m of aSupprimer) await messagerie.supprimerPourMoi(m);
             setASupprimer(null);
+            setSelection(null);
           }}
           onFermer={() => setASupprimer(null)}
+        />
+      )}
+      {aTransferer && aTransferer.length > 0 && (
+        <DialogueTransfert
+          messages={aTransferer}
+          onAvis={setAvis}
+          onFermer={() => {
+            setATransferer(null);
+            setSelection(null);
+          }}
+        />
+      )}
+      {aEpingler && (
+        <DialogueEpingle
+          onFermer={() => setAEpingler(null)}
+          onEpingler={async (duree) => {
+            if (!(await messagerie.epingler(aEpingler, duree))) setAvis("Hors connexion : réessayez une fois reconnecté.");
+            setAEpingler(null);
+          }}
         />
       )}
     </section>
@@ -303,6 +434,7 @@ function EnTete({
   libelleInfos,
   elements,
   onInfos,
+  onRechercher,
   onFermer,
 }: {
   avatar: ReactNode;
@@ -312,6 +444,7 @@ function EnTete({
   libelleInfos: string;
   elements: ElementMenu[];
   onInfos: () => void;
+  onRechercher: () => void;
   onFermer: () => void;
 }) {
   const [menu, setMenu] = useState(false);
@@ -334,6 +467,9 @@ function EnTete({
           )}
         </span>
       </button>
+      <BoutonIcone libelle="Rechercher" onClick={onRechercher}>
+        <Search size={21} />
+      </BoutonIcone>
       <div ref={menuRef} className="relative">
         <BoutonIcone libelle="Menu" actif={menu} onClick={() => setMenu((m) => !m)} aria-haspopup="menu" aria-expanded={menu}>
           <EllipsisVertical size={22} />
@@ -400,6 +536,12 @@ interface ActionsMessage {
   onCopier: (m: MessageLocal) => void;
   onRenvoyer: (id: string) => void;
   onOuvrirMedia: (m: MessageAvecMedia, url: string) => void;
+  onTransferer: (m: MessageLocal) => void;
+  onEpingler: (m: MessageLocal) => void;
+  onImportant: (m: MessageLocal) => void;
+  onModifier: (m: MessageLocal) => void;
+  onSelectionner: (m: MessageLocal) => void;
+  onBasculerSelection: (m: MessageLocal) => void;
 }
 
 function ListeMessages({
@@ -408,6 +550,9 @@ function ListeMessages({
   enGroupe,
   nom,
   envois,
+  cible,
+  selection,
+  epinglees,
   ...actions
 }: {
   messages: MessageLocal[] | null;
@@ -415,6 +560,9 @@ function ListeMessages({
   enGroupe: boolean;
   nom: (id: string) => string;
   envois: Record<string, number>;
+  cible?: string;
+  selection: Set<string> | null;
+  epinglees: Set<string>;
 } & ActionsMessage) {
   const zone = useRef<HTMLDivElement>(null);
   const separateur = useRef<HTMLDivElement>(null);
@@ -434,14 +582,15 @@ function ListeMessages({
     if (!z || !messages) return;
     if (!initialise.current) {
       initialise.current = true;
-      if (separateur.current) separateur.current.scrollIntoView({ block: "center" });
+      if (cible && document.getElementById(`message-${cible}`)) allerAuMessage(cible);
+      else if (separateur.current) separateur.current.scrollIntoView({ block: "center" });
       else z.scrollTop = z.scrollHeight;
       return;
     }
     const dernier = messages[messages.length - 1];
     // On suit la conversation si on était en bas, ou si c'est moi qui viens d'écrire.
     if (enBas.current || (dernier?.de === moiId && dernier.etat === "attente")) z.scrollTop = z.scrollHeight;
-  }, [messages, moiId]);
+  }, [messages, moiId, cible]);
 
   function surDefilement() {
     const z = zone.current;
@@ -449,16 +598,6 @@ function ListeMessages({
     const distance = z.scrollHeight - z.scrollTop - z.clientHeight;
     enBas.current = distance < 80;
     setBoutonBas(distance > 300);
-  }
-
-  function allerAuMessage(id: string) {
-    const cible = document.getElementById(`message-${id}`);
-    if (!cible) return;
-    cible.scrollIntoView({ block: "center", behavior: "smooth" });
-    cible.classList.remove("surbrillance");
-    // Relancer l'animation même si on clique deux fois de suite.
-    void cible.offsetWidth;
-    cible.classList.add("surbrillance");
   }
 
   const elements: ReactNode[] = [];
@@ -505,6 +644,9 @@ function ListeMessages({
         auteur={enGroupe && premier && m.de !== moiId ? nom(m.de) : null}
         nom={nom}
         progression={envois[m.id]}
+        selectionActive={selection !== null}
+        selectionne={selection?.has(m.id) ?? false}
+        epinglee={epinglees.has(m.id)}
         onAllerA={allerAuMessage}
         {...actions}
       />,
@@ -563,6 +705,9 @@ function Bulle({
   auteur,
   nom,
   progression,
+  selectionActive,
+  selectionne,
+  epinglee,
   onAllerA,
   onRepondre,
   onReagir,
@@ -570,6 +715,12 @@ function Bulle({
   onCopier,
   onRenvoyer,
   onOuvrirMedia,
+  onTransferer,
+  onEpingler,
+  onImportant,
+  onModifier,
+  onSelectionner,
+  onBasculerSelection,
 }: {
   message: MessageLocal;
   mien: boolean;
@@ -578,11 +729,18 @@ function Bulle({
   auteur: string | null;
   nom: (id: string) => string;
   progression: number | undefined;
+  selectionActive: boolean;
+  selectionne: boolean;
+  epinglee: boolean;
   onAllerA: (id: string) => void;
 } & ActionsMessage) {
   const [menu, setMenu] = useState<"bas" | "haut" | null>(null);
+  const [reactionRapide, setReactionRapide] = useState(false);
   const cadre = useRef<HTMLDivElement>(null);
-  useFermetureExterieure(menu !== null, cadre, () => setMenu(null));
+  useFermetureExterieure(menu !== null || reactionRapide, cadre, () => {
+    setMenu(null);
+    setReactionRapide(false);
+  });
   const reactions = Object.entries(m.reactions ?? {});
   const maReaction = m.reactions?.[moiId];
 
@@ -592,18 +750,34 @@ function Bulle({
     setMenu(r && r.bottom > window.innerHeight - 300 ? "haut" : "bas");
   }
 
-  const elements = m.supprime
+  // Parti et connu du serveur : on peut l'épingler, le transférer ou le modifier.
+  const parti = !mien || (m.etat !== "attente" && m.etat !== "echec");
+  const modifiable = mien && parti && !m.supprime && Boolean(m.texte) && Date.now() - m.le < DELAI_MODIFICATION;
+  const elements: ElementMenu[] = m.supprime
     ? []
     : [
         { icone: Reply, libelle: "Répondre", action: () => onRepondre(m) },
         ...(m.texte ? [{ icone: Copy, libelle: "Copier", action: () => onCopier(m) }] : []),
+        ...(parti ? [{ icone: Forward, libelle: "Transférer", action: () => onTransferer(m) }] : []),
+        ...(parti ? [{ icone: epinglee ? PinOff : Pin, libelle: epinglee ? "Désépingler" : "Épingler", action: () => onEpingler(m) }] : []),
+        {
+          icone: m.importantLe ? StarOff : Star,
+          libelle: m.importantLe ? "Retirer des importants" : "Marquer comme important",
+          action: () => onImportant(m),
+        },
+        ...(modifiable ? [{ icone: Pencil, libelle: "Modifier", action: () => onModifier(m) }] : []),
+        { icone: SquareCheck, libelle: "Sélectionner", action: () => onSelectionner(m) },
       ];
+  // Place réservée à l'heure sur la dernière ligne : elle grandit avec « Modifié » et l'étoile.
+  const reserve = (mien ? 68 : 42) + (m.modifieLe && !m.supprime ? 50 : 0) + (m.importantLe ? 16 : 0);
   const media = !m.supprime && m.media ? m.media : undefined;
   // Photo et vidéo occupent toute la bulle, bord à bord ; l'heure se pose dessus quand il n'y a pas de légende.
   const visuel = media?.type === "image" || media?.type === "video";
   const heurePosee = visuel && !m.texte;
   const heure = (
     <>
+      {m.importantLe && <Star size={12} className="fill-current" aria-label="Important" />}
+      {m.modifieLe && !m.supprime && <span>Modifié</span>}
       {heureCourte(m.le)}
       {mien && !m.supprime && <Coches etat={m.etat} surImage={heurePosee} />}
     </>
@@ -612,9 +786,30 @@ function Bulle({
   return (
     <div
       id={`message-${m.id}`}
-      className={clsx("flex flex-col rounded-lg px-[5%] md:px-[7%]", mien ? "items-end" : "items-start", premier ? "mt-2.5" : "mt-0.5")}
+      onClick={selectionActive ? () => onBasculerSelection(m) : undefined}
+      className={clsx(
+        "relative flex flex-col rounded-lg px-[5%] md:px-[7%]",
+        mien ? "items-end" : "items-start",
+        premier ? "mt-2.5" : "mt-0.5",
+        // En sélection, toute la ligne se coche, la case à gauche comme dans WhatsApp.
+        selectionActive && "cursor-pointer py-0.5 pl-14 md:pl-16",
+        selectionne && "bg-primaire/10",
+      )}
     >
-      <div ref={cadre} className="group relative max-w-[min(85%,560px)] md:max-w-[min(65%,560px)]">
+      {selectionActive && (
+        <span
+          role="checkbox"
+          aria-checked={selectionne}
+          aria-label="Sélectionner ce message"
+          className={clsx(
+            "absolute top-1/2 left-4 flex size-5 -translate-y-1/2 items-center justify-center rounded-[4px] border-2 transition-colors",
+            selectionne ? "border-primaire bg-primaire" : "border-texte-3",
+          )}
+        >
+          {selectionne && <Check size={14} strokeWidth={3} className="text-sur-primaire" />}
+        </span>
+      )}
+      <div ref={cadre} className={clsx("group relative max-w-[min(85%,560px)] md:max-w-[min(65%,560px)]", selectionActive && "pointer-events-none")}>
         <div
           className={clsx(
             "relative rounded-lg text-[14.5px] leading-[19px] text-texte shadow-sm",
@@ -624,9 +819,15 @@ function Bulle({
           )}
         >
           {premier && <Queue mien={mien} />}
-          {(auteur || (m.reponseA && !m.supprime)) && (
+          {(auteur || (m.reponseA && !m.supprime) || (m.transfere && !m.supprime)) && (
             <div className={visuel ? "px-1.5 pt-0.5 pb-[3px]" : undefined}>
               {auteur && <span className="mb-0.5 block text-[13px] font-medium text-primaire-texte">{auteur}</span>}
+              {m.transfere && !m.supprime && (
+                <span className="mb-0.5 flex items-center gap-1 text-[12.5px] italic text-texte-2">
+                  <Forward size={14} className="shrink-0" />
+                  {m.transfere >= TRANSFERTS_NOMBREUX ? "Transféré plusieurs fois" : "Transféré"}
+                </span>
+              )}
               {m.reponseA && !m.supprime && (
                 <button
                   type="button"
@@ -663,7 +864,7 @@ function Bulle({
                 m.texte && <span className="whitespace-pre-wrap [overflow-wrap:anywhere]">{m.texte}</span>
               )}
               {/* Réserve la place de l'heure sur la dernière ligne, qui s'y loge en bas à droite. */}
-              {media?.type !== "audio" && <span aria-hidden="true" className={clsx("inline-block", mien ? "w-[68px]" : "w-[42px]")} />}
+              {media?.type !== "audio" && <span aria-hidden="true" className="inline-block" style={{ width: reserve }} />}
             </div>
           )}
           {!heurePosee && <span className="absolute right-2 bottom-1 flex items-center gap-1 text-[11px] text-texte-2">{heure}</span>}
@@ -682,13 +883,54 @@ function Bulle({
             <ChevronDown size={18} />
           </button>
         </div>
+        {/* Actions rapides au survol, à côté de la bulle : réagir, transférer. */}
+        {!m.supprime && !selectionActive && (
+          <div
+            className={clsx(
+              "absolute top-1/2 flex -translate-y-1/2 items-center gap-0.5 opacity-0 transition-opacity group-hover:opacity-100 focus-within:opacity-100",
+              mien ? "right-full mr-1.5" : "left-full ml-1.5",
+              (reactionRapide || menu) && "opacity-100",
+            )}
+          >
+            <button
+              type="button"
+              aria-label="Réagir"
+              title="Réagir"
+              onClick={() => setReactionRapide((r) => !r)}
+              className="flex size-8 items-center justify-center rounded-full text-texte-2 transition-colors hover:bg-panneau"
+            >
+              <SmilePlus size={18} />
+            </button>
+            {parti && (
+              <button
+                type="button"
+                aria-label="Transférer"
+                title="Transférer"
+                onClick={() => onTransferer(m)}
+                className="flex size-8 items-center justify-center rounded-full text-texte-2 transition-colors hover:bg-panneau"
+              >
+                <Forward size={18} />
+              </button>
+            )}
+          </div>
+        )}
+        {reactionRapide && (
+          <div
+            className={clsx(
+              "animate-pop absolute bottom-full z-30 mb-1 rounded-full bg-panneau px-1.5 py-1 shadow-xl ring-1 ring-bordure",
+              mien ? "right-0" : "left-0",
+            )}
+          >
+            <ChoixReaction actuelle={maReaction} onChoisir={(code) => (setReactionRapide(false), onReagir(m, code))} />
+          </div>
+        )}
         {menu && (
           <Menu
             className={clsx(mien ? "right-0" : "left-0", menu === "haut" ? "bottom-full mb-1" : "top-full mt-1")}
             entete={
               m.supprime ? undefined : <ChoixReaction actuelle={maReaction} onChoisir={(code) => (setMenu(null), onReagir(m, code))} />
             }
-            elements={[...elements, { icone: Trash2, libelle: "Supprimer", action: () => onSupprimer(m), danger: true }]}
+            elements={[...elements, "separateur", { icone: Trash2, libelle: "Supprimer", action: () => onSupprimer(m), danger: true }]}
             onChoix={() => setMenu(null)}
           />
         )}
@@ -724,25 +966,29 @@ function Bulle({
 }
 
 function DialogueSuppression({
-  message,
-  mien,
+  messages,
+  moiId,
   onPourTous,
   onPourMoi,
   onFermer,
 }: {
-  message: MessageLocal;
-  mien: boolean;
+  messages: MessageLocal[];
+  moiId: string;
   onPourTous: () => void;
   onPourMoi: () => void;
   onFermer: () => void;
 }) {
-  // Pour tout le monde : mon message, déjà parti, envoyé il y a moins de 48 heures.
+  // Pour tout le monde : mes messages, déjà partis, envoyés il y a moins de 48 heures — tous, ou rien.
   const pourTous =
-    mien &&
-    !message.supprime &&
-    message.etat !== "attente" &&
-    message.etat !== "echec" &&
-    Date.now() - message.le < DELAI_SUPPRESSION;
+    messages.length > 0 &&
+    messages.every(
+      (message) =>
+        message.de === moiId &&
+        !message.supprime &&
+        message.etat !== "attente" &&
+        message.etat !== "echec" &&
+        Date.now() - message.le < DELAI_SUPPRESSION,
+    );
   const premier = useRef<HTMLButtonElement>(null);
   useEffect(() => {
     premier.current?.focus();
@@ -757,11 +1003,11 @@ function DialogueSuppression({
       <div
         role="alertdialog"
         aria-modal="true"
-        aria-label="Supprimer le message"
+        aria-label={messages.length > 1 ? "Supprimer les messages" : "Supprimer le message"}
         className="animate-rise w-full max-w-md rounded-lg bg-panneau p-6 shadow-xl"
         onMouseDown={(e) => e.stopPropagation()}
       >
-        <h2 className="text-[17px] text-texte">Supprimer le message ?</h2>
+        <h2 className="text-[17px] text-texte">{messages.length > 1 ? `Supprimer ${messages.length} messages ?` : "Supprimer le message ?"}</h2>
         {pourTous && (
           <p className="mt-3 text-sm leading-relaxed text-texte-2">
             « Pour tout le monde » le remplace par « Ce message a été supprimé » chez chacun.
@@ -793,8 +1039,11 @@ function DialogueSuppression({
 function Composeur({
   conversation,
   reponse,
+  edition,
   nom,
   onAnnulerReponse,
+  onAnnulerEdition,
+  onModifier,
   onEnvoyer,
   onEcrit,
   onJoindre,
@@ -803,8 +1052,11 @@ function Composeur({
 }: {
   conversation: string;
   reponse: MessageLocal | null;
+  edition: MessageLocal | null;
   nom: (id: string) => string;
   onAnnulerReponse: () => void;
+  onAnnulerEdition: () => void;
+  onModifier: (texte: string) => void;
   onEnvoyer: (texte: string) => void;
   onEcrit: () => void;
   onJoindre: (fichiers: File[]) => void;
@@ -823,10 +1075,16 @@ function Composeur({
   useEffect(() => {
     champ.current?.focus();
   }, [reponse]);
+  // Modifier : le texte d'origine remplace le brouillon, qui revient ensuite.
   useEffect(() => {
+    setTexte(edition ? edition.texte : (brouillons.get(conversation) ?? ""));
+    champ.current?.focus();
+  }, [edition, conversation]);
+  useEffect(() => {
+    if (edition) return;
     if (texte) brouillons.set(conversation, texte);
     else brouillons.delete(conversation);
-  }, [texte, conversation]);
+  }, [texte, conversation, edition]);
   // Le champ grandit avec le texte, jusqu'à six lignes.
   useLayoutEffect(() => {
     const t = champ.current;
@@ -837,13 +1095,27 @@ function Composeur({
 
   function envoyer() {
     if (!texte.trim()) return;
-    onEnvoyer(texte);
+    if (edition) onModifier(texte);
+    else onEnvoyer(texte);
     setTexte("");
     champ.current?.focus();
   }
 
   return (
     <footer className="shrink-0 bg-entete">
+      {edition && (
+        <div className="animate-rise flex items-center gap-3 px-3 pt-2.5 md:px-4">
+          <div className="min-w-0 flex-1 rounded-md border-l-4 border-primaire bg-panneau px-3 py-2">
+            <p className="flex items-center gap-1.5 text-[12.5px] font-medium text-primaire-texte">
+              <Pencil size={13} /> Modifier le message
+            </p>
+            <p className="truncate text-[13px] text-texte-2">{edition.texte}</p>
+          </div>
+          <BoutonIcone libelle="Annuler la modification" onClick={onAnnulerEdition}>
+            <X size={20} />
+          </BoutonIcone>
+        </div>
+      )}
       {reponse && (
         <div className="animate-rise flex items-center gap-3 px-3 pt-2.5 md:px-4">
           <div className="min-w-0 flex-1 rounded-md border-l-4 border-primaire bg-panneau px-3 py-2">
@@ -869,7 +1141,7 @@ function Composeur({
         />
       ) : (
         <div className="flex items-end gap-1 px-2 py-2.5 md:gap-2 md:px-4">
-          <div ref={menuRef} className="relative">
+          <div ref={menuRef} className={clsx("relative", edition && "hidden")}>
             <BoutonIcone libelle="Joindre" actif={menu} onClick={() => setMenu((m) => !m)} aria-haspopup="menu" aria-expanded={menu} className="mb-px">
               <Paperclip size={22} />
             </BoutonIcone>
@@ -920,6 +1192,7 @@ function Composeur({
                   envoyer();
                 }
                 if (e.key === "Escape" && reponse) onAnnulerReponse();
+              if (e.key === "Escape" && edition) onAnnulerEdition();
               }}
               onPaste={(e) => {
                 // Une capture d'écran collée part comme une photo, avec aperçu.
@@ -934,17 +1207,156 @@ function Composeur({
             />
           </div>
           {/* Champ vide : le micro prend la place du bouton d'envoi, comme dans les messageries de référence. */}
-          <button
-            type="button"
-            onClick={texte.trim() ? envoyer : () => setEnregistre(true)}
-            aria-label={texte.trim() ? "Envoyer" : "Enregistrer un message vocal"}
-            title={texte.trim() ? "Envoyer" : "Message vocal"}
-            className="flex size-[42px] shrink-0 items-center justify-center rounded-full bg-primaire text-sur-primaire transition-colors hover:bg-primaire-fort"
-          >
-            {texte.trim() ? <SendHorizontal key="envoyer" size={20} className="animate-fade" /> : <Mic key="micro" size={20} className="animate-fade" />}
-          </button>
+          {edition ? (
+            <button
+              type="button"
+              onClick={envoyer}
+              disabled={!texte.trim()}
+              aria-label="Enregistrer la modification"
+              title="Enregistrer"
+              className="flex size-[42px] shrink-0 items-center justify-center rounded-full bg-primaire text-sur-primaire transition-colors hover:bg-primaire-fort disabled:opacity-40"
+            >
+              <Check size={21} className="animate-fade" />
+            </button>
+          ) : (
+            <button
+              type="button"
+              onClick={texte.trim() ? envoyer : () => setEnregistre(true)}
+              aria-label={texte.trim() ? "Envoyer" : "Enregistrer un message vocal"}
+              title={texte.trim() ? "Envoyer" : "Message vocal"}
+              className="flex size-[42px] shrink-0 items-center justify-center rounded-full bg-primaire text-sur-primaire transition-colors hover:bg-primaire-fort"
+            >
+              {texte.trim() ? <SendHorizontal key="envoyer" size={20} className="animate-fade" /> : <Mic key="micro" size={20} className="animate-fade" />}
+            </button>
+          )}
         </div>
       )}
     </footer>
+  );
+}
+
+/** Messages épinglés : le plus récent d'abord ; un clic y mène et passe au suivant. */
+function BandeauEpingles({
+  epingles,
+  messages,
+  nom,
+  onDesepingler,
+}: {
+  epingles: Epingle[];
+  messages: MessageLocal[];
+  nom: (id: string) => string;
+  onDesepingler: (m: MessageLocal) => void;
+}) {
+  const [rang, setRang] = useState(0);
+  const presents = [...epingles]
+    .reverse()
+    .map((p) => messages.find((m) => m.id === p.message && !m.supprime))
+    .filter((m): m is MessageLocal => Boolean(m));
+  if (presents.length === 0) return null;
+  const courant = presents[rang % presents.length]!;
+  return (
+    <div
+      role="region"
+      aria-label="Messages épinglés"
+      className="animate-fade flex shrink-0 items-center gap-3 border-b border-bordure bg-panneau py-1.5 pr-2 pl-4"
+    >
+      {presents.length > 1 && (
+        <span className="flex flex-col gap-0.5" aria-hidden="true">
+          {presents.map((m, i) => (
+            <span key={m.id} className={clsx("h-2.5 w-0.5 rounded-full", i === rang % presents.length ? "bg-primaire" : "bg-texte-3")} />
+          ))}
+        </span>
+      )}
+      <Pin size={16} className="shrink-0 text-texte-2" />
+      <button
+        type="button"
+        onClick={() => {
+          allerAuMessage(courant.id);
+          setRang((r) => r + 1);
+        }}
+        className="min-w-0 flex-1 text-left"
+        title="Aller au message épinglé"
+      >
+        <span className="block truncate text-[12.5px] text-primaire-texte">{nom(courant.de)}</span>
+        <span className="block truncate text-[13.5px] text-texte">{resumeMessage(courant)}</span>
+      </button>
+      <BoutonIcone libelle="Désépingler" onClick={() => onDesepingler(courant)}>
+        <PinOff size={18} />
+      </BoutonIcone>
+    </div>
+  );
+}
+
+function BarreSelection({
+  nombre,
+  tousImportants,
+  onFermer,
+  onCopier,
+  onImportant,
+  onSupprimer,
+  onTransferer,
+}: {
+  nombre: number;
+  tousImportants: boolean;
+  onFermer: () => void;
+  onCopier: () => void;
+  onImportant: () => void;
+  onSupprimer: () => void;
+  onTransferer: () => void;
+}) {
+  useEffect(() => {
+    const echap = (e: KeyboardEvent) => e.key === "Escape" && onFermer();
+    window.addEventListener("keydown", echap);
+    return () => window.removeEventListener("keydown", echap);
+  }, [onFermer]);
+  const vide = nombre === 0;
+  return (
+    <footer className="animate-fade flex shrink-0 items-center gap-1 bg-entete px-2 py-2.5 md:px-4">
+      <BoutonIcone libelle="Annuler la sélection" onClick={onFermer}>
+        <X size={22} />
+      </BoutonIcone>
+      <span className="flex-1 pl-2 text-[15px] text-texte">
+        {nombre} sélectionné{nombre > 1 ? "s" : ""}
+      </span>
+      <BoutonIcone libelle="Copier" onClick={onCopier} disabled={vide}>
+        <Copy size={20} />
+      </BoutonIcone>
+      <BoutonIcone libelle={tousImportants ? "Retirer des importants" : "Marquer comme importants"} onClick={onImportant} disabled={vide}>
+        {tousImportants ? <StarOff size={20} /> : <Star size={20} />}
+      </BoutonIcone>
+      <BoutonIcone libelle="Supprimer" onClick={onSupprimer} disabled={vide}>
+        <Trash2 size={20} />
+      </BoutonIcone>
+      <BoutonIcone libelle="Transférer" onClick={onTransferer} disabled={vide}>
+        <Forward size={20} />
+      </BoutonIcone>
+    </footer>
+  );
+}
+
+/** Durée d'une épingle, comme dans WhatsApp : 7 jours par défaut. */
+function DialogueEpingle({ onEpingler, onFermer }: { onEpingler: (duree: number) => void; onFermer: () => void }) {
+  const [duree, setDuree] = useState<number>(DUREES_EPINGLE[1].duree);
+  return (
+    <Dialogue titre="Épingler le message" confirmer="Épingler" onConfirmer={() => onEpingler(duree)} onFermer={onFermer}>
+      <p>Le message reste en haut de la discussion pour tous les participants. Vous pouvez le désépingler à tout moment.</p>
+      <div role="radiogroup" aria-label="Durée de l'épingle" className="mt-4 flex flex-col">
+        {DUREES_EPINGLE.map((d) => (
+          <label key={d.libelle} className="flex cursor-pointer items-center gap-4 py-2 text-[15px] text-texte">
+            <input type="radio" name="epingle" checked={duree === d.duree} onChange={() => setDuree(d.duree)} className="sr-only" />
+            <span
+              aria-hidden="true"
+              className={clsx(
+                "flex size-5 items-center justify-center rounded-full border-2 transition-colors",
+                duree === d.duree ? "border-primaire" : "border-texte-3",
+              )}
+            >
+              {duree === d.duree && <span className="animate-fade size-2.5 rounded-full bg-primaire" />}
+            </span>
+            {d.libelle}
+          </label>
+        ))}
+      </div>
+    </Dialogue>
   );
 }
