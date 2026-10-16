@@ -1,4 +1,4 @@
-import { KeyRound, Lock, LogOut, Palette } from "lucide-react";
+import { KeyRound, Lock, LogOut, Palette, Wallpaper } from "lucide-react";
 import { Avatar } from "../composants/Avatar";
 import { LigneReglage } from "../composants/Lignes";
 import { EnTetePanneau } from "../composants/Panneau";
@@ -9,10 +9,11 @@ interface Props {
   onRetour: () => void;
   onOuvrir: (vue: Vue) => void;
   onTheme: () => void;
+  onFond: () => void;
   onDeconnexion: () => void;
 }
 
-export function Parametres({ onRetour, onOuvrir, onTheme, onDeconnexion }: Props) {
+export function Parametres({ onRetour, onOuvrir, onTheme, onFond, onDeconnexion }: Props) {
   const moi = useMoi();
   return (
     <>
@@ -34,10 +35,11 @@ export function Parametres({ onRetour, onOuvrir, onTheme, onDeconnexion }: Props
           <LigneReglage
             icone={Lock}
             titre="Confidentialité"
-            detail="Photo de profil, infos, recherche par e-mail"
+            detail="Dernière connexion, confirmations de lecture, contacts bloqués"
             onClick={() => onOuvrir("confidentialite")}
           />
           <LigneReglage icone={Palette} titre="Thème" detail="Clair, sombre ou selon le système" onClick={onTheme} fleche={false} />
+          <LigneReglage icone={Wallpaper} titre="Fond des discussions" detail="Teinte et motif, sur cet appareil" onClick={onFond} fleche={false} />
           <LigneReglage icone={LogOut} titre="Se déconnecter" onClick={onDeconnexion} danger fleche={false} />
         </div>
         <p className="animate-fade stagger-2 flex flex-wrap gap-x-4 gap-y-1 px-7 py-6 text-[13px] text-texte-3">

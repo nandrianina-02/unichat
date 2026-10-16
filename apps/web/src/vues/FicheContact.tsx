@@ -2,6 +2,7 @@ import { conversationDirecte, type CarteProfil } from "@unichat/shared";
 import { Ban, Flag, LoaderCircle, MessageSquareText, UserMinus, UserPlus, X } from "lucide-react";
 import { useEffect, useState } from "react";
 import { useActionsDiscussion } from "../composants/ActionsDiscussion";
+import { ApercuGalerie } from "./Galerie";
 import { Avatar } from "../composants/Avatar";
 import { Dialogue } from "../composants/Dialogue";
 import { contactsModifies } from "../composants/Lignes";
@@ -17,10 +18,12 @@ export function FicheContact({
   id,
   onFermer,
   onMessage,
+  onGalerie,
 }: {
   id: string;
   onFermer: () => void;
   onMessage?: (id: string) => void;
+  onGalerie?: () => void;
 }) {
   const { sessionPerdue } = useCompte();
   const { messagerie, etat } = useMessagerie();
@@ -101,6 +104,7 @@ export function FicheContact({
                 <p className="mt-1.5 text-[16px] break-words text-texte">{carte.infos}</p>
               </div>
             )}
+            {onGalerie && <ApercuGalerie conversation={conversationDirecte(messagerie.moi, carte.id)} onOuvrir={onGalerie} />}
             {onMessage && (
               <div className="animate-rise stagger-1 mt-2.5 bg-panneau">
                 <button

@@ -1,4 +1,4 @@
-import type { ApercuLien, CarteProfil, Citation, EvenementGroupe, Groupe, MediaMessage, Preference, Reaction } from "@unichat/shared";
+import type { ApercuLien, CarteProfil, Citation, EvenementGroupe, Groupe, MediaMessage, Position, Preference, Reaction, Sondage } from "@unichat/shared";
 import { openDB, type DBSchema, type IDBPDatabase, type IDBPTransaction } from "idb";
 
 export type EtatMessage = "attente" | "envoye" | "remis" | "lu" | "echec";
@@ -12,7 +12,9 @@ export interface MessageLocal {
   texte: string;
   le: number;
   /** « evenement » : ligne système d'un groupe (création, ajout, départ…). */
-  type?: "texte" | "evenement";
+  /** « systeme » : ligne propre à la discussion (messages éphémères). */
+  type?: "texte" | "evenement" | "systeme";
+  systeme?: { action: "ephemere"; duree: number | null };
   evenement?: EvenementGroupe;
   reponseA?: Citation;
   /** Fichier joint. Son identifiant reste vide tant que l'envoi n'est pas terminé. */
@@ -39,6 +41,17 @@ export interface MessageLocal {
   lien?: ApercuLien;
   /** Membres mentionnés (groupe). */
   mentions?: string[];
+  /** Durée de vie d'un message éphémère, et l'heure à laquelle il s'efface (index). */
+  ephemere?: number;
+  expireLe?: number;
+  position?: Position;
+  contact?: { id: string; nom: string; pseudo: string | null };
+  sondage?: Sondage;
+  /** Votes au sondage, par personne. */
+  votes?: Record<string, number[]>;
+  /** Vue unique : ouverte (destinataire), ou par qui (auteur). */
+  vueOuverte?: boolean;
+  ouvertPar?: string[];
 }
 
 /** Message épinglé en haut d'une discussion, pour tous ses participants. */
@@ -62,7 +75,8 @@ export interface ConversationLocale {
     etat?: EtatMessage;
     supprime?: boolean;
     evenement?: EvenementGroupe;
-    media?: { type: MediaMessage["type"]; nom: string; duree?: number; vocal?: boolean };
+    media?: { type: MediaMessage["type"]; nom: string; duree?: number; vocal?: boolean; vueUnique?: boolean };
+    special?: "position" | "contact" | "sondage";
   } | null;
   nonLus: number;
   /** Un message non lu me mentionne : « @ » dans la liste, et une notification même en sourdine. */
@@ -73,9 +87,11 @@ export interface ConversationLocale {
   reglages?: ReglagesDiscussion;
   /** Messages épinglés en haut de la discussion, du plus ancien au plus récent. */
   epingles?: Epingle[];
+  /** Messages éphémères en vigueur dans la discussion (durée en ms). */
+  ephemere?: number;
 }
 
-export type ReglagesDiscussion = Pick<Preference, "muetJusqua" | "favori" | "archive" | "epingle">;
+export type ReglagesDiscussion = Pick<Preference, "muetJusqua" | "favori" | "archive" | "epingle" | "nonLu">;
 
 export interface PersonneLocale extends CarteProfil {
   maj: number;
@@ -92,7 +108,7 @@ export interface FichierLocal {
 }
 
 export interface Schema extends DBSchema {
-  messages: { key: string; value: MessageLocal; indexes: { conversation: [string, number]; etat: string; important: number } };
+  messages: { key: string; value: MessageLocal; indexes: { conversation: [string, number]; etat: string; important: number; expire: number } };
   conversations: { key: string; value: ConversationLocale };
   personnes: { key: string; value: PersonneLocale };
   groupes: { key: string; value: GroupeLocal };
@@ -105,7 +121,7 @@ export type TransactionMessages = IDBPTransaction<Schema, ["messages", "conversa
 
 /** Une base par compte : deux comptes sur le même navigateur ne se mélangent pas. */
 export function ouvrirStockage(utilisateurId: string): Promise<Stockage> {
-  return openDB<Schema>(`unichat-${utilisateurId}`, 4, {
+  return openDB<Schema>(`unichat-${utilisateurId}`, 5, {
     upgrade(db, ancienne, _nouvelle, transaction) {
       if (ancienne < 1) {
         const messages = db.createObjectStore("messages", { keyPath: "id" });
@@ -121,6 +137,8 @@ export function ouvrirStockage(utilisateurId: string): Promise<Stockage> {
       if (ancienne < 3) db.createObjectStore("fichiers", { keyPath: "id" });
       // Version 4 : les messages importants, retrouvés sans parcourir tout l'historique.
       if (ancienne < 4) transaction.objectStore("messages").createIndex("important", "importantLe");
+      // Version 5 : les messages éphémères, retrouvés à leur échéance.
+      if (ancienne < 5) transaction.objectStore("messages").createIndex("expire", "expireLe");
     },
   });
 }

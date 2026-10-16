@@ -13,6 +13,7 @@ export interface FichierPrepare {
   duree?: number;
   apercu?: string;
   vocal?: boolean;
+  vueUnique?: boolean;
 }
 
 const COTE_MAX = 1600;

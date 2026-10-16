@@ -1,6 +1,6 @@
 import { CONSERVATION_MEDIA, type MediaMessage } from "@unichat/shared";
 import clsx from "clsx";
-import { Download, FileText, Headphones, LoaderCircle, Mic, Pause, Play, RotateCw, Video, X } from "lucide-react";
+import { Download, Eye, FileText, Headphones, LoaderCircle, Mic, Pause, Play, RotateCw, Video, X } from "lucide-react";
 import { useEffect, useRef, useState, type ReactNode, type RefObject } from "react";
 import { ErreurApi } from "../lib/api";
 import { urlOuvertureMedia } from "../lib/api-medias";
@@ -438,7 +438,20 @@ function DocumentJoint({ message, progression }: { message: MessageAvecMedia; pr
 }
 
 /** Photo ou vidéo en plein écran, sur fond sombre quel que soit le thème. */
-export function Visionneuse({ message, url, auteur, onFermer }: { message: MessageAvecMedia; url: string; auteur: string; onFermer: () => void }) {
+export function Visionneuse({
+  message,
+  url,
+  auteur,
+  vueUnique,
+  onFermer,
+}: {
+  message: MessageAvecMedia;
+  url: string;
+  auteur: string;
+  /** Vue unique : ni téléchargement, et le fichier disparaît à la fermeture. */
+  vueUnique?: boolean;
+  onFermer: () => void;
+}) {
   const fermer = useRef<HTMLButtonElement>(null);
   useEffect(() => {
     fermer.current?.focus();
@@ -458,9 +471,15 @@ export function Visionneuse({ message, url, auteur, onFermer }: { message: Messa
             {jourMessage(message.le)} à {heureCourte(message.le)}
           </p>
         </div>
-        <button type="button" onClick={() => enregistrer(url, m.nom)} aria-label="Télécharger" title="Télécharger" className={bouton}>
-          <Download size={21} />
-        </button>
+        {vueUnique ? (
+          <span className="flex items-center gap-1.5 rounded-full bg-sur-visionneuse/10 px-3 py-1 text-[12.5px]">
+            <Eye size={14} /> Vue unique
+          </span>
+        ) : (
+          <button type="button" onClick={() => enregistrer(url, m.nom)} aria-label="Télécharger" title="Télécharger" className={bouton}>
+            <Download size={21} />
+          </button>
+        )}
         <button ref={fermer} type="button" onClick={onFermer} aria-label="Fermer" title="Fermer" className={bouton}>
           <X size={23} />
         </button>

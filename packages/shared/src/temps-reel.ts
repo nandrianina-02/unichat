@@ -20,6 +20,13 @@ export const TRANSFERTS_NOMBREUX = 5;
 /** Messages épinglés en haut d'une discussion. */
 export const EPINGLES_MESSAGES_MAX = 3;
 const JOUR = 24 * 60 * 60 * 1000;
+/** Messages éphémères : les durées proposées par WhatsApp. */
+export const DUREES_EPHEMERES = [
+  { libelle: "24 heures", duree: JOUR },
+  { libelle: "7 jours", duree: 7 * JOUR },
+  { libelle: "90 jours", duree: 90 * JOUR },
+] as const;
+export const SONDAGE = { question: 255, option: 100, optionsMin: 2, optionsMax: 12 } as const;
 export const DUREES_EPINGLE = [
   { libelle: "24 heures", duree: JOUR },
   { libelle: "7 jours", duree: 7 * JOUR },
@@ -82,6 +89,26 @@ export interface Message {
   lien?: ApercuLien;
   /** Membres mentionnés (@) dans un groupe. */
   mentions?: string[];
+  /** Message éphémère : il s'efface de chaque appareil après cette durée (ms). */
+  ephemere?: number;
+  position?: Position;
+  /** Fiche d'une personne inscrite ; nom et pseudo relus par le serveur. */
+  contact?: { id: string; nom: string; pseudo: string | null };
+  sondage?: Sondage;
+}
+
+export interface Position {
+  lat: number;
+  lon: number;
+  /** Précision annoncée par l'appareil, en mètres. */
+  precision?: number;
+}
+
+export interface Sondage {
+  question: string;
+  options: string[];
+  /** Plusieurs réponses possibles. */
+  multiple: boolean;
 }
 
 /** Aperçu d'un lien : du texte seulement, aucune image venue d'ailleurs. */
@@ -134,6 +161,8 @@ export const schemaPreference = z
     archive: z.boolean().optional(),
     /** Épinglée en haut de la liste (trois au plus, comme WhatsApp). */
     epingle: z.boolean().optional(),
+    /** « Marquer comme non lu » : un point dans la liste jusqu'à la prochaine ouverture. */
+    nonLu: z.boolean().optional(),
     /** Messages effacés jusqu'à cette date incluse. */
     effaceAvant: z.number().int().nonnegative().optional(),
     /** Discussion retirée de la liste ; elle revient au prochain message. */
@@ -157,6 +186,12 @@ export type Entree =
   | { seq: number; type: "epingle"; conversation: string; message: string; par: string; jusqua: number | null; le: number }
   /** Message marqué important sur l'un de mes appareils : il l'est sur tous. */
   | { seq: number; type: "important"; conversation: string; message: string; important: boolean; le: number }
+  /** Messages éphémères activés (durée) ou désactivés (null) pour la discussion. */
+  | { seq: number; type: "ephemere"; conversation: string; par: string; duree: number | null; le: number }
+  /** Photo ou vidéo à vue unique ouverte par son destinataire. */
+  | { seq: number; type: "ouvert"; conversation: string; message: string; par: string; le: number }
+  /** Vote à un sondage (choix vide : vote retiré). */
+  | { seq: number; type: "vote"; conversation: string; message: string; par: string; choix: number[]; le: number }
   | { seq: number; type: "groupe"; evenement: EvenementGroupe }
   /** Blocage ou déblocage fait sur l'un de mes appareils : les autres se mettent à jour. */
   | { seq: number; type: "blocage"; conversation: string; personne: string; bloque: boolean; le: number }
@@ -183,9 +218,34 @@ export const schemaClient = z.discriminatedUnion("t", [
       transfere: z.number().int().min(1).max(10_000).optional(),
       lien: schemaApercuLien.optional(),
       mentions: z.array(uuid).max(MENTIONS_MAX).optional(),
+      ephemere: z
+        .number()
+        .int()
+        .refine((d) => DUREES_EPHEMERES.some((e) => e.duree === d), "Durée invalide.")
+        .optional(),
+      position: z
+        .object({
+          lat: z.number().min(-90).max(90),
+          lon: z.number().min(-180).max(180),
+          precision: z.number().min(0).max(100_000).optional(),
+        })
+        .strict()
+        .optional(),
+      contact: z.object({ id: uuid }).optional(),
+      sondage: z
+        .object({
+          question: z.string().trim().min(1, "Posez une question.").max(SONDAGE.question),
+          options: z
+            .array(z.string().trim().min(1, "Option vide.").max(SONDAGE.option))
+            .min(SONDAGE.optionsMin, `${SONDAGE.optionsMin} options au moins.`)
+            .max(SONDAGE.optionsMax, `${SONDAGE.optionsMax} options au plus.`),
+          multiple: z.boolean(),
+        })
+        .strict()
+        .optional(),
     })
     .refine((m) => Boolean(m.a) !== Boolean(m.groupe), "Destinataire manquant.")
-    .refine((m) => m.texte.trim().length > 0 || m.media, "Message vide."),
+    .refine((m) => m.texte.trim().length > 0 || m.media || m.position || m.contact || m.sondage, "Message vide."),
   /** Messages lus, groupés par auteur : c'est lui qui verra « lu ». */
   z.object({ t: z.literal("lu"), conversation, auteur: uuid, ids: z.array(uuid).min(1).max(500) }),
   z.object({ t: z.literal("ecrit"), conversation }),
@@ -201,6 +261,18 @@ export const schemaClient = z.discriminatedUnion("t", [
   }),
   z.object({ t: z.literal("epingler"), conversation, message: uuid, jusqua: z.number().int().positive().nullable() }),
   z.object({ t: z.literal("important"), conversation, message: uuid, important: z.boolean() }),
+  z.object({
+    t: z.literal("ephemere"),
+    conversation,
+    duree: z
+      .number()
+      .int()
+      .refine((d) => DUREES_EPHEMERES.some((e) => e.duree === d), "Durée invalide.")
+      .nullable(),
+  }),
+  /** Vue unique ouverte : seul l'auteur en est averti (avec mes autres appareils). */
+  z.object({ t: z.literal("ouvert"), conversation, message: uuid, auteur: uuid }),
+  z.object({ t: z.literal("voter"), conversation, message: uuid, choix: z.array(z.number().int().min(0).max(SONDAGE.optionsMax - 1)).max(SONDAGE.optionsMax) }),
 ]);
 export type MessageClient = z.infer<typeof schemaClient>;
 

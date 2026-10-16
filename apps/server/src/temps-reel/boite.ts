@@ -238,6 +238,30 @@ export class Boite extends DurableObject<Bindings> {
           jusqua: m.jusqua,
           le: Date.now(),
         });
+      case "ephemere":
+        return this.partager(ws, moi, m.conversation, {
+          type: "ephemere",
+          conversation: m.conversation,
+          par: moi,
+          duree: m.duree,
+          le: Date.now(),
+        });
+      case "voter":
+        return this.partager(ws, moi, m.conversation, {
+          type: "vote",
+          conversation: m.conversation,
+          message: m.message,
+          par: moi,
+          choix: [...new Set(m.choix)],
+          le: Date.now(),
+        });
+      case "ouvert": {
+        if ((await this.participants(m.conversation, moi)) === null) return;
+        const entree: NouvelleEntree = { type: "ouvert", conversation: m.conversation, message: m.message, par: moi, le: Date.now() };
+        if (m.auteur !== moi) await this.distribuer([m.auteur], entree);
+        this.ajouter(entree);
+        return;
+      }
       case "important": {
         // Comme les réglages : une affaire entre moi et mes appareils.
         if ((await this.participants(m.conversation, moi)) === null && !estGroupe(m.conversation)) {
@@ -402,6 +426,19 @@ export class Boite extends DurableObject<Bindings> {
       media = { ...ligne, ...declare };
     }
 
+    // Fiche de contact : le nom et le pseudo viennent de la base, pas de l'expéditeur.
+    let contact: Message["contact"];
+    if (m.contact) {
+      const fiche = await this.env.DB.prepare("SELECT id, nom, pseudo FROM utilisateurs WHERE id = ?1 AND pseudo IS NOT NULL")
+        .bind(m.contact.id)
+        .first<{ id: string; nom: string; pseudo: string }>();
+      if (!fiche) {
+        this.envoyer(ws, { t: "refuse", id: m.id, message: "Cette personne n'existe pas ou plus sur UniChat." });
+        return;
+      }
+      contact = fiche;
+    }
+
     const message: Message = {
       id: m.id,
       conversation,
@@ -415,6 +452,10 @@ export class Boite extends DurableObject<Bindings> {
       ...(m.lien ? { lien: m.lien } : {}),
       // Les mentions n'ont de sens que dans un groupe.
       ...(m.groupe && m.mentions?.length ? { mentions: [...new Set(m.mentions)] } : {}),
+      ...(m.ephemere ? { ephemere: m.ephemere } : {}),
+      ...(m.position ? { position: m.position } : {}),
+      ...(contact ? { contact } : {}),
+      ...(m.sondage ? { sondage: m.sondage } : {}),
     };
     await this.distribuer(destinataires, { type: "message", message });
     // Copie dans ma propre boîte : mes autres appareils voient ce que j'envoie.

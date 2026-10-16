@@ -1,6 +1,6 @@
 import { LIMITE_TEXTE, MENTIONS_MAX, type ApercuLien } from "@unichat/shared";
 import clsx from "clsx";
-import { Check, FileText, Globe, Images, LoaderCircle, Mic, Paperclip, Pencil, SendHorizontal, Smile, X } from "lucide-react";
+import { Check, FileText, Globe, Images, ListChecks, LoaderCircle, MapPin, Mic, Paperclip, Pencil, SendHorizontal, Smile, UserRound, X } from "lucide-react";
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { BoutonIcone } from "../composants/BoutonIcone";
 import { ChoixEmoji } from "../composants/ChoixEmoji";
@@ -34,6 +34,7 @@ export function Composeur({
   onEnvoyer,
   onEcrit,
   onJoindre,
+  onSpecial,
   onVocal,
   onAvis,
 }: {
@@ -49,6 +50,7 @@ export function Composeur({
   onEnvoyer: (texte: string, extras: Extras) => void;
   onEcrit: () => void;
   onJoindre: (fichiers: File[]) => void;
+  onSpecial: (quoi: "position" | "contact" | "sondage") => void;
   onVocal: (blob: Blob, duree: number) => void;
   onAvis: (texte: string) => void;
 }) {
@@ -234,6 +236,9 @@ export function Composeur({
                 elements={[
                   { icone: Images, libelle: "Photos et vidéos", action: () => visuels.current?.click() },
                   { icone: FileText, libelle: "Document", action: () => documents.current?.click() },
+                  { icone: MapPin, libelle: "Position", action: () => onSpecial("position") },
+                  { icone: UserRound, libelle: "Contact", action: () => onSpecial("contact") },
+                  { icone: ListChecks, libelle: "Sondage", action: () => onSpecial("sondage") },
                 ]}
                 onChoix={() => setMenu(false)}
               />

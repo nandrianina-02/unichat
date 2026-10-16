@@ -41,6 +41,7 @@ import {
   SquareCheck,
   Star,
   StarOff,
+  Timer,
   Trash2,
   UserPlus,
   X,
@@ -49,6 +50,16 @@ import { Dialogue } from "../composants/Dialogue";
 import { DialogueTransfert } from "../composants/Transfert";
 import { TexteMessage } from "../composants/TexteMessage";
 import { Composeur } from "./Composeur";
+import {
+  BlocSondage,
+  CarteContact,
+  CartePosition,
+  DialogueContact,
+  DialogueEphemere,
+  DialoguePosition,
+  DialogueSondage,
+  PastilleVueUnique,
+} from "../composants/Contenus";
 import { useActionsDiscussion } from "../composants/ActionsDiscussion";
 import { Menu, useFermetureExterieure, type ElementMenu } from "../composants/Menu";
 import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
@@ -62,7 +73,7 @@ import { ContenuMedia, Visionneuse, type MessageAvecMedia } from "../composants/
 import { ChoixReaction, IconeReaction, REACTIONS_AFFICHEES } from "../composants/Reactions";
 import { ErreurApi, api } from "../lib/api";
 import { useCompte, useMoi } from "../lib/compte";
-import { heureCourte, jourMessage, resumeMessage, tailleFichier, texteEvenement, vuLe } from "../lib/format";
+import { heureCourte, jourMessage, resumeMessage, tailleFichier, texteEphemere, texteEvenement, vuLe } from "../lib/format";
 import { useMessagerie, useMessages } from "../lib/messagerie-react";
 import type { Epingle, MessageLocal } from "../lib/stockage";
 
@@ -86,9 +97,11 @@ interface Props {
   onInfos: () => void;
   onRechercher: () => void;
   onFermer: () => void;
+  /** Écrire à une personne (fiche de contact reçue). */
+  onEcrireA: (id: string) => void;
 }
 
-export function Discussion({ conversation, cible, onInfos, onRechercher, onFermer }: Props) {
+export function Discussion({ conversation, cible, onInfos, onRechercher, onFermer, onEcrireA }: Props) {
   const moi = useMoi();
   const { messagerie, etat } = useMessagerie();
   const messages = useMessages(conversation);
@@ -109,9 +122,12 @@ export function Discussion({ conversation, cible, onInfos, onRechercher, onFerme
   const [edition, setEdition] = useState<MessageLocal | null>(null);
   const [aTransferer, setATransferer] = useState<MessageLocal[] | null>(null);
   const [aEpingler, setAEpingler] = useState<MessageLocal | null>(null);
+  const [infosMessage, setInfosMessage] = useState<MessageLocal | null>(null);
+  const [special, setSpecial] = useState<"position" | "contact" | "sondage" | "ephemere" | null>(null);
+  const [vueUniqueEnCours, setVueUniqueEnCours] = useState<string | null>(null);
   const [avis, setAvis] = useState<string | null>(null);
   const [aJoindre, setAJoindre] = useState<File[] | null>(null);
-  const [visionne, setVisionne] = useState<{ message: MessageAvecMedia; url: string } | null>(null);
+  const [visionne, setVisionne] = useState<{ message: MessageAvecMedia; url: string; vueUnique?: boolean } | null>(null);
   const [depot, setDepot] = useState(false);
 
   useEffect(() => {
@@ -167,6 +183,7 @@ export function Discussion({ conversation, cible, onInfos, onRechercher, onFerme
     { icone: Search, libelle: "Rechercher", action: onRechercher },
     { icone: SquareCheck, libelle: "Sélectionner des messages", action: () => setSelection(new Set()) },
     actions.elements.sourdine,
+    { icone: Timer, libelle: "Messages éphémères", action: () => setSpecial("ephemere") },
     actions.elements.favoris,
     actions.elements.exporter,
     { icone: CircleX, libelle: "Fermer la discussion", action: onFermer },
@@ -205,6 +222,20 @@ export function Discussion({ conversation, cible, onInfos, onRechercher, onFerme
       () => setAvis(avecTexte.length > 1 ? "Messages copiés." : "Message copié."),
       () => setAvis("La copie a été refusée par le navigateur."),
     );
+  }
+
+  /** Vue unique : téléchargée, montrée une fois, puis effacée à la fermeture. */
+  async function ouvrirVueUnique(m: MessageLocal) {
+    if (!m.media?.id) return;
+    setVueUniqueEnCours(m.id);
+    try {
+      const blob = await messagerie.recupererFichier(m.id, m.media.id);
+      setVisionne({ message: m as MessageAvecMedia, url: URL.createObjectURL(blob), vueUnique: true });
+    } catch {
+      setAvis("Cette photo n'est plus disponible.");
+    } finally {
+      setVueUniqueEnCours(null);
+    }
   }
 
   function basculerSelection(m: MessageLocal) {
@@ -297,6 +328,11 @@ export function Discussion({ conversation, cible, onInfos, onRechercher, onFerme
         onImportant={(m) => void messagerie.marquerImportant(m, !m.importantLe)}
         onModifier={(m) => (setReponse(null), setEdition(m))}
         onSelectionner={(m) => setSelection(new Set([m.id]))}
+        onInfosMessage={(m) => setInfosMessage(m)}
+        onVoter={(m, choix) => void messagerie.voter(m, choix).then((ok) => !ok && setAvis("Hors connexion : le vote n'a pas pu être envoyé."))}
+        onEcrireA={onEcrireA}
+        onOuvrirVueUnique={(m) => void ouvrirVueUnique(m)}
+        vueUniqueEnCours={vueUniqueEnCours}
         onBasculerSelection={basculerSelection}
         envois={etat.envois}
       />
@@ -351,6 +387,7 @@ export function Discussion({ conversation, cible, onInfos, onRechercher, onFerme
           }}
           onEcrit={() => !estSoi && messagerie.signalerEcriture(conversation)}
           onJoindre={joindre}
+          onSpecial={setSpecial}
           onVocal={envoyerVocal}
           onAvis={setAvis}
         />
@@ -382,10 +419,56 @@ export function Discussion({ conversation, cible, onInfos, onRechercher, onFerme
           message={visionne.message}
           url={visionne.url}
           auteur={visionne.message.de === moi.id ? "Vous" : nom(visionne.message.de)}
-          onFermer={() => setVisionne(null)}
+          vueUnique={visionne.vueUnique}
+          onFermer={() => {
+            if (visionne.vueUnique) {
+              URL.revokeObjectURL(visionne.url);
+              void messagerie.fermerVueUnique(visionne.message);
+            }
+            setVisionne(null);
+          }}
         />
       )}
       {actions.dialogue}
+      {special === "position" && (
+        <DialoguePosition
+          onFermer={() => setSpecial(null)}
+          onEnvoyer={(position) => {
+            void messagerie.envoyerContenu(conversation, { position });
+            setSpecial(null);
+          }}
+        />
+      )}
+      {special === "contact" && (
+        <DialogueContact
+          onFermer={() => setSpecial(null)}
+          onEnvoyer={(c) => {
+            void messagerie.envoyerContenu(conversation, { contact: { id: c.id, nom: c.nom, pseudo: c.pseudo } });
+            setSpecial(null);
+          }}
+        />
+      )}
+      {special === "sondage" && (
+        <DialogueSondage
+          onFermer={() => setSpecial(null)}
+          onEnvoyer={(sondage) => {
+            void messagerie.envoyerContenu(conversation, { sondage });
+            setSpecial(null);
+          }}
+        />
+      )}
+      {special === "ephemere" && (
+        <DialogueEphemere
+          actuelle={discussion?.ephemere}
+          onFermer={() => setSpecial(null)}
+          onChoisir={(duree) => {
+            if ((duree ?? undefined) !== discussion?.ephemere && !messagerie.reglerEphemere(conversation, duree)) {
+              setAvis("Hors connexion : réessayez une fois reconnecté.");
+            }
+            setSpecial(null);
+          }}
+        />
+      )}
       {aSupprimer && (
         <DialogueSuppression
           messages={aSupprimer}
@@ -413,6 +496,13 @@ export function Discussion({ conversation, cible, onInfos, onRechercher, onFerme
             setATransferer(null);
             setSelection(null);
           }}
+        />
+      )}
+      {infosMessage && (
+        <DialogueInfosMessage
+          message={messages?.find((m) => m.id === infosMessage.id) ?? infosMessage}
+          membres={groupe?.membres.filter((m) => !m.estSoi) ?? []}
+          onFermer={() => setInfosMessage(null)}
         />
       )}
       {aEpingler && (
@@ -544,6 +634,11 @@ interface ActionsMessage {
   onModifier: (m: MessageLocal) => void;
   onSelectionner: (m: MessageLocal) => void;
   onBasculerSelection: (m: MessageLocal) => void;
+  onInfosMessage: (m: MessageLocal) => void;
+  onVoter: (m: MessageLocal, choix: number[]) => void;
+  onEcrireA: (id: string) => void;
+  onOuvrirVueUnique: (m: MessageLocal) => void;
+  vueUniqueEnCours: string | null;
 }
 
 function ListeMessages({
@@ -625,6 +720,18 @@ function ListeMessages({
         </div>,
       );
       precedent = null;
+    }
+    if (m.type === "systeme" && m.systeme) {
+      elements.push(
+        <div key={m.id} className="my-2 flex justify-center px-6">
+          <span className="flex max-w-md items-start gap-2 rounded-lg bg-panneau/90 px-3 py-1.5 text-center text-[12.5px] text-texte-2 shadow-sm">
+            <Timer size={14} className="mt-px shrink-0" />
+            {texteEphemere(nom(m.de), m.systeme.duree)}
+          </span>
+        </div>,
+      );
+      precedent = null;
+      continue;
     }
     if (m.type === "evenement" && m.evenement) {
       elements.push(
@@ -727,6 +834,11 @@ function Bulle({
   onModifier,
   onSelectionner,
   onBasculerSelection,
+  onInfosMessage,
+  onVoter,
+  onEcrireA,
+  onOuvrirVueUnique,
+  vueUniqueEnCours,
 }: {
   message: MessageLocal;
   mien: boolean;
@@ -765,7 +877,7 @@ function Bulle({
     : [
         { icone: Reply, libelle: "Répondre", action: () => onRepondre(m) },
         ...(m.texte ? [{ icone: Copy, libelle: "Copier", action: () => onCopier(m) }] : []),
-        ...(parti ? [{ icone: Forward, libelle: "Transférer", action: () => onTransferer(m) }] : []),
+        ...(parti && !m.media?.vueUnique && !m.sondage ? [{ icone: Forward, libelle: "Transférer", action: () => onTransferer(m) }] : []),
         ...(parti ? [{ icone: epinglee ? PinOff : Pin, libelle: epinglee ? "Désépingler" : "Épingler", action: () => onEpingler(m) }] : []),
         {
           icone: m.importantLe ? StarOff : Star,
@@ -774,15 +886,17 @@ function Bulle({
         },
         ...(modifiable ? [{ icone: Pencil, libelle: "Modifier", action: () => onModifier(m) }] : []),
         { icone: SquareCheck, libelle: "Sélectionner", action: () => onSelectionner(m) },
+        ...(mien && parti ? [{ icone: Info, libelle: "Infos du message", action: () => onInfosMessage(m) }] : []),
       ];
   // Place réservée à l'heure sur la dernière ligne : elle grandit avec « Modifié » et l'étoile.
-  const reserve = (mien ? 68 : 42) + (m.modifieLe && !m.supprime ? 50 : 0) + (m.importantLe ? 16 : 0);
+  const reserve = (mien ? 68 : 42) + (m.modifieLe && !m.supprime ? 50 : 0) + (m.importantLe ? 16 : 0) + (m.ephemere ? 16 : 0);
   const media = !m.supprime && m.media ? m.media : undefined;
   // Photo et vidéo occupent toute la bulle, bord à bord ; l'heure se pose dessus quand il n'y a pas de légende.
-  const visuel = media?.type === "image" || media?.type === "video";
+  const visuel = (media?.type === "image" || media?.type === "video") && !media.vueUnique;
   const heurePosee = visuel && !m.texte;
   const heure = (
     <>
+      {m.ephemere && <Timer size={12} aria-label="Message éphémère" />}
       {m.importantLe && <Star size={12} className="fill-current" aria-label="Important" />}
       {m.modifieLe && !m.supprime && <span>Modifié</span>}
       {heureCourte(m.le)}
@@ -859,7 +973,15 @@ function Bulle({
               {m.lien.description && <span className="mt-0.5 block line-clamp-2 text-[13px] text-texte-2">{m.lien.description}</span>}
             </a>
           )}
-          {media && (
+          {media?.vueUnique && (
+            <PastilleVueUnique message={m} mien={mien} enCours={vueUniqueEnCours === m.id} onOuvrir={() => onOuvrirVueUnique(m)} />
+          )}
+          {!m.supprime && m.position && <CartePosition position={m.position} />}
+          {!m.supprime && m.contact && <CarteContact contact={m.contact} onMessage={onEcrireA} />}
+          {!m.supprime && m.sondage && (
+            <BlocSondage message={m as MessageLocal & { sondage: NonNullable<MessageLocal["sondage"]> }} moiId={moiId} nom={nom} onVoter={(choix) => onVoter(m, choix)} />
+          )}
+          {media && !media.vueUnique && (
             <ContenuMedia
               message={m as MessageAvecMedia}
               progression={progression}
@@ -924,7 +1046,7 @@ function Bulle({
             >
               <SmilePlus size={18} />
             </button>
-            {parti && (
+            {parti && !media?.vueUnique && !m.sondage && (
               <button
                 type="button"
                 aria-label="Transférer"
@@ -1181,6 +1303,59 @@ function DialogueEpingle({ onEpingler, onFermer }: { onEpingler: (duree: number)
           </label>
         ))}
       </div>
+    </Dialogue>
+  );
+}
+
+/**
+ * « Infos du message » : dans un groupe, qui l'a lu et qui l'a reçu, membre
+ * par membre ; à deux, son état. Seul l'auteur le voit, comme dans WhatsApp.
+ */
+function DialogueInfosMessage({
+  message: m,
+  membres,
+  onFermer,
+}: {
+  message: MessageLocal;
+  membres: { id: string; nom: string }[];
+  onFermer: () => void;
+}) {
+  const groupe = estGroupe(m.conversation);
+  const lu = new Set(m.luPar ?? []);
+  const remis = new Set(m.remisPar ?? []);
+  const sections = [
+    { titre: "Lu par", liste: membres.filter((p) => lu.has(p.id)), coche: "lu" as const },
+    { titre: "Remis à", liste: membres.filter((p) => remis.has(p.id) && !lu.has(p.id)), coche: "remis" as const },
+    { titre: "En attente", liste: membres.filter((p) => !remis.has(p.id) && !lu.has(p.id)), coche: "envoye" as const },
+  ];
+  const etat = m.etat === "lu" ? "Lu" : m.etat === "remis" ? "Remis" : m.etat === "envoye" ? "Envoyé" : "En attente d'envoi";
+  return (
+    <Dialogue titre="Infos du message" confirmer="Fermer" annuler={false} onConfirmer={onFermer} onFermer={onFermer}>
+      <p className="line-clamp-3 rounded-md bg-bulle-envoyee px-3 py-2 text-[14px] text-texte">{resumeMessage(m)}</p>
+      <p className="mt-2 text-[12.5px] text-texte-3">Envoyé {jourMessage(m.le).toLowerCase()} à {heureCourte(m.le)}</p>
+      {groupe ? (
+        sections.map(
+          (s) =>
+            s.liste.length > 0 && (
+              <div key={s.titre} className="mt-4">
+                <p className="flex items-center gap-2 text-[13px] font-medium text-texte-2">
+                  <Coches etat={s.coche} /> {s.titre}
+                </p>
+                <ul className="mt-1.5 space-y-1">
+                  {s.liste.map((p) => (
+                    <li key={p.id} className="text-[14.5px] text-texte">
+                      {p.nom}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            ),
+        )
+      ) : (
+        <p className="mt-4 flex items-center gap-2 text-[14.5px] text-texte">
+          <Coches etat={m.etat} /> {etat}
+        </p>
+      )}
     </Dialogue>
   );
 }

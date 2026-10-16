@@ -29,6 +29,8 @@ import { Discussion } from "../vues/Discussion";
 import { FicheContact } from "../vues/FicheContact";
 import { InfosGroupe } from "../vues/InfosGroupe";
 import { RechercheMessages } from "../vues/RechercheMessages";
+import { Galerie } from "../vues/Galerie";
+import { DialogueFond } from "../composants/DialogueFond";
 import { Importants } from "../panneaux/Importants";
 
 /** Ce qu'affiche la zone principale. */
@@ -38,7 +40,7 @@ type Principal =
       type: "discussion";
       conversation: string;
       /** Panneau à côté de la discussion : infos, ou recherche dans les messages. */
-      cote: "infos" | "recherche" | null;
+      cote: "infos" | "recherche" | "galerie" | null;
       /** Message à montrer en ouvrant la discussion. */
       cible?: string;
     };
@@ -57,6 +59,7 @@ export function Application() {
   const { pile, ouvrir, retour, toutFermer, retirer } = usePile<Vue>();
   const [principal, setPrincipal] = useState<Principal>(ACCUEIL);
   const [theme, setTheme] = useState(false);
+  const [fond, setFond] = useState(false);
   const [deconnexion, setDeconnexion] = useState(false);
   const [invitation] = useState(invitationEnAttente);
   const [invitationGroupe, setInvitationGroupe] = useState(invitationGroupeEnAttente);
@@ -126,7 +129,13 @@ export function Application() {
         );
       case "parametres":
         return (
-          <Parametres onRetour={retour} onOuvrir={ouvrir} onTheme={() => setTheme(true)} onDeconnexion={() => setDeconnexion(true)} />
+          <Parametres
+            onRetour={retour}
+            onOuvrir={ouvrir}
+            onTheme={() => setTheme(true)}
+            onFond={() => setFond(true)}
+            onDeconnexion={() => setDeconnexion(true)}
+          />
         );
       case "profil":
         return <Profil onRetour={retour} />;
@@ -217,10 +226,17 @@ export function Application() {
               onInfos={() => setPrincipal({ ...principal, cote: "infos" })}
               onRechercher={() => setPrincipal({ ...principal, cote: "recherche" })}
               onFermer={() => setPrincipal(ACCUEIL)}
+              onEcrireA={ouvrirPersonne}
             />
             {principal.cote && (
               <aside className="absolute inset-0 z-10 flex lg:static lg:w-[400px] lg:shrink-0 lg:border-l lg:border-bordure">
-                {principal.cote === "recherche" ? (
+                {principal.cote === "galerie" ? (
+                  <Galerie
+                    key={`galerie-${principal.conversation}`}
+                    conversation={principal.conversation}
+                    onFermer={() => setPrincipal({ ...principal, cote: "infos" })}
+                  />
+                ) : principal.cote === "recherche" ? (
                   <RechercheMessages
                     key={`recherche-${principal.conversation}`}
                     conversation={principal.conversation}
@@ -232,12 +248,14 @@ export function Application() {
                     groupeId={idGroupe(principal.conversation)}
                     onFermer={() => setPrincipal({ ...principal, cote: null })}
                     onMessage={ouvrirPersonne}
+                    onGalerie={() => setPrincipal({ ...principal, cote: "galerie" })}
                   />
                 ) : (
                   <FicheContact
                     key={`infos-${principal.conversation}`}
                     id={autreParticipant(principal.conversation, moi.id)}
                     onFermer={() => setPrincipal({ ...principal, cote: null })}
+                    onGalerie={() => setPrincipal({ ...principal, cote: "galerie" })}
                   />
                 )}
               </aside>
@@ -247,6 +265,7 @@ export function Application() {
       </main>
 
       {theme && <DialogueTheme onFermer={() => setTheme(false)} />}
+      {fond && <DialogueFond onFermer={() => setFond(false)} />}
       {invitationGroupe && (
         <DialogueRejoindre
           code={invitationGroupe}

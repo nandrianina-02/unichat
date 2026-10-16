@@ -89,6 +89,8 @@ export interface MediaMessage {
   apercu?: string;
   /** Enregistré au micro dans la discussion, plutôt que joint depuis un fichier. */
   vocal?: boolean;
+  /** Photo ou vidéo à vue unique : effacée de l'appareil du destinataire une fois ouverte. */
+  vueUnique?: boolean;
 }
 
 export const schemaTransfertMedia = z
@@ -108,5 +110,6 @@ export const schemaMediaEnvoye = z
       .regex(/^data:image\/(jpeg|webp);base64,[A-Za-z0-9+/=]+$/, "Aperçu invalide.")
       .optional(),
     vocal: z.boolean().optional(),
+    vueUnique: z.boolean().optional(),
   })
   .strict();

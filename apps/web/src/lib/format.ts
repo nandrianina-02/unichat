@@ -120,12 +120,12 @@ export function initiales(nom: string): string {
 }
 
 /** Nom d'un fichier joint quand il n'a pas de légende : « Photo », « Message vocal », ou le nom du document. */
-export function libelleMedia(media: { type: string; nom: string; vocal?: boolean }): string {
+export function libelleMedia(media: { type: string; nom: string; vocal?: boolean; vueUnique?: boolean }): string {
   switch (media.type) {
     case "image":
-      return "Photo";
+      return media.vueUnique ? "Photo à vue unique" : "Photo";
     case "video":
-      return "Vidéo";
+      return media.vueUnique ? "Vidéo à vue unique" : "Vidéo";
     case "audio":
       return media.vocal ? "Message vocal" : "Audio";
     default:
@@ -134,8 +134,37 @@ export function libelleMedia(media: { type: string; nom: string; vocal?: boolean
 }
 
 /** Texte qui résume un message ailleurs que dans sa bulle : citation, notification, liste. */
-export const resumeMessage = (m: { texte: string; media?: { type: string; nom: string; vocal?: boolean } }) =>
-  m.texte || (m.media ? libelleMedia(m.media) : "");
+export const resumeMessage = (m: {
+  texte: string;
+  media?: { type: string; nom: string; vocal?: boolean; vueUnique?: boolean };
+  position?: unknown;
+  contact?: { nom: string };
+  sondage?: { question: string };
+}) =>
+  m.texte ||
+  (m.media
+    ? libelleMedia(m.media)
+    : m.position
+      ? "Position"
+      : m.contact
+        ? `Contact : ${m.contact.nom}`
+        : m.sondage
+          ? `Sondage : ${m.sondage.question}`
+          : "");
+
+/** « 24 heures », « 7 jours », « 90 jours ». */
+export function dureeEphemere(ms: number): string {
+  const jours = Math.round(ms / 86_400_000);
+  return jours <= 1 ? "24 heures" : `${jours} jours`;
+}
+
+/** Ligne système des messages éphémères. */
+export function texteEphemere(par: string, duree: number | null | undefined): string {
+  const qui = par === "Vous" ? "Vous avez" : `${par} a`;
+  return duree
+    ? `${qui} activé les messages éphémères. Les nouveaux messages disparaîtront ${dureeEphemere(duree)} après leur envoi.`
+    : `${qui} désactivé les messages éphémères.`;
+}
 
 /** « 0:07 », « 12:40 », « 1:02:03 ». */
 export function dureeCourte(secondes: number): string {

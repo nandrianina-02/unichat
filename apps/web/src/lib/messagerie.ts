@@ -14,7 +14,9 @@ import {
   type MessageClient,
   type MessageServeur,
   type ApercuLien,
+  type Position,
   type Preference,
+  type Sondage,
   type Reaction,
 } from "@unichat/shared";
 import { ErreurApi, api } from "./api";
@@ -88,6 +90,7 @@ export class Messagerie {
   private minuterieReconnexion: ReturnType<typeof setTimeout> | null = null;
   private minuterieAccuse: ReturnType<typeof setTimeout> | null = null;
   private minuteriePing: ReturnType<typeof setInterval> | null = null;
+  private minuterieEphemeres: ReturnType<typeof setInterval> | null = null;
   private readonly auditeurs = new Set<() => void>();
   private readonly personnesDemandees = new Set<string>();
   private readonly groupesDemandes = new Set<string>();
@@ -153,6 +156,8 @@ export class Messagerie {
     });
     this.mettreAJourTitre();
     await this.signalerEnvoisInterrompus();
+    await this.effacerEphemeres();
+    this.minuterieEphemeres = setInterval(() => void this.effacerEphemeres(), 5 * 60_000);
     // Les profils en cache s'affichent tout de suite, puis sont rafraîchis.
     for (const c of conversations) {
       if (estGroupe(c.id)) void this.chargerGroupe(c.autre, true);
@@ -167,6 +172,7 @@ export class Messagerie {
     window.removeEventListener("online", this.surRetourReseau);
     for (const m of [this.minuterieReconnexion, this.minuterieAccuse]) if (m) clearTimeout(m);
     if (this.minuteriePing) clearInterval(this.minuteriePing);
+    if (this.minuterieEphemeres) clearInterval(this.minuterieEphemeres);
     this.ws?.close(1000);
     this.ws = null;
     this.db?.close();
@@ -310,11 +316,12 @@ export class Messagerie {
         // Un message arrivé après la suppression de la discussion la fait revenir.
         retirees.delete(m.conversation);
         const existant = await messages.get(m.id);
+        const expiration = m.ephemere ? { expireLe: m.le + m.ephemere } : {};
         if (m.de === this.moi) {
-          const local: MessageLocal = { ...existant, ...m, type: "texte" };
+          const local: MessageLocal = { ...existant, ...m, ...expiration, type: "texte" };
           await messages.put({ ...local, etat: plusAvance(existant?.etat === "echec" ? "attente" : existant?.etat, this.etatDeMonMessage(local)) });
         } else if (!existant) {
-          const local: MessageLocal = { ...m, type: "texte", lu: false };
+          const local: MessageLocal = { ...m, ...expiration, type: "texte", lu: false };
           await messages.put(local);
           nouveaux.push(local);
         }
@@ -371,6 +378,50 @@ export class Messagerie {
         const msg = await messages.get(e.message);
         if (msg && msg.conversation === e.conversation) {
           await messages.put({ ...msg, importantLe: e.important ? e.le : undefined });
+          touchees.add(e.conversation);
+        }
+      } else if (e.type === "ephemere") {
+        const conversations = tx.objectStore("conversations");
+        const existante = await conversations.get(e.conversation);
+        if (existante) await conversations.put({ ...existante, ephemere: e.duree ?? undefined });
+        const id = `ephemere:${e.par}:${e.le}`;
+        if (!(await messages.get(id))) {
+          await messages.put({
+            id,
+            conversation: e.conversation,
+            de: e.par,
+            a: "",
+            texte: "",
+            le: e.le,
+            type: "systeme",
+            systeme: { action: "ephemere", duree: e.duree },
+            lu: true,
+          });
+        }
+        touchees.add(e.conversation);
+      } else if (e.type === "vote") {
+        const msg = await messages.get(e.message);
+        const s = msg?.sondage;
+        // Un vote ne compte que s'il désigne des options du sondage, une seule s'il n'en admet qu'une.
+        if (msg && s && msg.conversation === e.conversation && e.choix.every((i) => i < s.options.length) && (s.multiple || e.choix.length <= 1)) {
+          const votes = { ...msg.votes };
+          if (e.choix.length) votes[e.par] = e.choix;
+          else delete votes[e.par];
+          await messages.put({ ...msg, votes });
+          touchees.add(e.conversation);
+        }
+      } else if (e.type === "ouvert") {
+        const msg = await messages.get(e.message);
+        if (msg && msg.conversation === e.conversation && msg.media?.vueUnique) {
+          if (e.par === this.moi) {
+            // Ouverte sur un autre de mes appareils : elle disparaît d'ici aussi.
+            await messages.put({ ...msg, vueOuverte: true });
+            supprimes.push(msg.id);
+          } else if (msg.de === this.moi && !msg.ouvertPar?.includes(e.par)) {
+            await messages.put({ ...msg, ouvertPar: [...(msg.ouvertPar ?? []), e.par] });
+            // À deux, le fichier n'a plus personne à qui servir : il quitte le serveur.
+            if (!estGroupe(msg.conversation) && msg.media.id) void retirerMedia(msg.media.id);
+          }
           touchees.add(e.conversation);
         }
       } else if (e.type === "blocage") {
@@ -465,6 +516,7 @@ export class Messagerie {
       ...(citation ? { reponseA: citation } : {}),
       ...(extras.lien ? { lien: extras.lien } : {}),
       ...(groupe && extras.mentions?.length ? { mentions: extras.mentions } : {}),
+      ...this.ephemereDe(conversation),
     };
     const tx = this.db.transaction(["messages", "conversations"], "readwrite");
     await tx.objectStore("messages").put(message);
@@ -486,6 +538,7 @@ export class Messagerie {
           ...(m.media.duree !== undefined ? { duree: m.media.duree } : {}),
           ...(m.media.apercu ? { apercu: m.media.apercu } : {}),
           ...(m.media.vocal ? { vocal: true } : {}),
+          ...(m.media.vueUnique ? { vueUnique: true } : {}),
         }
       : undefined;
     this.brut({
@@ -498,7 +551,87 @@ export class Messagerie {
       ...(m.transfere ? { transfere: m.transfere } : {}),
       ...(m.lien ? { lien: m.lien } : {}),
       ...(m.mentions?.length ? { mentions: m.mentions } : {}),
+      ...(m.ephemere ? { ephemere: m.ephemere } : {}),
+      ...(m.position ? { position: m.position } : {}),
+      ...(m.contact ? { contact: { id: m.contact.id } } : {}),
+      ...(m.sondage ? { sondage: m.sondage } : {}),
     });
+  }
+
+  /** Durée éphémère en vigueur : elle part avec chaque nouveau message. */
+  private ephemereDe(conversation: string, le = Date.now()): { ephemere?: number; expireLe?: number } {
+    const duree = this.etat.conversations.find((c) => c.id === conversation)?.ephemere;
+    return duree ? { ephemere: duree, expireLe: le + duree } : {};
+  }
+
+  /** Position, fiche de contact ou sondage : un message sans texte, mais pas vide. */
+  async envoyerContenu(
+    conversation: string,
+    contenu: { position: Position } | { contact: { id: string; nom: string; pseudo: string | null } } | { sondage: Sondage },
+  ): Promise<void> {
+    const groupe = estGroupe(conversation);
+    const message: MessageLocal = {
+      id: crypto.randomUUID(),
+      conversation,
+      de: this.moi,
+      a: groupe ? idGroupe(conversation) : autreParticipant(conversation, this.moi),
+      texte: "",
+      le: Date.now(),
+      type: "texte",
+      etat: "attente",
+      ...contenu,
+      ...this.ephemereDe(conversation),
+    };
+    const tx = this.db.transaction(["messages", "conversations"], "readwrite");
+    await tx.objectStore("messages").put(message);
+    await this.recalculer(tx, conversation);
+    await tx.done;
+    await this.publierConversations(new Set([conversation]));
+    this.envoyerMessage(message);
+  }
+
+  /** Messages éphémères : pour tous les participants, à partir des prochains messages. */
+  reglerEphemere(conversation: string, duree: number | null): boolean {
+    return this.brut({ t: "ephemere", conversation, duree });
+  }
+
+  /** Voter (ou retirer son vote avec une liste vide). Affiché tout de suite, annulé si le réseau manque. */
+  async voter(message: MessageLocal, choix: number[]): Promise<boolean> {
+    if (!this.connecte || !message.sondage) return false;
+    const avant = message.votes ?? {};
+    const votes = { ...avant };
+    if (choix.length) votes[this.moi] = choix;
+    else delete votes[this.moi];
+    await this.modifierMessage(message.id, (m) => ({ ...m, votes }));
+    if (!this.brut({ t: "voter", conversation: message.conversation, message: message.id, choix })) {
+      await this.modifierMessage(message.id, (m) => ({ ...m, votes: avant }));
+      return false;
+    }
+    return true;
+  }
+
+  /** Vue unique refermée : le fichier quitte l'appareil, l'auteur voit « Ouvert ». */
+  async fermerVueUnique(message: MessageLocal): Promise<void> {
+    await this.db.delete("fichiers", message.id);
+    await this.modifierMessage(message.id, (m) => ({ ...m, vueOuverte: true }));
+    this.brut({ t: "ouvert", conversation: message.conversation, message: message.id, auteur: message.de });
+  }
+
+  /** Messages éphémères arrivés à échéance : effacés de l'appareil (sauf ceux marqués importants). */
+  private async effacerEphemeres(): Promise<void> {
+    const echus = await this.db.getAllFromIndex("messages", "expire", IDBKeyRange.upperBound(Date.now()));
+    const aEffacer = echus.filter((m) => !m.importantLe);
+    if (aEffacer.length === 0) return;
+    const tx = this.db.transaction(["messages", "conversations"], "readwrite");
+    const touchees = new Set<string>();
+    for (const m of aEffacer) {
+      await tx.objectStore("messages").delete(m.id);
+      touchees.add(m.conversation);
+    }
+    for (const c of touchees) await this.recalculer(tx, c);
+    await tx.done;
+    for (const m of aEffacer) await this.db.delete("fichiers", m.id);
+    await this.publierConversations(touchees);
   }
 
   // --- Modifier, épingler, important, transférer ---------------------------------------
@@ -557,7 +690,8 @@ export class Messagerie {
     for (const conversation of destinations) {
       const groupe = estGroupe(conversation);
       for (const source of [...sources].sort((a, b) => a.le - b.le)) {
-        if (source.supprime || source.type === "evenement") continue;
+        // Ni ligne système, ni vue unique, ni sondage (ses votes n'auraient pas de sens ailleurs).
+        if (source.supprime || source.type === "evenement" || source.type === "systeme" || source.media?.vueUnique || source.sondage) continue;
         let media = source.media;
         if (media) {
           if (!media.id) {
@@ -582,6 +716,9 @@ export class Messagerie {
           etat: "attente",
           transfere: (source.transfere ?? 0) + 1,
           ...(media ? { media } : {}),
+          ...(source.position ? { position: source.position } : {}),
+          ...(source.contact ? { contact: source.contact } : {}),
+          ...this.ephemereDe(conversation),
         };
         const blob = media ? await this.fichierLocal(source.id) : undefined;
         if (blob) await this.db.put("fichiers", { id: message.id, blob });
@@ -628,8 +765,10 @@ export class Messagerie {
         ...(f.duree !== undefined ? { duree: f.duree } : {}),
         ...(f.apercu ? { apercu: f.apercu } : {}),
         ...(f.vocal ? { vocal: true } : {}),
+        ...(f.vueUnique ? { vueUnique: true } : {}),
       },
       ...(citation ? { reponseA: citation } : {}),
+      ...this.ephemereDe(conversation),
     };
     await this.db.put("fichiers", { id: message.id, blob: f.blob });
     const tx = this.db.transaction(["messages", "conversations"], "readwrite");
@@ -770,6 +909,7 @@ export class Messagerie {
       if (p.favori !== undefined) reglages.favori = p.favori;
       if (p.archive !== undefined) reglages.archive = p.archive;
       if (p.epingle !== undefined) reglages.epingle = p.epingle;
+      if (p.nonLu !== undefined) reglages.nonLu = p.nonLu;
       const videeLe = p.effaceAvant !== undefined && !p.supprimee ? p.effaceAvant : existante.videeLe;
       await conversations.put({ ...existante, reglages, ...(videeLe ? { videeLe } : {}) });
     }
@@ -814,10 +954,14 @@ export class Messagerie {
     const lignes: string[] = [];
     for (const m of await this.messages(conversation)) {
       const quand = `${jour.format(new Date(m.le))} ${heureCourte(m.le)}`;
-      if (m.type === "evenement") continue;
+      if (m.type === "evenement" || m.type === "systeme") continue;
       const contenu = m.supprime
         ? "Ce message a été supprimé"
-        : [m.media ? `<${resumeMessage({ texte: "", media: m.media })} non inclus>` : "", m.texte].filter(Boolean).join(" ");
+        : m.media
+          ? [`<${resumeMessage({ texte: "", media: m.media })} non inclus>`, m.texte].filter(Boolean).join(" ")
+          : m.position
+            ? `Position : https://www.openstreetmap.org/?mlat=${m.position.lat}&mlon=${m.position.lon}`
+            : resumeMessage(m);
       lignes.push(`${quand} - ${this.nom(m.de, conversation)} : ${contenu}`);
     }
     return lignes.join("\n") + "\n";
@@ -891,6 +1035,10 @@ export class Messagerie {
 
   ouvrir(conversation: string | null): void {
     this.ouverte = conversation;
+    // Ouverte : « non lu » n'a plus lieu d'être, sur tous mes appareils.
+    if (conversation && this.etat.conversations.find((c) => c.id === conversation)?.reglages?.nonLu) {
+      void this.regler(conversation, { nonLu: false });
+    }
     if (conversation && !estGroupe(conversation)) this.demanderPresence(autreParticipant(conversation, this.moi));
   }
 
@@ -988,6 +1136,7 @@ export class Messagerie {
       ...(existante?.reglages ? { reglages: existante.reglages } : {}),
       ...(existante?.videeLe ? { videeLe: existante.videeLe } : {}),
       ...(existante?.epingles?.length ? { epingles: existante.epingles } : {}),
+      ...(existante?.ephemere ? { ephemere: existante.ephemere } : {}),
       id: conversation,
       autre: estGroupe(conversation) ? idGroupe(conversation) : autreParticipant(conversation, this.moi),
       dernier: dernier
@@ -1000,10 +1149,15 @@ export class Messagerie {
             etat: dernier.etat,
             supprime: dernier.supprime,
             evenement: dernier.evenement,
-            ...(dernier.media ? { media: { type: dernier.media.type, nom: dernier.media.nom, duree: dernier.media.duree, vocal: dernier.media.vocal } } : {}),
+            ...(dernier.media
+              ? { media: { type: dernier.media.type, nom: dernier.media.nom, duree: dernier.media.duree, vocal: dernier.media.vocal, vueUnique: dernier.media.vueUnique } }
+              : {}),
+            ...(dernier.position || dernier.contact || dernier.sondage
+              ? { special: dernier.position ? "position" : dernier.contact ? "contact" : "sondage", texte: resumeMessage(dernier) }
+              : {}),
           }
         : null,
-      nonLus: tous.filter((m) => m.de !== this.moi && !m.lu && m.type !== "evenement").length,
+      nonLus: tous.filter((m) => m.de !== this.moi && !m.lu && m.type !== "evenement" && m.type !== "systeme").length,
       mention: tous.some((m) => m.de !== this.moi && !m.lu && m.mentions?.includes(this.moi)),
     };
     await tx.objectStore("conversations").put(resume);

@@ -1,6 +1,6 @@
 import { LIMITES_MEDIA, LIMITE_TEXTE } from "@unichat/shared";
 import clsx from "clsx";
-import { CircleAlert, FileText, Headphones, LoaderCircle, Plus, SendHorizontal, Video, X } from "lucide-react";
+import { CircleAlert, Eye, FileText, Headphones, LoaderCircle, Plus, SendHorizontal, Video, X } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { tailleFichier } from "../lib/format";
 import { preparerFichier, type FichierPrepare } from "../lib/medias";
@@ -40,6 +40,7 @@ export function EnvoiFichiers({
 }) {
   const [elements, setElements] = useState<Element[]>(() => fichiers.slice(0, MAX_FICHIERS).map(nouvel));
   const [actif, setActif] = useState(0);
+  const [vueUnique, setVueUnique] = useState(false);
   const lances = useRef(new Set<string>());
   const liens = useRef(new Set<string>());
   const ajout = useRef<HTMLInputElement>(null);
@@ -98,9 +99,12 @@ export function EnvoiFichiers({
     setActif((a) => Math.min(a > index ? a - 1 : a, reste.length - 1));
   }
 
+  // Vue unique : une seule photo ou vidéo à la fois, comme dans WhatsApp.
+  const vueUniquePossible = elements.length === 1 && (prets[0]?.fichier.type === "image" || prets[0]?.fichier.type === "video");
+
   function envoyer() {
     if (enPreparation || prets.length === 0) return;
-    onEnvoyer(prets.map((e) => ({ fichier: e.fichier, legende: e.legende })));
+    onEnvoyer(prets.map((e) => ({ fichier: vueUnique && vueUniquePossible ? { ...e.fichier, vueUnique: true } : e.fichier, legende: e.legende })));
   }
 
   return (
@@ -142,6 +146,21 @@ export function EnvoiFichiers({
       </div>
 
       <footer className="flex shrink-0 items-center gap-3 border-t border-bordure px-4 py-3">
+        {vueUniquePossible && (
+          <button
+            type="button"
+            role="switch"
+            aria-checked={vueUnique}
+            onClick={() => setVueUnique((v) => !v)}
+            title="Vue unique : le destinataire ne pourra l'ouvrir qu'une fois"
+            className={clsx(
+              "flex shrink-0 items-center gap-2 rounded-full border-2 border-dashed px-3 py-1.5 text-[13px] transition-colors",
+              vueUnique ? "border-primaire bg-primaire-doux text-primaire-texte" : "border-texte-3 text-texte-2 hover:bg-survol",
+            )}
+          >
+            <Eye size={16} /> Vue unique
+          </button>
+        )}
         <div className="flex min-w-0 flex-1 items-center gap-2 overflow-x-auto py-1 md:justify-center">
           {elements.map((el, i) => (
             <div key={el.cle} className="group relative shrink-0">

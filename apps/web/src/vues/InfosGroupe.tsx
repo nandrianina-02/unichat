@@ -4,6 +4,7 @@ import { Crown, Flag, Link2, LogOut, MessageSquareText, UserMinus, UserPlus, X }
 import { ChoixPhotoGroupe } from "../composants/ChoixPhoto";
 import { DialogueLienGroupe } from "../composants/LienGroupe";
 import { useActionsDiscussion } from "../composants/ActionsDiscussion";
+import { ApercuGalerie } from "./Galerie";
 import { useEffect, useRef, useState } from "react";
 import { Avatar, AvatarGroupe } from "../composants/Avatar";
 import { ChampModifiable } from "../composants/ChampModifiable";
@@ -18,10 +19,12 @@ export function InfosGroupe({
   groupeId,
   onFermer,
   onMessage,
+  onGalerie,
 }: {
   groupeId: string;
   onFermer: () => void;
   onMessage: (personneId: string) => void;
+  onGalerie?: () => void;
 }) {
   const { messagerie, etat } = useMessagerie();
   const { sessionPerdue } = useCompte();
@@ -130,6 +133,7 @@ export function InfosGroupe({
             </div>
           )}
 
+          {onGalerie && <ApercuGalerie conversation={conversationGroupe(groupeId)} onOuvrir={onGalerie} />}
           {groupe.moiMembre && (
             <div className="animate-rise stagger-2 mt-2.5 bg-panneau pb-2">
               <p className="px-8 pt-4 pb-2 text-sm text-texte-2">

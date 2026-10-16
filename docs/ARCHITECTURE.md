@@ -214,6 +214,24 @@ de WhatsApp.
   `/g/<code>` dans l'application, réinitialisable par un administrateur.
   Un groupe sans membre est effacé par la tâche horaire.
 
+### Éphémères, vue unique, position, contact, sondage
+
+- **Messages éphémères** (24 h, 7 ou 90 jours) : réglage partagé de la
+  discussion (entrée `ephemere`), joint à chaque nouveau message ; chaque
+  application efface à l'échéance (index `expire` d'IndexedDB, version 5).
+  Les messages marqués importants restent chez qui les a marqués.
+- **Vue unique** : fichier téléchargé, montré sans bouton d'enregistrement,
+  effacé de l'appareil à la fermeture ; l'auteur reçoit `ouvert` et, à deux,
+  retire le fichier du serveur. Ni transfert, ni galerie, ni export.
+- **Position** : envoyée une fois, sans fond de carte (aucun serveur tiers
+  contacté) ; lien vers OpenStreetMap. `Permissions-Policy: geolocation=(self)`.
+- **Contact** : seul l'identifiant part ; le serveur refait nom et pseudo
+  depuis la base, l'expéditeur ne peut pas les inventer.
+- **Sondage** : 2 à 12 options, une ou plusieurs réponses ; votes partagés
+  comme les réactions, vérifiés par chaque application.
+- **Fond des discussions** : jetons `--fond-*` déclinés par thème, réglage de
+  l'appareil appliqué avant le premier affichage (`theme.js`).
+
 ## Chiffrement de bout en bout (étape 3)
 
 Protocole Signal (X3DH ou PQXDH, puis Double Ratchet), clés par appareil.

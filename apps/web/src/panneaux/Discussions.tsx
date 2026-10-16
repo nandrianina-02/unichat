@@ -11,7 +11,12 @@ import {
   EllipsisVertical,
   FileText,
   Headphones,
+  ListChecks,
   LogOut,
+  Mail,
+  MapPin,
+  UserRound,
+  MailOpen,
   MessageSquarePlus,
   Mic,
   Pin,
@@ -110,7 +115,7 @@ export function Discussions({ selection, onOuvrir, onOuvrirPersonne, onNouvelle,
         if (texte) return nomDe(c).toLowerCase().includes(texte);
         if (Boolean(c.reglages?.archive) !== archives) return false;
         if (archives) return true;
-        if (filtre === "non-lues") return c.nonLus > 0;
+        if (filtre === "non-lues") return c.nonLus > 0 || Boolean(c.reglages?.nonLu);
         if (filtre === "favoris") return Boolean(c.reglages?.favori);
         if (filtre === "groupes") return estGroupe(c.id);
         return true;
@@ -328,6 +333,7 @@ export function Discussions({ selection, onOuvrir, onOuvrirPersonne, onNouvelle,
 
 /** Aperçu de la dernière activité : « Ana : message », un événement de groupe, ou un message supprimé. */
 const ICONES_MEDIA: Record<string, LucideIcon> = { image: Camera, video: Video, audio: Headphones, document: FileText };
+const ICONES_SPECIAUX: Record<string, LucideIcon> = { position: MapPin, contact: UserRound, sondage: ListChecks };
 
 interface Apercu {
   texte: string;
@@ -343,6 +349,7 @@ function apercu(c: ConversationLocale, nom: (id: string) => string): Apercu {
   if (d.evenement) return { texte: texteEvenement(d.evenement, nom), italique: false };
   if (d.supprime) return { texte: d.deMoi ? "Vous avez supprimé ce message" : "Ce message a été supprimé", italique: true };
   const prefixe = estGroupe(c.id) && !d.deMoi ? `${nom(d.de)} : ` : "";
+  if (d.special) return { texte: d.texte, italique: false, prefixe, icone: ICONES_SPECIAUX[d.special] };
   if (d.media) {
     // Message vocal : sa durée dit plus que son nom.
     const libelle = d.media.vocal && d.media.duree !== undefined ? dureeCourte(d.media.duree) : libelleMedia(d.media);
@@ -375,7 +382,7 @@ function LigneConversation({
   className?: string;
 }) {
   const actions = useActionsDiscussion(c.id, { onAvis });
-  const { etat } = useMessagerie();
+  const { etat, messagerie } = useMessagerie();
   const groupe = estGroupe(c.id) ? etat.groupes[c.autre] : undefined;
   const [menu, setMenu] = useState<"bas" | "haut" | null>(null);
   const cadre = useRef<HTMLDivElement>(null);
@@ -383,10 +390,23 @@ function LigneConversation({
   const muette = estMuette(c);
   const { archive, sourdine, epingle, favoris, moderation } = actions.elements;
   // Le menu de la liste, comme dans WhatsApp : rangement d'abord, puis blocage et suppression.
+  const nonLue = c.nonLus > 0 || Boolean(c.reglages?.nonLu);
+  const marquer = {
+    icone: nonLue ? MailOpen : Mail,
+    libelle: nonLue ? "Marquer comme lu" : "Marquer comme non lu",
+    action: () => {
+      if (!nonLue) void messagerie.regler(c.id, { nonLu: true });
+      else {
+        void messagerie.regler(c.id, { nonLu: false });
+        void messagerie.marquerLu(c.id);
+      }
+    },
+  };
   const elements = [
     archive,
     sourdine,
     ...(c.reglages?.archive ? [] : [epingle]),
+    marquer,
     favoris,
     "separateur" as const,
     ...moderation.filter((e) => e !== "separateur" && /^(Bloquer|Débloquer|Quitter|Supprimer)/.test(e.libelle)),
@@ -446,6 +466,9 @@ function LigneConversation({
             </span>
           )}
           {c.reglages?.epingle && <Pin size={16} className="shrink-0 text-texte-3" aria-label="Épinglée" />}
+          {c.nonLus === 0 && c.reglages?.nonLu && (
+            <span className={clsx("animate-pop size-3 shrink-0 rounded-full", muette ? "bg-texte-3" : "bg-primaire")} aria-label="Marquée comme non lue" />
+          )}
           {c.nonLus > 0 && (
             <span
               className={clsx(

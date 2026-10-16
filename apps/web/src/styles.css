@@ -26,6 +26,12 @@
   --avatar: #dfe3ec;
   --avatar-icone: #ffffff;
   --discussion: #eceef6;
+  /* Fonds des discussions au choix (Paramètres, Fond des discussions). */
+  --fond-defaut: #eceef6;
+  --fond-brume: #e3e9f1;
+  --fond-sable: #efe8dc;
+  --fond-sauge: #e2ebe3;
+  --fond-lavande: #ebe6f5;
   --bulle-envoyee: #e3e6fc;
   --bulle-recue: #ffffff;
   --coche-lue: #4f46e5;
@@ -63,6 +69,11 @@
   --avatar: #33354a;
   --avatar-icone: #8e90a6;
   --discussion: #0c0d12;
+  --fond-defaut: #0c0d12;
+  --fond-brume: #0d1219;
+  --fond-sable: #16130e;
+  --fond-sauge: #0e1510;
+  --fond-lavande: #13101c;
   --bulle-envoyee: #2d2a6b;
   --bulle-recue: #1f2029;
   --coche-lue: #a5b4fc;
@@ -98,6 +109,11 @@
     --avatar: #33354a;
     --avatar-icone: #8e90a6;
     --discussion: #0c0d12;
+    --fond-defaut: #0c0d12;
+    --fond-brume: #0d1219;
+    --fond-sable: #16130e;
+    --fond-sauge: #0e1510;
+    --fond-lavande: #13101c;
     --bulle-envoyee: #2d2a6b;
     --bulle-recue: #1f2029;
     --coche-lue: #a5b4fc;
@@ -185,6 +201,13 @@
     background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160' fill='none' stroke='%23ffffff' stroke-opacity='.035' stroke-width='1.5' stroke-linecap='round'%3E%3Cpath d='M20 24h26a6 6 0 0 1 6 6v12a6 6 0 0 1-6 6H32l-8 6v-6h-4a6 6 0 0 1-6-6V30a6 6 0 0 1 6-6z'/%3E%3Ccircle cx='110' cy='34' r='7'/%3E%3Cpath d='M128 96h12M134 90v12'/%3E%3Ccircle cx='44' cy='118' r='3'/%3E%3Cpath d='M88 120c6-10 18-10 24 0'/%3E%3Crect x='100' y='136' width='14' height='10' rx='2'/%3E%3Cpath d='M60 80l8-8M60 72l8 8'/%3E%3C/svg%3E");
   }
 }
+
+/* Fond choisi : la teinte suit le thème, puisque chaque jeton a sa valeur sombre. */
+:root[data-fond="brume"] { --discussion: var(--fond-brume); }
+:root[data-fond="sable"] { --discussion: var(--fond-sable); }
+:root[data-fond="sauge"] { --discussion: var(--fond-sauge); }
+:root[data-fond="lavande"] { --discussion: var(--fond-lavande); }
+:root[data-motif="non"] .papier-peint { background-image: none; }
 
 /* ---------------------------------------------------------------------------
  * Animations. Elles accompagnent un changement d'état : un panneau qui

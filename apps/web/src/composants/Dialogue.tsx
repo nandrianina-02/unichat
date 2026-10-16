@@ -6,7 +6,8 @@ interface Props {
   titre: string;
   children?: ReactNode;
   confirmer: string;
-  annuler?: string;
+  /** false : une seule action (boîte d'information). */
+  annuler?: string | false;
   danger?: boolean;
   enCours?: boolean;
   onConfirmer: () => void;
@@ -38,13 +39,15 @@ export function Dialogue({ titre, children, confirmer, annuler = "Annuler", dang
         <h2 className="text-[17px] text-texte">{titre}</h2>
         {children && <div className="mt-3 text-sm leading-relaxed text-texte-2">{children}</div>}
         <div className="mt-7 flex justify-end gap-2">
-          <button
-            type="button"
-            onClick={onFermer}
-            className="rounded-full px-5 py-2 text-sm font-medium text-primaire transition-colors hover:bg-primaire-doux"
-          >
-            {annuler}
-          </button>
+          {annuler !== false && (
+            <button
+              type="button"
+              onClick={onFermer}
+              className="rounded-full px-5 py-2 text-sm font-medium text-primaire transition-colors hover:bg-primaire-doux"
+            >
+              {annuler}
+            </button>
+          )}
           <button
             ref={boutonRef}
             type="button"
