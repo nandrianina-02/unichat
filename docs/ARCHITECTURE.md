@@ -184,6 +184,20 @@ de WhatsApp.
 - **Rechercher** : sur l'appareil, sans accents ni casse ; le serveur n'a pas
   l'historique.
 
+### Emoji, liens, mentions
+
+- **Emoji** : liste Unicode limitée à Emoji 12.0 (Windows 10 n'affiche pas
+  au-delà), sans teintes ni drapeaux, chargée à la première ouverture du
+  panneau. `lib/emoji.ts` est généré et ne contient que des points de code :
+  le code source reste sans emoji.
+- **Aperçu de lien** : demandé par l'expéditeur pendant la saisie
+  (`GET /api/apercu`), comme WhatsApp ; le Worker lit les 128 premiers Ko de
+  la page (4 s au plus), refuse adresses IP, noms locaux et identifiants dans
+  l'URL, et ne garde que du texte. Aucune image extérieure n'est chargée :
+  la politique de sécurité (`img-src 'self'`) reste fermée.
+- **Mentions** : identifiants des membres joints au message (groupes
+  seulement) ; une mention fait sonner une discussion en sourdine.
+
 ## Chiffrement de bout en bout (étape 3)
 
 Protocole Signal (X3DH ou PQXDH, puis Double Ratchet), clés par appareil.

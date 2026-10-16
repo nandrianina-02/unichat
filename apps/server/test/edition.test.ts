@@ -61,6 +61,19 @@ describe("modifier, épingler, important, transférer", () => {
     expect(chezBob).toBe(false);
   });
 
+  it("transmet l'aperçu d'un lien, et ne garde les mentions que dans un groupe", async () => {
+    const t = await preparer();
+    const ana = await personne(t, "ana");
+    const bob = await personne(t, "bob");
+    const [wsAna, wsBob] = await Promise.all([ouvrir(ana.appareil), ouvrir(bob.appareil)]);
+    const lien = { url: "https://exemple.mg/article", titre: "Un article", site: "exemple.mg" };
+    wsAna.envoyer({ t: "envoyer", id: crypto.randomUUID(), a: bob.id, texte: "À lire https://exemple.mg/article", lien, mentions: [bob.id] });
+    const recu = await wsBob.attendre(entree("message"));
+    const message = (recu.entree as Extract<typeof recu.entree, { type: "message" }>).message;
+    expect(message.lien).toEqual(lien);
+    expect(message.mentions).toBeUndefined();
+  });
+
   it("transmet le nombre de transferts avec le message", async () => {
     const t = await preparer();
     const ana = await personne(t, "ana");

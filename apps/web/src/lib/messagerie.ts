@@ -13,6 +13,7 @@ import {
   type Groupe,
   type MessageClient,
   type MessageServeur,
+  type ApercuLien,
   type Preference,
   type Reaction,
 } from "@unichat/shared";
@@ -438,7 +439,12 @@ export class Messagerie {
 
   // --- Envoi --------------------------------------------------------------------------
 
-  async envoyer(conversation: string, texte: string, reponseA?: MessageLocal): Promise<void> {
+  async envoyer(
+    conversation: string,
+    texte: string,
+    reponseA?: MessageLocal,
+    extras: { lien?: ApercuLien; mentions?: string[] } = {},
+  ): Promise<void> {
     const propre = texte.trim();
     if (!propre) return;
     const groupe = estGroupe(conversation);
@@ -457,6 +463,8 @@ export class Messagerie {
       type: "texte",
       etat: "attente",
       ...(citation ? { reponseA: citation } : {}),
+      ...(extras.lien ? { lien: extras.lien } : {}),
+      ...(groupe && extras.mentions?.length ? { mentions: extras.mentions } : {}),
     };
     const tx = this.db.transaction(["messages", "conversations"], "readwrite");
     await tx.objectStore("messages").put(message);
@@ -488,6 +496,8 @@ export class Messagerie {
       ...(media ? { media } : {}),
       ...(m.reponseA ? { reponseA: m.reponseA } : {}),
       ...(m.transfere ? { transfere: m.transfere } : {}),
+      ...(m.lien ? { lien: m.lien } : {}),
+      ...(m.mentions?.length ? { mentions: m.mentions } : {}),
     });
   }
 
@@ -994,6 +1004,7 @@ export class Messagerie {
           }
         : null,
       nonLus: tous.filter((m) => m.de !== this.moi && !m.lu && m.type !== "evenement").length,
+      mention: tous.some((m) => m.de !== this.moi && !m.lu && m.mentions?.includes(this.moi)),
     };
     await tx.objectStore("conversations").put(resume);
   }
@@ -1022,7 +1033,8 @@ export class Messagerie {
     if (!("Notification" in window) || Notification.permission !== "granted" || !document.hidden) return;
     for (const m of nouveaux) {
       const discussion = this.etat.conversations.find((c) => c.id === m.conversation);
-      if (discussion && estMuette(discussion)) continue;
+      // En sourdine, seule une mention fait encore sonner, comme dans WhatsApp.
+      if (discussion && estMuette(discussion) && !m.mentions?.includes(this.moi)) continue;
       const groupe = estGroupe(m.conversation) ? this.etat.groupes[idGroupe(m.conversation)] : null;
       const auteur = this.nom(m.de, m.conversation);
       const titre = groupe ? groupe.nom : auteur;

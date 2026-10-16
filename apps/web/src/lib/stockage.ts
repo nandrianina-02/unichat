@@ -1,4 +1,4 @@
-import type { CarteProfil, Citation, EvenementGroupe, Groupe, MediaMessage, Preference, Reaction } from "@unichat/shared";
+import type { ApercuLien, CarteProfil, Citation, EvenementGroupe, Groupe, MediaMessage, Preference, Reaction } from "@unichat/shared";
 import { openDB, type DBSchema, type IDBPDatabase, type IDBPTransaction } from "idb";
 
 export type EtatMessage = "attente" | "envoye" | "remis" | "lu" | "echec";
@@ -36,6 +36,9 @@ export interface MessageLocal {
   transfere?: number;
   /** Marqué important, à cette heure (sert d'index : un booléen ne peut pas en être un). */
   importantLe?: number;
+  lien?: ApercuLien;
+  /** Membres mentionnés (groupe). */
+  mentions?: string[];
 }
 
 /** Message épinglé en haut d'une discussion, pour tous ses participants. */
@@ -62,6 +65,8 @@ export interface ConversationLocale {
     media?: { type: MediaMessage["type"]; nom: string; duree?: number; vocal?: boolean };
   } | null;
   nonLus: number;
+  /** Un message non lu me mentionne : « @ » dans la liste, et une notification même en sourdine. */
+  mention?: boolean;
   /** Effacée (sans être supprimée) : elle reste dans la liste, à cette date. */
   videeLe?: number;
   /** Sourdine, favori, archive, épingle : réglages propres à moi, partagés entre mes appareils. */

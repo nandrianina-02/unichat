@@ -47,6 +47,8 @@ import {
 } from "lucide-react";
 import { Dialogue } from "../composants/Dialogue";
 import { DialogueTransfert } from "../composants/Transfert";
+import { TexteMessage } from "../composants/TexteMessage";
+import { Composeur } from "./Composeur";
 import { useActionsDiscussion } from "../composants/ActionsDiscussion";
 import { Menu, useFermetureExterieure, type ElementMenu } from "../composants/Menu";
 import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
@@ -64,8 +66,6 @@ import { heureCourte, jourMessage, resumeMessage, tailleFichier, texteEvenement,
 import { useMessagerie, useMessages } from "../lib/messagerie-react";
 import type { Epingle, MessageLocal } from "../lib/stockage";
 
-// Brouillons gardés le temps de la visite, par discussion, comme dans les messageries de référence.
-const brouillons = new Map<string, string>();
 const dateCopie = new Intl.DateTimeFormat("fr-FR", { day: "2-digit", month: "2-digit", year: "numeric" });
 
 /** Fait défiler jusqu'à un message et le surligne un instant (citation, épingle, recherche). */
@@ -282,6 +282,7 @@ export function Discussion({ conversation, cible, onInfos, onRechercher, onFerme
         moiId={moi.id}
         enGroupe={enGroupe}
         nom={nom}
+        nomMention={(id) => (id === moi.id ? moi.nom : (groupe?.membres.find((m) => m.id === id)?.nom ?? nom(id)))}
         cible={cible}
         selection={selection}
         epinglees={epinglees}
@@ -343,8 +344,9 @@ export function Discussion({ conversation, cible, onInfos, onRechercher, onFerme
             }
             setEdition(null);
           }}
-          onEnvoyer={(texte) => {
-            void messagerie.envoyer(conversation, texte, reponse ?? undefined);
+          membres={groupe?.membres.filter((m) => !m.estSoi).map((m) => ({ id: m.id, nom: m.nom }))}
+          onEnvoyer={(texte, extras) => {
+            void messagerie.envoyer(conversation, texte, reponse ?? undefined, extras);
             setReponse(null);
           }}
           onEcrit={() => !estSoi && messagerie.signalerEcriture(conversation)}
@@ -553,12 +555,14 @@ function ListeMessages({
   cible,
   selection,
   epinglees,
+  nomMention,
   ...actions
 }: {
   messages: MessageLocal[] | null;
   moiId: string;
   enGroupe: boolean;
   nom: (id: string) => string;
+  nomMention: (id: string) => string;
   envois: Record<string, number>;
   cible?: string;
   selection: Set<string> | null;
@@ -644,6 +648,7 @@ function ListeMessages({
         auteur={enGroupe && premier && m.de !== moiId ? nom(m.de) : null}
         nom={nom}
         progression={envois[m.id]}
+        nomMention={nomMention}
         selectionActive={selection !== null}
         selectionne={selection?.has(m.id) ?? false}
         epinglee={epinglees.has(m.id)}
@@ -705,6 +710,7 @@ function Bulle({
   auteur,
   nom,
   progression,
+  nomMention,
   selectionActive,
   selectionne,
   epinglee,
@@ -729,6 +735,7 @@ function Bulle({
   auteur: string | null;
   nom: (id: string) => string;
   progression: number | undefined;
+  nomMention: (id: string) => string;
   selectionActive: boolean;
   selectionne: boolean;
   epinglee: boolean;
@@ -840,6 +847,18 @@ function Bulle({
               )}
             </div>
           )}
+          {m.lien && !m.supprime && !media && (
+            <a
+              href={m.lien.url}
+              target="_blank"
+              rel="noopener noreferrer nofollow"
+              className="mb-1.5 block min-w-[200px] rounded-md bg-texte/5 px-3 py-2 transition-colors hover:bg-texte/10"
+            >
+              <span className="block truncate text-[12px] uppercase tracking-wide text-texte-2">{m.lien.site}</span>
+              {m.lien.titre && <span className="mt-0.5 block line-clamp-2 text-[14px] font-medium text-texte">{m.lien.titre}</span>}
+              {m.lien.description && <span className="mt-0.5 block line-clamp-2 text-[13px] text-texte-2">{m.lien.description}</span>}
+            </a>
+          )}
           {media && (
             <ContenuMedia
               message={m as MessageAvecMedia}
@@ -861,7 +880,11 @@ function Bulle({
                   <Ban size={14} /> {mien ? "Vous avez supprimé ce message" : "Ce message a été supprimé"}
                 </span>
               ) : (
-                m.texte && <span className="whitespace-pre-wrap [overflow-wrap:anywhere]">{m.texte}</span>
+                m.texte && (
+                  <span className="whitespace-pre-wrap [overflow-wrap:anywhere]">
+                    <TexteMessage texte={m.texte} mentions={(m.mentions ?? []).map(nomMention)} />
+                  </span>
+                )
               )}
               {/* Réserve la place de l'heure sur la dernière ligne, qui s'y loge en bas à droite. */}
               {media?.type !== "audio" && <span aria-hidden="true" className="inline-block" style={{ width: reserve }} />}
@@ -1033,205 +1056,6 @@ function DialogueSuppression({
         </div>
       </div>
     </div>
-  );
-}
-
-function Composeur({
-  conversation,
-  reponse,
-  edition,
-  nom,
-  onAnnulerReponse,
-  onAnnulerEdition,
-  onModifier,
-  onEnvoyer,
-  onEcrit,
-  onJoindre,
-  onVocal,
-  onAvis,
-}: {
-  conversation: string;
-  reponse: MessageLocal | null;
-  edition: MessageLocal | null;
-  nom: (id: string) => string;
-  onAnnulerReponse: () => void;
-  onAnnulerEdition: () => void;
-  onModifier: (texte: string) => void;
-  onEnvoyer: (texte: string) => void;
-  onEcrit: () => void;
-  onJoindre: (fichiers: File[]) => void;
-  onVocal: (blob: Blob, duree: number) => void;
-  onAvis: (texte: string) => void;
-}) {
-  const [texte, setTexte] = useState(() => brouillons.get(conversation) ?? "");
-  const [menu, setMenu] = useState(false);
-  const [enregistre, setEnregistre] = useState(false);
-  const champ = useRef<HTMLTextAreaElement>(null);
-  const menuRef = useRef<HTMLDivElement>(null);
-  const visuels = useRef<HTMLInputElement>(null);
-  const documents = useRef<HTMLInputElement>(null);
-  useFermetureExterieure(menu, menuRef, () => setMenu(false));
-
-  useEffect(() => {
-    champ.current?.focus();
-  }, [reponse]);
-  // Modifier : le texte d'origine remplace le brouillon, qui revient ensuite.
-  useEffect(() => {
-    setTexte(edition ? edition.texte : (brouillons.get(conversation) ?? ""));
-    champ.current?.focus();
-  }, [edition, conversation]);
-  useEffect(() => {
-    if (edition) return;
-    if (texte) brouillons.set(conversation, texte);
-    else brouillons.delete(conversation);
-  }, [texte, conversation, edition]);
-  // Le champ grandit avec le texte, jusqu'à six lignes.
-  useLayoutEffect(() => {
-    const t = champ.current;
-    if (!t) return;
-    t.style.height = "auto";
-    t.style.height = `${Math.min(t.scrollHeight, 132)}px`;
-  }, [texte]);
-
-  function envoyer() {
-    if (!texte.trim()) return;
-    if (edition) onModifier(texte);
-    else onEnvoyer(texte);
-    setTexte("");
-    champ.current?.focus();
-  }
-
-  return (
-    <footer className="shrink-0 bg-entete">
-      {edition && (
-        <div className="animate-rise flex items-center gap-3 px-3 pt-2.5 md:px-4">
-          <div className="min-w-0 flex-1 rounded-md border-l-4 border-primaire bg-panneau px-3 py-2">
-            <p className="flex items-center gap-1.5 text-[12.5px] font-medium text-primaire-texte">
-              <Pencil size={13} /> Modifier le message
-            </p>
-            <p className="truncate text-[13px] text-texte-2">{edition.texte}</p>
-          </div>
-          <BoutonIcone libelle="Annuler la modification" onClick={onAnnulerEdition}>
-            <X size={20} />
-          </BoutonIcone>
-        </div>
-      )}
-      {reponse && (
-        <div className="animate-rise flex items-center gap-3 px-3 pt-2.5 md:px-4">
-          <div className="min-w-0 flex-1 rounded-md border-l-4 border-primaire bg-panneau px-3 py-2">
-            <p className="text-[12.5px] font-medium text-primaire-texte">Réponse à {nom(reponse.de)}</p>
-            <p className="truncate text-[13px] text-texte-2">{resumeMessage(reponse)}</p>
-          </div>
-          <BoutonIcone libelle="Annuler la réponse" onClick={onAnnulerReponse}>
-            <X size={20} />
-          </BoutonIcone>
-        </div>
-      )}
-      {enregistre ? (
-        <Enregistrement
-          onAnnuler={() => setEnregistre(false)}
-          onTerminer={(blob, duree) => {
-            setEnregistre(false);
-            onVocal(blob, duree);
-          }}
-          onErreur={(message) => {
-            setEnregistre(false);
-            onAvis(message);
-          }}
-        />
-      ) : (
-        <div className="flex items-end gap-1 px-2 py-2.5 md:gap-2 md:px-4">
-          <div ref={menuRef} className={clsx("relative", edition && "hidden")}>
-            <BoutonIcone libelle="Joindre" actif={menu} onClick={() => setMenu((m) => !m)} aria-haspopup="menu" aria-expanded={menu} className="mb-px">
-              <Paperclip size={22} />
-            </BoutonIcone>
-            {menu && (
-              <Menu
-                className="bottom-full left-0 mb-2"
-                elements={[
-                  { icone: Images, libelle: "Photos et vidéos", action: () => visuels.current?.click() },
-                  { icone: FileText, libelle: "Document", action: () => documents.current?.click() },
-                ]}
-                onChoix={() => setMenu(false)}
-              />
-            )}
-            {[
-              { ref: visuels, accept: ACCEPTE_VISUELS },
-              { ref: documents, accept: ACCEPTE_DOCUMENTS },
-            ].map(({ ref, accept }) => (
-              <input
-                key={accept}
-                ref={ref}
-                type="file"
-                multiple
-                accept={accept}
-                hidden
-                onChange={(e) => {
-                  const choisis = [...(e.target.files ?? [])];
-                  e.target.value = "";
-                  onJoindre(choisis);
-                }}
-              />
-            ))}
-          </div>
-          <div className="flex min-h-[42px] flex-1 items-center rounded-lg bg-panneau px-3.5 py-[10px]">
-            <textarea
-              ref={champ}
-              rows={1}
-              value={texte}
-              maxLength={LIMITE_TEXTE}
-              onChange={(e) => {
-                setTexte(e.target.value);
-                if (e.target.value.trim()) onEcrit();
-              }}
-              onKeyDown={(e) => {
-                // Entrée envoie, Maj+Entrée va à la ligne ; pas pendant une saisie
-                // en cours de composition (accents, alphabets asiatiques).
-                if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) {
-                  e.preventDefault();
-                  envoyer();
-                }
-                if (e.key === "Escape" && reponse) onAnnulerReponse();
-              if (e.key === "Escape" && edition) onAnnulerEdition();
-              }}
-              onPaste={(e) => {
-                // Une capture d'écran collée part comme une photo, avec aperçu.
-                const fichiers = [...e.clipboardData.files];
-                if (fichiers.length === 0) return;
-                e.preventDefault();
-                onJoindre(fichiers);
-              }}
-              placeholder="Écrire un message"
-              aria-label="Message"
-              className="max-h-[132px] w-full resize-none bg-transparent text-[15px] leading-[20px] text-texte outline-none placeholder:text-texte-2"
-            />
-          </div>
-          {/* Champ vide : le micro prend la place du bouton d'envoi, comme dans les messageries de référence. */}
-          {edition ? (
-            <button
-              type="button"
-              onClick={envoyer}
-              disabled={!texte.trim()}
-              aria-label="Enregistrer la modification"
-              title="Enregistrer"
-              className="flex size-[42px] shrink-0 items-center justify-center rounded-full bg-primaire text-sur-primaire transition-colors hover:bg-primaire-fort disabled:opacity-40"
-            >
-              <Check size={21} className="animate-fade" />
-            </button>
-          ) : (
-            <button
-              type="button"
-              onClick={texte.trim() ? envoyer : () => setEnregistre(true)}
-              aria-label={texte.trim() ? "Envoyer" : "Enregistrer un message vocal"}
-              title={texte.trim() ? "Envoyer" : "Message vocal"}
-              className="flex size-[42px] shrink-0 items-center justify-center rounded-full bg-primaire text-sur-primaire transition-colors hover:bg-primaire-fort"
-            >
-              {texte.trim() ? <SendHorizontal key="envoyer" size={20} className="animate-fade" /> : <Mic key="micro" size={20} className="animate-fade" />}
-            </button>
-          )}
-        </div>
-      )}
-    </footer>
   );
 }
 

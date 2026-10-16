@@ -3,6 +3,7 @@ import clsx from "clsx";
 import {
   Archive,
   ArrowLeft,
+  AtSign,
   BellOff,
   BellRing,
   Camera,
@@ -437,6 +438,11 @@ function LigneConversation({
             )}
           </p>
           {muette && <BellOff size={16} className="shrink-0 text-texte-3" aria-label="En sourdine" />}
+          {c.mention && (
+            <span className="animate-pop flex size-5 shrink-0 items-center justify-center rounded-full bg-primaire text-sur-primaire" aria-label="Vous êtes mentionné">
+              <AtSign size={13} strokeWidth={2.5} />
+            </span>
+          )}
           {c.reglages?.epingle && <Pin size={16} className="shrink-0 text-texte-3" aria-label="Épinglée" />}
           {c.nonLus > 0 && (
             <span

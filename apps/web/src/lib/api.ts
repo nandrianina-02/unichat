@@ -1,4 +1,5 @@
 import type {
+  ApercuLien,
   AppareilConnecte,
   CarteProfil,
   ErreurApiCorps,
@@ -70,6 +71,7 @@ export const api = {
   bloquer: (id: string) => appel<CarteProfil>("/blocages", json("POST", { id })),
   debloquer: (id: string) => appel<CarteProfil>(`/blocages/${encodeURIComponent(id)}`, { method: "DELETE" }),
   signaler: (signalement: Signalement) => appel<void>("/signalements", json("POST", signalement)),
+  apercu: (url: string, signal?: AbortSignal) => appel<ApercuLien>(`/apercu?url=${encodeURIComponent(url)}`, { signal }),
 
   appareils: () => appel<{ appareils: AppareilConnecte[] }>("/sessions"),
   deconnecterAppareil: (id: string) => appel<void>(`/sessions/${encodeURIComponent(id)}`, { method: "DELETE" }),

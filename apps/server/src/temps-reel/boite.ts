@@ -399,6 +399,9 @@ export class Boite extends DurableObject<Bindings> {
       ...(media ? { media } : {}),
       ...(m.reponseA ? { reponseA: m.reponseA } : {}),
       ...(m.transfere ? { transfere: m.transfere } : {}),
+      ...(m.lien ? { lien: m.lien } : {}),
+      // Les mentions n'ont de sens que dans un groupe.
+      ...(m.groupe && m.mentions?.length ? { mentions: [...new Set(m.mentions)] } : {}),
     };
     await this.distribuer(destinataires, { type: "message", message });
     // Copie dans ma propre boîte : mes autres appareils voient ce que j'envoie.

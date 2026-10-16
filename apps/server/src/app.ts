@@ -2,6 +2,7 @@ import { Hono } from "hono";
 import { secureHeaders } from "hono/secure-headers";
 import { Refus } from "./lib/erreurs";
 import { contacts, personnes, recherche } from "./routes/annuaire";
+import { apercu } from "./routes/apercu";
 import { appareils } from "./routes/appareils";
 import { auth } from "./routes/auth";
 import { groupes } from "./routes/groupes";
@@ -43,6 +44,7 @@ export function creerApp(remplacements: Partial<Dependances> = {}) {
   app.route("/api/medias", medias);
   app.route("/api/blocages", blocages);
   app.route("/api/signalements", signalements);
+  app.route("/api/apercu", apercu);
 
   app.notFound((c) => c.json({ erreur: "introuvable", message: "Adresse inconnue." }, 404));
   app.onError((erreur, c) => {

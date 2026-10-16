@@ -78,7 +78,31 @@ export interface Message {
   reponseA?: Citation;
   /** Nombre de fois que ce contenu a été transféré avant d'arriver ici. */
   transfere?: number;
+  /** Aperçu du premier lien, préparé par l'expéditeur. */
+  lien?: ApercuLien;
+  /** Membres mentionnés (@) dans un groupe. */
+  mentions?: string[];
 }
+
+/** Aperçu d'un lien : du texte seulement, aucune image venue d'ailleurs. */
+export interface ApercuLien {
+  url: string;
+  titre?: string;
+  description?: string;
+  site: string;
+}
+
+export const schemaApercuLien = z
+  .object({
+    url: z.string().url().max(2048).refine((u) => /^https?:\/\//i.test(u), "Adresse invalide."),
+    titre: z.string().max(200).optional(),
+    description: z.string().max(300).optional(),
+    site: z.string().max(100),
+  })
+  .strict();
+
+/** Mentions par message : autant que de membres dans un groupe. */
+export const MENTIONS_MAX = 40;
 
 export type ActionGroupe = "creation" | "ajout" | "retrait" | "depart" | "renommage" | "description";
 
@@ -157,6 +181,8 @@ export const schemaClient = z.discriminatedUnion("t", [
       media: schemaMediaEnvoye.optional(),
       reponseA: z.object({ id: uuid, de: uuid, extrait: z.string().max(LIMITE_EXTRAIT) }).optional(),
       transfere: z.number().int().min(1).max(10_000).optional(),
+      lien: schemaApercuLien.optional(),
+      mentions: z.array(uuid).max(MENTIONS_MAX).optional(),
     })
     .refine((m) => Boolean(m.a) !== Boolean(m.groupe), "Destinataire manquant.")
     .refine((m) => m.texte.trim().length > 0 || m.media, "Message vide."),
