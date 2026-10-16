@@ -1,4 +1,4 @@
-import type { CarteProfil, Citation, EvenementGroupe, Groupe, MediaMessage, Reaction } from "@unichat/shared";
+import type { CarteProfil, Citation, EvenementGroupe, Groupe, MediaMessage, Preference, Reaction } from "@unichat/shared";
 import { openDB, type DBSchema, type IDBPDatabase, type IDBPTransaction } from "idb";
 
 export type EtatMessage = "attente" | "envoye" | "remis" | "lu" | "echec";
@@ -48,7 +48,13 @@ export interface ConversationLocale {
     media?: { type: MediaMessage["type"]; nom: string; duree?: number; vocal?: boolean };
   } | null;
   nonLus: number;
+  /** Effacée (sans être supprimée) : elle reste dans la liste, à cette date. */
+  videeLe?: number;
+  /** Sourdine, favori, archive, épingle : réglages propres à moi, partagés entre mes appareils. */
+  reglages?: ReglagesDiscussion;
 }
+
+export type ReglagesDiscussion = Pick<Preference, "muetJusqua" | "favori" | "archive" | "epingle">;
 
 export interface PersonneLocale extends CarteProfil {
   maj: number;

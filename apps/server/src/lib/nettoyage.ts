@@ -16,6 +16,8 @@ export async function nettoyer(env: Bindings, maintenant: number, recuperer: typ
       .prepare("DELETE FROM sessions WHERE (revoquee_le IS NOT NULL AND revoquee_le < ?1) OR expire_le < ?1")
       .bind(maintenant - 30 * JOUR),
     db.prepare("DELETE FROM evenements_securite WHERE cree_le < ?1").bind(maintenant - 180 * JOUR),
+    // Signalements : six mois, le temps de les examiner et de traiter une récidive.
+    db.prepare("DELETE FROM signalements WHERE cree_le < ?1").bind(maintenant - 180 * JOUR),
   ]);
   await nettoyerMedias(env, maintenant, recuperer);
 }

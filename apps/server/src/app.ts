@@ -6,6 +6,7 @@ import { appareils } from "./routes/appareils";
 import { auth } from "./routes/auth";
 import { groupes } from "./routes/groupes";
 import { medias } from "./routes/medias";
+import { blocages, signalements } from "./routes/moderation";
 import { moi } from "./routes/moi";
 import { securite } from "./routes/securite";
 import { ouvrirTempsReel } from "./routes/temps-reel";
@@ -40,6 +41,8 @@ export function creerApp(remplacements: Partial<Dependances> = {}) {
   app.route("/api/contacts", contacts);
   app.route("/api/groupes", groupes);
   app.route("/api/medias", medias);
+  app.route("/api/blocages", blocages);
+  app.route("/api/signalements", signalements);
 
   app.notFound((c) => c.json({ erreur: "introuvable", message: "Adresse inconnue." }, 404));
   app.onError((erreur, c) => {

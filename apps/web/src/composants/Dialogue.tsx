@@ -1,5 +1,6 @@
 import clsx from "clsx";
 import { useEffect, useRef, type ReactNode } from "react";
+import { createPortal } from "react-dom";
 
 interface Props {
   titre: string;
@@ -23,7 +24,9 @@ export function Dialogue({ titre, children, confirmer, annuler = "Annuler", dang
     return () => window.removeEventListener("keydown", echap);
   }, [onFermer]);
 
-  return (
+  // Rendu à la racine de la page : ouverte depuis une ligne de la liste, la
+  // boîte resterait sinon prisonnière de la colonne et passerait sous la discussion.
+  return createPortal(
     <div className="animate-fade fixed inset-0 z-50 flex items-center justify-center bg-voile p-4" onMouseDown={onFermer}>
       <div
         role="alertdialog"
@@ -56,6 +59,7 @@ export function Dialogue({ titre, children, confirmer, annuler = "Annuler", dang
           </button>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }

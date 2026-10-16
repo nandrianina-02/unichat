@@ -10,4 +10,5 @@ export type Vue =
   | "confidentialite"
   | "visibilite-photo"
   | "visibilite-infos"
+  | "bloques"
   | "supprimer-compte";

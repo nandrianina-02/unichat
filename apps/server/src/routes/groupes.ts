@@ -25,6 +25,15 @@ async function verifierContacts(db: D1Database, proprietaire: string, ids: strin
     .bind(proprietaire, JSON.stringify(ids))
     .first<{ n: number }>();
   if ((ligne?.n ?? 0) !== ids.length) throw refus.requete("Vous ne pouvez ajouter que des personnes de vos contacts.");
+  // Une personne qui m'a bloqué ne peut pas être ajoutée par moi ; le message ne dit pas pourquoi.
+  const bloqueur = await db
+    .prepare(
+      `SELECT u.nom FROM blocages b JOIN utilisateurs u ON u.id = b.bloqueur_id
+       WHERE b.bloque_id = ?1 AND b.bloqueur_id IN (SELECT value FROM json_each(?2)) LIMIT 1`,
+    )
+    .bind(proprietaire, JSON.stringify(ids))
+    .first<{ nom: string }>();
+  if (bloqueur) throw refus.interdit(`${bloqueur.nom} ne peut pas être ajouté à ce groupe.`);
 }
 
 async function exigerGroupe(c: Context<AppEnv>, admin = false): Promise<Groupe> {

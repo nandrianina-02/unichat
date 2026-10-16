@@ -1,6 +1,7 @@
 import { VISIBILITES, type MajProfil, type Visibilite } from "@unichat/shared";
 import clsx from "clsx";
-import { useState } from "react";
+import { ChevronRight } from "lucide-react";
+import { useEffect, useState } from "react";
 import { Interrupteur } from "../composants/Interrupteur";
 import { TitreSection } from "../composants/Lignes";
 import { EnTetePanneau } from "../composants/Panneau";
@@ -31,6 +32,14 @@ function useEnregistrement() {
 export function Confidentialite({ onRetour, onOuvrir }: { onRetour: () => void; onOuvrir: (vue: Vue) => void }) {
   const moi = useMoi();
   const { enregistrer, erreur } = useEnregistrement();
+  const [bloques, setBloques] = useState<number | null>(null);
+
+  useEffect(() => {
+    api.bloques().then(
+      (r) => setBloques(r.bloques.length),
+      () => setBloques(null),
+    );
+  }, []);
 
   const ligne = (titre: string, valeur: Visibilite, vue: Vue) => (
     <button type="button" onClick={() => onOuvrir(vue)} className="flex w-full items-center px-7 text-left transition-colors hover:bg-survol">
@@ -62,6 +71,18 @@ export function Confidentialite({ onRetour, onOuvrir }: { onRetour: () => void; 
             onChange={(trouvableParEmail) => void enregistrer({ trouvableParEmail })}
           />
         </div>
+        <TitreSection>Contacts</TitreSection>
+        <button
+          type="button"
+          onClick={() => onOuvrir("bloques")}
+          className="flex w-full items-center gap-3 px-7 text-left transition-colors hover:bg-survol"
+        >
+          <span className="flex-1 border-b border-bordure py-4">
+            <span className="block text-[16px] text-texte">Contacts bloqués</span>
+            <span className="mt-0.5 block text-[14px] text-texte-2">{bloques === null ? "…" : bloques === 0 ? "Aucun" : bloques}</span>
+          </span>
+          <ChevronRight size={18} className="text-texte-3" />
+        </button>
         {erreur && <p className="animate-fade px-7 py-3 text-sm text-danger">{erreur}</p>}
       </div>
     </>

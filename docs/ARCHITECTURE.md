@@ -152,6 +152,23 @@ Une sauvegarde chiffrée de l'historique pourra aller sur le Google Drive de
 l'utilisateur (dossier privé de l'application), comme la sauvegarde Android
 de WhatsApp.
 
+### Blocage, signalement, réglages d'une discussion
+
+- **Blocage** (table `blocages`) : vérifié dans la boîte de l'expéditeur. Le
+  message d'une personne bloquée est accepté puis gardé chez elle seule : une
+  coche, jamais remis, comme dans WhatsApp. « Écrit… », présence, accusés de
+  lecture, réactions et suppressions ne traversent pas un blocage ; la carte
+  de profil se présente comme si la personne avait choisi « Personne ». Les
+  groupes ne sont pas concernés. Le cache de 10 s des boîtes est vidé des
+  deux côtés au moment du blocage.
+- **Signalement** (table `signalements`, six mois) : le serveur ne garde pas
+  les messages, l'application joint les cinq derniers reçus de la personne ou
+  des autres membres du groupe. Lecture à la main (README, « Modération »).
+- **Réglages** (sourdine, favori, archive, épingle, effacement, suppression) :
+  entrée `preference` du journal de ma seule boîte, appliquée par chacun de
+  mes appareils ; personne d'autre n'en sait rien. Hors connexion, ils
+  partent au retour du réseau.
+
 ## Chiffrement de bout en bout (étape 3)
 
 Protocole Signal (X3DH ou PQXDH, puis Double Ratchet), clés par appareil.

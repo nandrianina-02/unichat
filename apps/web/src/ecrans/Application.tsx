@@ -13,6 +13,7 @@ import { useMessagerie } from "../lib/messagerie-react";
 import { Activite } from "../panneaux/Activite";
 import { Appareils } from "../panneaux/Appareils";
 import { Compte } from "../panneaux/Compte";
+import { Bloques } from "../panneaux/Bloques";
 import { ChoixVisibilite, Confidentialite } from "../panneaux/Confidentialite";
 import { Discussions } from "../panneaux/Discussions";
 import { NouveauGroupe } from "../panneaux/NouveauGroupe";
@@ -131,6 +132,8 @@ export function Application() {
         return <ChoixVisibilite champ="infos" onRetour={retour} />;
       case "supprimer-compte":
         return <SupprimerCompte onRetour={retour} />;
+      case "bloques":
+        return <Bloques onRetour={retour} />;
     }
   }
 

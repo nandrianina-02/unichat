@@ -14,6 +14,7 @@ Les choix techniques et leurs raisons : [docs/ARCHITECTURE.md](docs/ARCHITECTURE
 | 2. Discussions | Messages à deux en temps réel, envoi hors connexion, coches (envoyé, remis, lu), « écrit… », présence et dernière connexion, synchronisation entre mes appareils, notifications du navigateur | Fait (web) |
 | 2 bis. Discussions | Groupes (jusqu'à 40 membres, administrateurs, ajout, retrait, départ), réponses citées, réactions, suppression pour tous ou pour soi | Fait (web) |
 | 2 ter. Médias | Photos, vidéos, documents et messages vocaux (Karaks Storage, 30 jours), aperçu avec légende, visionneuse | Fait (web) |
+| 2 quinquies. Quotidien | Bloquer, signaler ; sourdine, favoris, archives, épingles, effacer, supprimer, exporter une discussion | En cours (web) |
 | 2 quater. Android | Application Android | À venir |
 | 3. Sécurité | Chiffrement de bout en bout (protocole Signal), notifications, appareils liés | À venir |
 | 4. Appels et statuts | Appels audio et vidéo (WebRTC), statuts | À venir |
@@ -71,3 +72,15 @@ signe de vrais jetons.
    cliente », plus « Mettre à la corbeille et supprimer ». Sans elle, tout
    fonctionne sauf l'envoi de fichiers.
 5. **Déploiement** : `npm run deploy` (migrations, construction, envoi).
+
+## Modération
+
+Les signalements arrivent dans la table `signalements` (six mois au plus),
+avec les cinq derniers messages joints par l'application. Pour les lire :
+
+```bash
+cd apps/server
+npx wrangler d1 execute unichat --remote --command "SELECT s.id, datetime(s.cree_le / 1000, 'unixepoch') AS le, s.type, s.cible_id, u.nom AS auteur, s.messages FROM signalements s JOIN utilisateurs u ON u.id = s.auteur_id WHERE s.traite_le IS NULL ORDER BY s.cree_le"
+```
+
+Une fois examiné : `UPDATE signalements SET traite_le = <horodatage en ms> WHERE id = '<id>'`.

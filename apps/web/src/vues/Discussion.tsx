@@ -15,7 +15,9 @@ import {
   ArrowLeft,
   Ban,
   ChevronDown,
+  CircleX,
   Copy,
+  Flag,
   EllipsisVertical,
   FileText,
   Images,
@@ -30,6 +32,8 @@ import {
   UserPlus,
   X,
 } from "lucide-react";
+import { useActionsDiscussion } from "../composants/ActionsDiscussion";
+import { Menu, useFermetureExterieure, type ElementMenu } from "../composants/Menu";
 import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import { Avatar, AvatarGroupe } from "../composants/Avatar";
 import { BoutonIcone } from "../composants/BoutonIcone";
@@ -63,7 +67,7 @@ export function Discussion({ conversation, onInfos, onFermer }: Props) {
   const autre = enGroupe ? null : autreParticipant(conversation, moi.id);
   const estSoi = autre === moi.id;
   const personne: CarteProfil | undefined = estSoi
-    ? { id: moi.id, nom: moi.nom, pseudo: moi.pseudo, infos: moi.infos, photo: moi.photo, estContact: false, estSoi: true }
+    ? { id: moi.id, nom: moi.nom, pseudo: moi.pseudo, infos: moi.infos, photo: moi.photo, estContact: false, estSoi: true, bloque: false }
     : autre
       ? etat.personnes[autre]
       : undefined;
@@ -121,6 +125,19 @@ export function Discussion({ conversation, onInfos, onFermer }: Props) {
   }
   const titre = enGroupe ? (groupe?.nom ?? "Groupe") : personne ? (estSoi ? `${personne.nom} (vous)` : personne.nom) : "";
 
+  const libelleInfos = enGroupe ? "Infos du groupe" : "Infos du contact";
+  const actions = useActionsDiscussion(conversation, { onRetiree: onFermer, onAvis: setAvis });
+  // Même ordre que le menu de WhatsApp ; les appels viendront avec l'étape 4.
+  const elementsMenu: ElementMenu[] = [
+    { icone: Info, libelle: libelleInfos, action: onInfos },
+    actions.elements.sourdine,
+    actions.elements.favoris,
+    actions.elements.exporter,
+    { icone: CircleX, libelle: "Fermer la discussion", action: onFermer },
+    "separateur",
+    ...actions.elements.moderation,
+  ];
+
   async function reagir(message: MessageLocal, code: Reaction | null) {
     if (!(await messagerie.reagir(message, code))) setAvis("Hors connexion : la réaction n'a pas pu être envoyée.");
   }
@@ -169,11 +186,14 @@ export function Discussion({ conversation, onInfos, onFermer }: Props) {
         titre={titre}
         statut={statut}
         ecrit={Boolean(ecrit)}
-        libelleInfos={enGroupe ? "Infos du groupe" : "Infos du contact"}
+        libelleInfos={libelleInfos}
+        elements={elementsMenu}
         onInfos={onInfos}
         onFermer={onFermer}
       />
-      {personne && !personne.estContact && !estSoi && <BanniereInconnu personne={personne} />}
+      {personne && !personne.estContact && !estSoi && !personne.bloque && (
+        <BanniereInconnu personne={personne} onBloquer={() => actions.ouvrir("bloquer")} onSignaler={() => actions.ouvrir("signaler")} />
+      )}
       <ListeMessages
         messages={messages}
         moiId={moi.id}
@@ -201,6 +221,13 @@ export function Discussion({ conversation, onInfos, onFermer }: Props) {
       {quitte ? (
         <footer className="shrink-0 bg-entete px-4 py-4 text-center text-sm text-texte-2">
           Vous ne pouvez plus envoyer de messages dans ce groupe.
+        </footer>
+      ) : personne?.bloque ? (
+        <footer className="animate-fade shrink-0 bg-entete px-4 py-3 text-center text-sm text-texte-2">
+          Vous avez bloqué ce contact.{" "}
+          <button type="button" onClick={() => actions.ouvrir("bloquer")} className="font-medium text-primaire-texte hover:underline">
+            Débloquer
+          </button>
         </footer>
       ) : (
         <Composeur
@@ -248,6 +275,7 @@ export function Discussion({ conversation, onInfos, onFermer }: Props) {
           onFermer={() => setVisionne(null)}
         />
       )}
+      {actions.dialogue}
       {aSupprimer && (
         <DialogueSuppression
           message={aSupprimer}
@@ -273,6 +301,7 @@ function EnTete({
   statut,
   ecrit,
   libelleInfos,
+  elements,
   onInfos,
   onFermer,
 }: {
@@ -281,6 +310,7 @@ function EnTete({
   statut: string;
   ecrit: boolean;
   libelleInfos: string;
+  elements: ElementMenu[];
   onInfos: () => void;
   onFermer: () => void;
 }) {
@@ -309,68 +339,23 @@ function EnTete({
           <EllipsisVertical size={22} />
         </BoutonIcone>
         {menu && (
-          <Menu
-            className="right-0 top-11"
-            elements={[
-              { icone: Info, libelle: libelleInfos, action: onInfos },
-              { icone: X, libelle: "Fermer la discussion", action: onFermer },
-            ]}
-            onChoix={() => setMenu(false)}
-          />
+          <Menu className="right-0 top-11 max-h-[calc(100vh-80px)] overflow-y-auto" elements={elements} onChoix={() => setMenu(false)} />
         )}
       </div>
     </header>
   );
 }
 
-function Menu({
-  elements,
-  onChoix,
-  className,
-  entete,
-}: {
-  elements: { icone: typeof Info; libelle: string; action: () => void; danger?: boolean }[];
-  onChoix: () => void;
-  className?: string;
-  entete?: ReactNode;
-}) {
-  return (
-    <div role="menu" className={clsx("animate-pop absolute z-30 w-60 rounded-lg bg-panneau py-2 shadow-xl ring-1 ring-bordure", className)}>
-      {entete && <div className="border-b border-bordure px-2.5 pb-2">{entete}</div>}
-      {elements.map(({ icone: Icone, libelle, action, danger }) => (
-        <button
-          key={libelle}
-          role="menuitem"
-          type="button"
-          onClick={() => {
-            onChoix();
-            action();
-          }}
-          className={clsx("flex w-full items-center gap-3 px-5 py-2.5 text-left text-sm hover:bg-survol", danger ? "text-danger" : "text-texte")}
-        >
-          <Icone size={18} className={danger ? "text-danger" : "text-texte-2"} /> {libelle}
-        </button>
-      ))}
-    </div>
-  );
-}
-
-function useFermetureExterieure(ouvert: boolean, ref: React.RefObject<HTMLElement | null>, fermer: () => void) {
-  useEffect(() => {
-    if (!ouvert) return;
-    const surClic = (e: MouseEvent) => !ref.current?.contains(e.target as Node) && fermer();
-    const surTouche = (e: KeyboardEvent) => e.key === "Escape" && fermer();
-    document.addEventListener("mousedown", surClic);
-    document.addEventListener("keydown", surTouche);
-    return () => {
-      document.removeEventListener("mousedown", surClic);
-      document.removeEventListener("keydown", surTouche);
-    };
-  }, [ouvert, ref, fermer]);
-}
-
 /** Message d'une personne absente des contacts : on propose de l'ajouter, comme dans les messageries de référence. */
-function BanniereInconnu({ personne }: { personne: CarteProfil }) {
+function BanniereInconnu({
+  personne,
+  onBloquer,
+  onSignaler,
+}: {
+  personne: CarteProfil;
+  onBloquer: () => void;
+  onSignaler: () => void;
+}) {
   const { messagerie } = useMessagerie();
   const { sessionPerdue } = useCompte();
   const [enCours, setEnCours] = useState(false);
@@ -396,6 +381,12 @@ function BanniereInconnu({ personne }: { personne: CarteProfil }) {
         className="inline-flex items-center gap-1.5 font-medium text-primaire hover:underline disabled:opacity-60"
       >
         {enCours ? <LoaderCircle size={15} className="animate-spin" /> : <UserPlus size={15} />} Ajouter aux contacts
+      </button>
+      <button type="button" onClick={onBloquer} className="inline-flex items-center gap-1.5 font-medium text-danger hover:underline">
+        <Ban size={15} /> Bloquer
+      </button>
+      <button type="button" onClick={onSignaler} className="inline-flex items-center gap-1.5 font-medium text-danger hover:underline">
+        <Flag size={15} /> Signaler
       </button>
       {erreur && <span className="text-danger">{erreur}</span>}
     </div>

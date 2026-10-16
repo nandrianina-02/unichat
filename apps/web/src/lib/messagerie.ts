@@ -1,6 +1,7 @@
 import {
   FERMETURE_SESSION,
   LIMITE_EXTRAIT,
+  MESSAGES_SIGNALES,
   autreParticipant,
   estGroupe,
   idGroupe,
@@ -10,11 +11,12 @@ import {
   type Groupe,
   type MessageClient,
   type MessageServeur,
+  type Preference,
   type Reaction,
 } from "@unichat/shared";
 import { ErreurApi, api } from "./api";
 import { retirerMedia, telechargerMedia } from "./api-medias";
-import { resumeMessage } from "./format";
+import { heureCourte, resumeMessage } from "./format";
 import { envoyerParMorceaux, type FichierPrepare } from "./medias";
 import {
   ouvrirStockage,
@@ -54,9 +56,19 @@ const plusAvance = (a: EtatMessage | undefined, b: EtatMessage): EtatMessage =>
 const DUREE_ECRIT = 5000;
 const INTERVALLE_PING = 25_000;
 
+/** Les épinglées d'abord, puis la plus récente en haut. */
 function trier(conversations: ConversationLocale[]): ConversationLocale[] {
-  return [...conversations].sort((a, b) => (b.dernier?.le ?? 0) - (a.dernier?.le ?? 0));
+  return [...conversations].sort(
+    (a, b) =>
+      Number(Boolean(b.reglages?.epingle)) - Number(Boolean(a.reglages?.epingle)) ||
+      (b.dernier?.le ?? b.videeLe ?? 0) - (a.dernier?.le ?? a.videeLe ?? 0),
+  );
 }
+
+export const estMuette = (c: ConversationLocale, maintenant = Date.now()) => (c.reglages?.muetJusqua ?? 0) > maintenant;
+
+/** Épingles au plus, comme dans WhatsApp : au-delà, l'épingle ne distingue plus rien. */
+export const EPINGLES_MAX = 3;
 
 /**
  * Messagerie de l'appareil : connexion temps réel, historique local et file
@@ -78,6 +90,8 @@ export class Messagerie {
   private readonly dernierEcrit = new Map<string, number>();
   /** Accusés de lecture à envoyer, gardés tant que la connexion est coupée. */
   private readonly lusEnAttente = new Map<string, { conversation: string; auteur: string; ids: Set<string> }>();
+  /** Réglages de discussion faits hors connexion, envoyés à mes autres appareils au retour du réseau. */
+  private readonly preferencesEnAttente = new Map<string, Preference>();
   private ouverte: string | null = null;
   /** Appelé quand on clique sur une notification. */
   surOuverture: ((conversation: string) => void) | null = null;
@@ -283,10 +297,14 @@ export class Messagerie {
     const nouveaux: MessageLocal[] = [];
     const groupesAChanger = new Set<string>();
     const supprimes: string[] = [];
+    const retirees = new Set<string>();
+    const blocages: { personne: string; bloque: boolean }[] = [];
 
     for (const e of entrees) {
       if (e.type === "message") {
         const m = e.message;
+        // Un message arrivé après la suppression de la discussion la fait revenir.
+        retirees.delete(m.conversation);
         const existant = await messages.get(m.id);
         if (m.de === this.moi) {
           const local: MessageLocal = { ...existant, ...m, type: "texte" };
@@ -335,6 +353,13 @@ export class Messagerie {
           supprimes.push(msg.id);
           touchees.add(e.conversation);
         }
+      } else if (e.type === "blocage") {
+        blocages.push({ personne: e.personne, bloque: e.bloque });
+      } else if (e.type === "preference") {
+        const { effaces, retiree } = await this.appliquerPreference(tx, e.conversation, e.preference);
+        supprimes.push(...effaces);
+        if (retiree) retirees.add(e.conversation);
+        touchees.add(e.conversation);
       } else {
         const ev = e.evenement;
         if (!(await messages.get(ev.id))) {
@@ -354,9 +379,17 @@ export class Messagerie {
         touchees.add(ev.conversation);
       }
     }
-    for (const c of touchees) await this.recalculer(tx, c);
+    for (const c of touchees) {
+      if (retirees.has(c)) await tx.objectStore("conversations").delete(c);
+      else await this.recalculer(tx, c);
+    }
     await tx.done;
     for (const id of supprimes) await this.db.delete("fichiers", id);
+    for (const { personne, bloque } of blocages) {
+      const connue = this.etat.personnes[personne];
+      if (connue) this.retenirPersonne({ ...connue, bloque });
+      else void this.chargerPersonne(personne, true);
+    }
 
     this.seq = Math.max(this.seq ?? 0, ...entrees.map((e) => e.seq));
     await this.db.put("reglages", this.seq, "seq");
@@ -548,6 +581,121 @@ export class Messagerie {
       this.lusEnAttente.delete(cle);
       this.envoyerLus(lot.conversation, lot.auteur, [...lot.ids]);
     }
+    for (const [conversation, preference] of this.preferencesEnAttente) {
+      if (this.brut({ t: "preference", conversation, preference })) this.preferencesEnAttente.delete(conversation);
+    }
+  }
+
+  // --- Réglages d'une discussion --------------------------------------------------------
+
+  /**
+   * Sourdine, favori, archive, épingle, effacement : appliqué ici tout de
+   * suite, puis transmis à mes autres appareils (ou mis de côté hors connexion).
+   */
+  async regler(conversation: string, preference: Preference): Promise<void> {
+    const tx = this.db.transaction(["messages", "conversations"], "readwrite");
+    const { effaces, retiree } = await this.appliquerPreference(tx, conversation, preference);
+    if (retiree) await tx.objectStore("conversations").delete(conversation);
+    else await this.recalculer(tx, conversation);
+    await tx.done;
+    for (const id of effaces) await this.db.delete("fichiers", id);
+    await this.publierConversations(new Set([conversation]));
+    if (!this.brut({ t: "preference", conversation, preference })) {
+      this.preferencesEnAttente.set(conversation, { ...this.preferencesEnAttente.get(conversation), ...preference });
+    }
+  }
+
+  /** Effacer : les messages disparaissent, la discussion reste dans la liste. */
+  async effacer(conversation: string): Promise<void> {
+    await this.regler(conversation, { effaceAvant: await this.finDeDiscussion(conversation) });
+  }
+
+  /** Supprimer : messages effacés et discussion retirée, jusqu'au prochain message. */
+  async supprimerDiscussion(conversation: string): Promise<void> {
+    await this.regler(conversation, { effaceAvant: await this.finDeDiscussion(conversation), supprimee: true });
+  }
+
+  /** L'heure du dernier message, si elle dépasse l'heure locale (horloge de l'appareil en retard). */
+  private async finDeDiscussion(conversation: string): Promise<number> {
+    const tous = await this.messages(conversation);
+    return Math.max(Date.now(), ...tous.map((m) => m.le));
+  }
+
+  private async appliquerPreference(
+    tx: TransactionMessages,
+    conversation: string,
+    p: Preference,
+  ): Promise<{ effaces: string[]; retiree: boolean }> {
+    const effaces: string[] = [];
+    if (p.effaceAvant !== undefined) {
+      const tous = await tx.objectStore("messages").index("conversation").getAll(plageConversation(conversation));
+      for (const m of tous) {
+        // Un message pas encore parti n'a pas d'heure définitive : on le garde.
+        if (m.le <= p.effaceAvant && m.etat !== "attente") {
+          await tx.objectStore("messages").delete(m.id);
+          effaces.push(m.id);
+        }
+      }
+    }
+    const conversations = tx.objectStore("conversations");
+    const existante = await conversations.get(conversation);
+    if (existante) {
+      const reglages = { ...existante.reglages };
+      if (p.muetJusqua !== undefined) reglages.muetJusqua = p.muetJusqua;
+      if (p.favori !== undefined) reglages.favori = p.favori;
+      if (p.archive !== undefined) reglages.archive = p.archive;
+      if (p.epingle !== undefined) reglages.epingle = p.epingle;
+      const videeLe = p.effaceAvant !== undefined && !p.supprimee ? p.effaceAvant : existante.videeLe;
+      await conversations.put({ ...existante, reglages, ...(videeLe ? { videeLe } : {}) });
+    }
+    return { effaces, retiree: p.supprimee === true };
+  }
+
+  // --- Blocage et signalement ------------------------------------------------------------
+
+  async bloquer(id: string, bloque: boolean): Promise<CarteProfil> {
+    const carte = bloque ? await api.bloquer(id) : await api.debloquer(id);
+    this.retenirPersonne(carte);
+    return carte;
+  }
+
+  /**
+   * Signalement : on joint les cinq derniers messages reçus de la personne
+   * (ou des autres membres du groupe), jamais les siens.
+   */
+  async signaler(conversation: string, options: { bloquer: boolean }): Promise<void> {
+    const groupe = estGroupe(conversation);
+    const cible = groupe ? idGroupe(conversation) : autreParticipant(conversation, this.moi);
+    const recus = (await this.messages(conversation))
+      .filter((m) => m.type !== "evenement" && !m.supprime && m.de !== this.moi && (groupe || m.de === cible))
+      .slice(-MESSAGES_SIGNALES)
+      .map((m) => ({
+        id: m.id,
+        de: m.de,
+        texte: m.texte,
+        le: m.le,
+        ...(m.media ? { media: { type: m.media.type, nom: m.media.nom.slice(0, 180) } } : {}),
+      }));
+    await api.signaler({ type: groupe ? "groupe" : "personne", cible, messages: recus, bloquer: !groupe && options.bloquer });
+    if (!groupe && options.bloquer) {
+      const connue = this.etat.personnes[cible];
+      if (connue) this.retenirPersonne({ ...connue, bloque: true });
+    }
+  }
+
+  /** Discussion en texte brut, comme l'export de WhatsApp : rien ne quitte l'appareil. */
+  async exporter(conversation: string): Promise<string> {
+    const jour = new Intl.DateTimeFormat("fr-FR", { day: "2-digit", month: "2-digit", year: "numeric" });
+    const lignes: string[] = [];
+    for (const m of await this.messages(conversation)) {
+      const quand = `${jour.format(new Date(m.le))} ${heureCourte(m.le)}`;
+      if (m.type === "evenement") continue;
+      const contenu = m.supprime
+        ? "Ce message a été supprimé"
+        : [m.media ? `<${resumeMessage({ texte: "", media: m.media })} non inclus>` : "", m.texte].filter(Boolean).join(" ");
+      lignes.push(`${quand} - ${this.nom(m.de, conversation)} : ${contenu}`);
+    }
+    return lignes.join("\n") + "\n";
   }
 
   // --- Réactions et suppression ---------------------------------------------------------
@@ -710,7 +858,10 @@ export class Messagerie {
   private async recalculer(tx: TransactionMessages, conversation: string): Promise<void> {
     const tous = await tx.objectStore("messages").index("conversation").getAll(plageConversation(conversation));
     const dernier = tous[tous.length - 1];
+    const existante = await tx.objectStore("conversations").get(conversation);
     const resume: ConversationLocale = {
+      ...(existante?.reglages ? { reglages: existante.reglages } : {}),
+      ...(existante?.videeLe ? { videeLe: existante.videeLe } : {}),
       id: conversation,
       autre: estGroupe(conversation) ? idGroupe(conversation) : autreParticipant(conversation, this.moi),
       dernier: dernier
@@ -745,7 +896,8 @@ export class Messagerie {
   }
 
   private mettreAJourTitre(): void {
-    const total = this.etat.conversations.reduce((n, c) => n + c.nonLus, 0);
+    const maintenant = Date.now();
+    const total = this.etat.conversations.reduce((n, c) => n + (estMuette(c, maintenant) ? 0 : c.nonLus), 0);
     document.title = total > 0 ? `(${total}) UniChat` : "UniChat";
   }
 
@@ -753,6 +905,8 @@ export class Messagerie {
   private notifier(nouveaux: MessageLocal[]): void {
     if (!("Notification" in window) || Notification.permission !== "granted" || !document.hidden) return;
     for (const m of nouveaux) {
+      const discussion = this.etat.conversations.find((c) => c.id === m.conversation);
+      if (discussion && estMuette(discussion)) continue;
       const groupe = estGroupe(m.conversation) ? this.etat.groupes[idGroupe(m.conversation)] : null;
       const auteur = this.nom(m.de, m.conversation);
       const titre = groupe ? groupe.nom : auteur;

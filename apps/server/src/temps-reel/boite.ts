@@ -12,7 +12,9 @@ import {
   type Message,
   type MessageClient,
   type MessageServeur,
+  type Preference,
 } from "@unichat/shared";
+import { blocageEntre } from "../lib/blocages";
 import { membresDe } from "../lib/groupes";
 import type { Bindings } from "../types";
 
@@ -34,6 +36,9 @@ const FENETRE_ENVOIS = 10 * 1000;
 const DUREE_CACHE_MEMBRES = 10 * 1000;
 /** Accusés de remise envoyés par passage : on reste sous la limite de sous-requêtes. */
 const ACCUSES_PAR_PASSAGE = 40;
+/** Blocages gardés en mémoire, pour la même raison que les membres. */
+const DUREE_CACHE_BLOCAGES = 10 * 1000;
+const AUCUN_BLOCAGE = { jeBloque: false, ilBloque: false };
 
 function conversationDe(e: NouvelleEntree): string {
   if (e.type === "message") return e.message.conversation;
@@ -58,6 +63,7 @@ export class Boite extends DurableObject<Bindings> {
   private readonly envoisRecents = new Map<string, number[]>();
   private readonly destinatairesConnus = new Set<string>();
   private readonly membresConnus = new Map<string, { ids: string[]; expire: number }>();
+  private readonly blocagesConnus = new Map<string, { jeBloque: boolean; ilBloque: boolean; expire: number }>();
 
   constructor(ctx: DurableObjectState, env: Bindings) {
     super(ctx, env);
@@ -152,7 +158,8 @@ export class Boite extends DurableObject<Bindings> {
         const maintenant = Date.now();
         // L'auteur ne fait confiance à cet accusé que pour ses propres messages
         // de cette discussion (vérifié par son application).
-        if (m.auteur !== moi) {
+        const bloque = !estGroupe(m.conversation) && this.bloqueDansUnSens(await this.blocage(moi, m.auteur));
+        if (m.auteur !== moi && !bloque) {
           await this.boite(m.auteur).recevoir({
             type: "accuse",
             conversation: m.conversation,
@@ -166,12 +173,17 @@ export class Boite extends DurableObject<Bindings> {
         return;
       }
       case "ecrit": {
-        const autres = await this.participants(m.conversation, moi);
+        const autres = await this.destinatairesPermis(m.conversation, moi);
         if (!autres) return;
         await Promise.allSettled(autres.map((id) => this.boite(id).signalerEcriture(moi, m.conversation)));
         return;
       }
       case "presence": {
+        // Bloqué dans un sens ou dans l'autre : ni « en ligne » ni « vu à ».
+        if (m.de !== moi && this.bloqueDansUnSens(await this.blocage(moi, m.de))) {
+          this.envoyer(ws, { t: "presence", de: m.de, enLigne: false, vuLe: null });
+          return;
+        }
         const etat = m.de === moi ? await this.presence() : await this.boite(m.de).presence();
         this.envoyer(ws, { t: "presence", de: m.de, ...etat });
         return;
@@ -193,7 +205,21 @@ export class Boite extends DurableObject<Bindings> {
           par: moi,
           le: Date.now(),
         });
+      case "preference":
+        return this.preference(ws, moi, m.conversation, m.preference);
     }
+  }
+
+  /** Réglage d'une discussion : il ne concerne que moi, il ne va que dans ma boîte. */
+  private preference(ws: WebSocket, moi: string, conversation: string, preference: Preference): void {
+    if (!estGroupe(conversation)) {
+      const [, x, y] = conversation.split(":");
+      if (x !== moi && y !== moi) {
+        this.envoyer(ws, { t: "refuse", message: "Vous ne faites pas partie de cette discussion." });
+        return;
+      }
+    }
+    this.ajouter({ type: "preference", conversation, preference, le: Date.now() });
   }
 
   /** L'appareil indique où il en est ; on lui envoie la suite du journal. */
@@ -294,7 +320,19 @@ export class Boite extends DurableObject<Bindings> {
         return;
       }
       destinataires = a === moi ? [] : [a];
+      if (a !== moi) {
+        const relation = await this.blocage(moi, a);
+        if (relation.jeBloque) {
+          this.envoyer(ws, { t: "refuse", id: m.id, message: "Vous avez bloqué ce contact. Débloquez-le pour lui écrire." });
+          return;
+        }
+        // Bloqué par le destinataire : le message est accepté mais ne lui parvient
+        // jamais. L'expéditeur reste sur une coche, sans être averti du blocage.
+        if (relation.ilBloque) destinataires = [];
+      }
     }
+    // Discussion à deux : on annonce toujours un destinataire, même bloqué (sauf à soi-même).
+    const annonces = m.groupe || m.a === moi ? destinataires.length : 1;
 
     // Renvoi après une coupure : déjà accepté, on confirme sans redistribuer.
     const deja = this.sql
@@ -302,7 +340,7 @@ export class Boite extends DurableObject<Bindings> {
       .toArray()[0];
     if (deja) {
       const { message } = JSON.parse(deja.contenu) as { message: Message };
-      this.envoyer(ws, { t: "accepte", id: m.id, le: message.le, destinataires: destinataires.length });
+      this.envoyer(ws, { t: "accepte", id: m.id, le: message.le, destinataires: annonces });
       return;
     }
 
@@ -337,12 +375,12 @@ export class Boite extends DurableObject<Bindings> {
     await this.distribuer(destinataires, { type: "message", message });
     // Copie dans ma propre boîte : mes autres appareils voient ce que j'envoie.
     this.ajouter({ type: "message", message });
-    this.envoyer(ws, { t: "accepte", id: m.id, le: maintenant, destinataires: destinataires.length });
+    this.envoyer(ws, { t: "accepte", id: m.id, le: maintenant, destinataires: annonces });
   }
 
   /** Réaction ou suppression : transmise à chaque participant et à mes autres appareils. */
   private async partager(ws: WebSocket, moi: string, conversation: string, entree: NouvelleEntree): Promise<void> {
-    const autres = await this.participants(conversation, moi);
+    const autres = await this.destinatairesPermis(conversation, moi);
     if (!autres) {
       this.envoyer(ws, { t: "refuse", message: "Vous ne faites pas partie de cette discussion." });
       return;
@@ -375,6 +413,31 @@ export class Boite extends DurableObject<Bindings> {
     return autre === moi ? [] : [autre];
   }
 
+  /**
+   * Participants à qui transmettre réactions, suppressions et « écrit… » :
+   * dans une discussion à deux, personne si un blocage existe dans un sens ou
+   * dans l'autre. Les groupes ne sont pas concernés, comme dans WhatsApp.
+   */
+  private async destinatairesPermis(conversation: string, moi: string): Promise<string[] | null> {
+    const autres = await this.participants(conversation, moi);
+    if (!autres || estGroupe(conversation) || autres.length === 0) return autres;
+    return this.bloqueDansUnSens(await this.blocage(moi, autres[0]!)) ? [] : autres;
+  }
+
+  private async blocage(moi: string, autre: string): Promise<{ jeBloque: boolean; ilBloque: boolean }> {
+    if (autre === moi) return AUCUN_BLOCAGE;
+    // Une boîte n'appartient qu'à une personne : l'autre suffit comme clé.
+    const connu = this.blocagesConnus.get(autre);
+    if (connu && connu.expire > Date.now()) return connu;
+    const relation = await blocageEntre(this.env.DB, moi, autre);
+    this.blocagesConnus.set(autre, { ...relation, expire: Date.now() + DUREE_CACHE_BLOCAGES });
+    return relation;
+  }
+
+  private bloqueDansUnSens(r: { jeBloque: boolean; ilBloque: boolean }): boolean {
+    return r.jeBloque || r.ilBloque;
+  }
+
   private async distribuer(destinataires: string[], entree: NouvelleEntree): Promise<void> {
     const resultats = await Promise.allSettled(destinataires.map((id) => this.boite(id).recevoir(entree)));
     for (const r of resultats) if (r.status === "rejected") console.warn("remise impossible", String(r.reason));
@@ -383,7 +446,13 @@ export class Boite extends DurableObject<Bindings> {
   // --- Appels des autres boîtes et du serveur (RPC) -------------------------------
 
   async recevoir(entree: NouvelleEntree): Promise<void> {
+    if (entree.type === "blocage") this.blocagesConnus.delete(entree.personne);
     this.ajouter(entree);
+  }
+
+  /** Blocage posé ou levé par quelqu'un : il s'applique tout de suite, sans attendre le cache. */
+  async oublierBlocage(autre: string): Promise<void> {
+    this.blocagesConnus.delete(autre);
   }
 
   async signalerEcriture(de: string, conversation: string): Promise<void> {

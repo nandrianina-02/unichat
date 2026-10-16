@@ -6,6 +6,7 @@ import type {
   Groupe,
   MajProfil,
   Moi,
+  Signalement,
 } from "@unichat/shared";
 
 /** Erreur de l'API : un code pour le programme, un message prêt à afficher. */
@@ -65,6 +66,10 @@ export const api = {
   contacts: () => appel<{ contacts: CarteProfil[] }>("/contacts"),
   ajouterContact: (id: string) => appel<CarteProfil>("/contacts", json("POST", { id })),
   retirerContact: (id: string) => appel<void>(`/contacts/${encodeURIComponent(id)}`, { method: "DELETE" }),
+  bloques: () => appel<{ bloques: CarteProfil[] }>("/blocages"),
+  bloquer: (id: string) => appel<CarteProfil>("/blocages", json("POST", { id })),
+  debloquer: (id: string) => appel<CarteProfil>(`/blocages/${encodeURIComponent(id)}`, { method: "DELETE" }),
+  signaler: (signalement: Signalement) => appel<void>("/signalements", json("POST", signalement)),
 
   appareils: () => appel<{ appareils: AppareilConnecte[] }>("/sessions"),
   deconnecterAppareil: (id: string) => appel<void>(`/sessions/${encodeURIComponent(id)}`, { method: "DELETE" }),

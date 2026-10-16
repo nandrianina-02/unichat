@@ -27,6 +27,8 @@ export interface CarteProfil {
   photo: string | null;
   estContact: boolean;
   estSoi: boolean;
+  /** Je l'ai bloquée. L'inverse n'est jamais révélé : la personne bloquée n'en est pas avertie. */
+  bloque: boolean;
 }
 
 export interface AppareilConnecte {

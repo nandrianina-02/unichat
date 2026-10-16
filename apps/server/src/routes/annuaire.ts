@@ -39,7 +39,8 @@ personnes.get("/:id/photo", async (c) => {
     `SELECT p.version, p.type, p.${colonne} AS image, u.visibilite_photo,
        EXISTS (SELECT 1 FROM contacts k WHERE k.proprietaire_id = u.id AND k.contact_id = ?1) AS relation
      FROM photos p JOIN utilisateurs u ON u.id = p.utilisateur_id
-     WHERE p.utilisateur_id = ?2`,
+     WHERE p.utilisateur_id = ?2
+       AND NOT EXISTS (SELECT 1 FROM blocages b WHERE b.bloqueur_id = u.id AND b.bloque_id = ?1)`,
   )
     .bind(lecteur, cible)
     .first<{ version: string; type: string; image: number[] | ArrayBuffer; visibilite_photo: Visibilite; relation: number }>();

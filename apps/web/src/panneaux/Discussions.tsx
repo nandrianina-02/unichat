@@ -1,14 +1,19 @@
 import type { CarteProfil, EvenementSecurite } from "@unichat/shared";
 import clsx from "clsx";
 import {
+  Archive,
+  ArrowLeft,
+  BellOff,
   BellRing,
   Camera,
+  ChevronDown,
   EllipsisVertical,
   FileText,
   Headphones,
   LogOut,
   MessageSquarePlus,
   Mic,
+  Pin,
   Search,
   Settings,
   ShieldAlert,
@@ -20,6 +25,8 @@ import {
 } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { estGroupe } from "@unichat/shared";
+import { useActionsDiscussion } from "../composants/ActionsDiscussion";
+import { Menu, useFermetureExterieure } from "../composants/Menu";
 import { Avatar, AvatarGroupe } from "../composants/Avatar";
 import { BoutonIcone } from "../composants/BoutonIcone";
 import { Coches } from "../composants/Coches";
@@ -27,6 +34,7 @@ import { EVENEMENT_CONTACTS, LignePersonne, TitreSection } from "../composants/L
 import { api } from "../lib/api";
 import { useCompte, useMoi } from "../lib/compte";
 import { dateListe, dureeCourte, libelleMedia, lieu, quand, texteEvenement } from "../lib/format";
+import { estMuette } from "../lib/messagerie";
 import { useMessagerie } from "../lib/messagerie-react";
 import type { ConversationLocale } from "../lib/stockage";
 
@@ -41,7 +49,7 @@ interface Props {
   onDeconnexion: () => void;
 }
 
-type Filtre = "toutes" | "non-lues";
+type Filtre = "toutes" | "non-lues" | "favoris" | "groupes";
 
 /** Colonne de gauche : en-tête, recherche, alertes, liste des discussions. */
 export function Discussions({ selection, onOuvrir, onOuvrirPersonne, onNouvelle, onParametres, onDeconnexion }: Props) {
@@ -52,7 +60,15 @@ export function Discussions({ selection, onOuvrir, onOuvrirPersonne, onNouvelle,
   const [recherche, setRecherche] = useState("");
   const [filtre, setFiltre] = useState<Filtre>("toutes");
   const [menu, setMenu] = useState(false);
+  const [archives, setArchives] = useState(false);
+  const [avis, setAvis] = useState<string | null>(null);
   const menuRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!avis) return;
+    const minuterie = setTimeout(() => setAvis(null), 3000);
+    return () => clearTimeout(minuterie);
+  }, [avis]);
 
   useEffect(() => {
     const charger = () =>
@@ -79,18 +95,25 @@ export function Discussions({ selection, onOuvrir, onOuvrirPersonne, onNouvelle,
         ? `${moi.nom} (vous)`
         : (etat.personnes[c.autre]?.nom ?? "");
   const texte = recherche.trim().toLowerCase();
-  const nonLues = etat.conversations.filter((c) => c.nonLus > 0).length;
+  // Une discussion effacée reste visible, vide ; une discussion jamais commencée non.
+  const visibles = useMemo(() => etat.conversations.filter((c) => c.dernier !== null || c.videeLe !== undefined), [etat.conversations]);
+  const archivees = visibles.filter((c) => c.reglages?.archive);
+  const nonLues = visibles.filter((c) => c.nonLus > 0 && !c.reglages?.archive).length;
 
   const conversations = useMemo(
     () =>
-      etat.conversations.filter(
-        (c) =>
-          c.dernier !== null &&
-          (filtre === "toutes" || c.nonLus > 0) &&
-          (!texte || nomDe(c).toLowerCase().includes(texte)),
-      ),
+      visibles.filter((c) => {
+        // La recherche parcourt aussi les archives, comme dans WhatsApp.
+        if (texte) return nomDe(c).toLowerCase().includes(texte);
+        if (Boolean(c.reglages?.archive) !== archives) return false;
+        if (archives) return true;
+        if (filtre === "non-lues") return c.nonLus > 0;
+        if (filtre === "favoris") return Boolean(c.reglages?.favori);
+        if (filtre === "groupes") return estGroupe(c.id);
+        return true;
+      }),
     // nomDe ne dépend que des personnes connues et du profil, déjà suivis ici.
-    [etat.conversations, etat.personnes, etat.groupes, filtre, texte, moi.id, moi.nom],
+    [visibles, etat.personnes, etat.groupes, filtre, texte, archives, moi.id, moi.nom],
   );
 
   // Pendant une recherche : les contacts sans discussion apparaissent aussi.
@@ -104,7 +127,13 @@ export function Discussions({ selection, onOuvrir, onOuvrirPersonne, onNouvelle,
     );
   }, [texte, contacts, etat.conversations]);
 
-  const aucuneDiscussion = etat.conversations.every((c) => c.dernier === null);
+  const aucuneDiscussion = visibles.length === 0;
+  const videFiltre: Record<Filtre, string> = {
+    toutes: "",
+    "non-lues": "Aucune discussion non lue.",
+    favoris: "Aucune discussion favorite. Ajoutez-en depuis le menu d'une discussion.",
+    groupes: "Vous ne faites partie d'aucun groupe.",
+  };
 
   return (
     <div className="flex h-full flex-col">
@@ -161,12 +190,21 @@ export function Discussions({ selection, onOuvrir, onOuvrirPersonne, onNouvelle,
         </label>
       </div>
 
-      {!aucuneDiscussion && (
-        <div className="flex gap-2 px-3 pb-2" role="tablist" aria-label="Filtrer les discussions">
+      {archives && !texte ? (
+        <div className="animate-fade flex items-center gap-4 px-3 pb-2">
+          <BoutonIcone libelle="Retour aux discussions" onClick={() => setArchives(false)}>
+            <ArrowLeft size={20} />
+          </BoutonIcone>
+          <h2 className="text-[16px] text-texte">Archivées</h2>
+        </div>
+      ) : !aucuneDiscussion && (
+        <div className="flex gap-2 overflow-x-auto px-3 pb-2" role="tablist" aria-label="Filtrer les discussions">
           {(
             [
               ["toutes", "Toutes"],
               ["non-lues", nonLues > 0 ? `Non lues ${nonLues}` : "Non lues"],
+              ["favoris", "Favoris"],
+              ["groupes", "Groupes"],
             ] as const
           ).map(([valeur, libelle]) => (
             <button
@@ -176,7 +214,7 @@ export function Discussions({ selection, onOuvrir, onOuvrirPersonne, onNouvelle,
               aria-selected={filtre === valeur}
               onClick={() => setFiltre(valeur)}
               className={clsx(
-                "rounded-full px-3 py-1 text-[14px] transition-colors",
+                "shrink-0 rounded-full px-3 py-1 text-[14px] transition-colors",
                 filtre === valeur ? "bg-primaire-doux text-primaire-texte" : "bg-champ text-texte-2 hover:bg-survol",
               )}
             >
@@ -200,6 +238,25 @@ export function Discussions({ selection, onOuvrir, onOuvrirPersonne, onNouvelle,
         )}
         <BanniereNotifications />
         <AlerteConnexion />
+        {avis && (
+          <p role="status" className="animate-fade mx-3 mb-2 rounded-lg bg-entete px-4 py-2.5 text-[13px] text-texte-2">
+            {avis}
+          </p>
+        )}
+
+        {!archives && !texte && filtre === "toutes" && archivees.length > 0 && (
+          <button
+            type="button"
+            onClick={() => setArchives(true)}
+            className="animate-fade flex w-full items-center gap-3.5 py-3 pr-4 pl-7 text-left transition-colors hover:bg-survol"
+          >
+            <Archive size={20} className="text-primaire" />
+            <span className="flex-1 text-[16px] text-texte">Archivées</span>
+            {archivees.some((c) => c.nonLus > 0) && (
+              <span className="text-xs font-medium text-primaire">{archivees.filter((c) => c.nonLus > 0).length}</span>
+            )}
+          </button>
+        )}
 
         {conversations.map((c, i) => {
           const indication = etat.ecrit[c.id];
@@ -215,6 +272,7 @@ export function Discussions({ selection, onOuvrir, onOuvrirPersonne, onNouvelle,
               apercu={apercu(c, (id) => messagerie.nom(id, c.id))}
               selection={selection === c.id}
               onClick={() => onOuvrir(c.id)}
+              onAvis={setAvis}
               className={i < 6 ? `animate-fade stagger-${i + 1}` : undefined}
             />
           );
@@ -232,8 +290,11 @@ export function Discussions({ selection, onOuvrir, onOuvrirPersonne, onNouvelle,
         {texte && conversations.length === 0 && contactsTrouves.length === 0 && (
           <p className="animate-fade px-7 py-10 text-center text-sm text-texte-2">Aucun résultat pour « {recherche.trim()} ».</p>
         )}
-        {!texte && filtre === "non-lues" && conversations.length === 0 && (
-          <p className="animate-fade px-7 py-10 text-center text-sm text-texte-2">Aucune discussion non lue.</p>
+        {!texte && !archives && filtre !== "toutes" && conversations.length === 0 && (
+          <p className="animate-fade px-7 py-10 text-center text-sm leading-relaxed text-texte-2">{videFiltre[filtre]}</p>
+        )}
+        {!texte && archives && conversations.length === 0 && (
+          <p className="animate-fade px-7 py-10 text-center text-sm text-texte-2">Aucune discussion archivée.</p>
         )}
 
         {!texte && aucuneDiscussion && (
@@ -295,6 +356,7 @@ function LigneConversation({
   apercu: resume,
   selection,
   onClick,
+  onAvis,
   className,
 }: {
   conversation: ConversationLocale;
@@ -305,16 +367,43 @@ function LigneConversation({
   apercu: Apercu;
   selection: boolean;
   onClick: () => void;
+  onAvis: (texte: string) => void;
   className?: string;
 }) {
+  const actions = useActionsDiscussion(c.id, { onAvis });
+  const [menu, setMenu] = useState<"bas" | "haut" | null>(null);
+  const cadre = useRef<HTMLDivElement>(null);
+  useFermetureExterieure(menu !== null, cadre, () => setMenu(null));
+  const muette = estMuette(c);
+  const { archive, sourdine, epingle, favoris, moderation } = actions.elements;
+  // Le menu de la liste, comme dans WhatsApp : rangement d'abord, puis blocage et suppression.
+  const elements = [
+    archive,
+    sourdine,
+    ...(c.reglages?.archive ? [] : [epingle]),
+    favoris,
+    "separateur" as const,
+    ...moderation.filter((e) => e !== "separateur" && /^(Bloquer|Débloquer|Quitter|Supprimer)/.test(e.libelle)),
+  ];
+
+  function ouvrirMenu() {
+    const r = cadre.current?.getBoundingClientRect();
+    setMenu(r && r.bottom > window.innerHeight - 340 ? "haut" : "bas");
+  }
+
   return (
     <div
+      ref={cadre}
       role="button"
       tabIndex={0}
       onClick={onClick}
-      onKeyDown={(e) => (e.key === "Enter" || e.key === " ") && (e.preventDefault(), onClick())}
+      onContextMenu={(e) => {
+        e.preventDefault();
+        ouvrirMenu();
+      }}
+      onKeyDown={(e) => e.target === e.currentTarget && (e.key === "Enter" || e.key === " ") && (e.preventDefault(), onClick())}
       className={clsx(
-        "flex cursor-pointer items-center gap-3.5 pl-3 transition-colors hover:bg-survol",
+        "group relative flex cursor-pointer items-center gap-3.5 pl-3 transition-colors hover:bg-survol",
         selection && "bg-selection hover:bg-selection",
         className,
       )}
@@ -344,13 +433,53 @@ function LigneConversation({
               </>
             )}
           </p>
+          {muette && <BellOff size={16} className="shrink-0 text-texte-3" aria-label="En sourdine" />}
+          {c.reglages?.epingle && <Pin size={16} className="shrink-0 text-texte-3" aria-label="Épinglée" />}
           {c.nonLus > 0 && (
-            <span className="animate-pop flex h-5 min-w-5 shrink-0 items-center justify-center rounded-full bg-primaire px-1.5 text-[11px] font-semibold text-sur-primaire">
+            <span
+              className={clsx(
+                "animate-pop flex h-5 min-w-5 shrink-0 items-center justify-center rounded-full px-1.5 text-[11px] font-semibold text-sur-primaire",
+                // En sourdine, le compteur reste mais ne réclame plus l'attention.
+                muette ? "bg-texte-3" : "bg-primaire",
+              )}
+            >
               {c.nonLus}
             </span>
           )}
+          <button
+            type="button"
+            aria-label="Options de la discussion"
+            title="Options"
+            aria-haspopup="menu"
+            aria-expanded={menu !== null}
+            onClick={(e) => {
+              e.stopPropagation();
+              if (menu) setMenu(null);
+              else ouvrirMenu();
+            }}
+            className={clsx(
+              "-mr-1 flex size-6 shrink-0 items-center justify-center rounded-full text-texte-2 transition-opacity",
+              menu ? "opacity-100" : "opacity-0 group-hover:opacity-100 focus-visible:opacity-100",
+            )}
+          >
+            <ChevronDown size={18} />
+          </button>
         </div>
       </div>
+      {menu && (
+        <div onClick={(e) => e.stopPropagation()}>
+          <Menu
+            className={clsx("right-3", menu === "haut" ? "bottom-full mb-1" : "top-full -mt-2")}
+            elements={elements}
+            onChoix={() => setMenu(null)}
+          />
+        </div>
+      )}
+      {actions.dialogue && (
+        <div onClick={(e) => e.stopPropagation()} onContextMenu={(e) => e.stopPropagation()}>
+          {actions.dialogue}
+        </div>
+      )}
     </div>
   );
 }

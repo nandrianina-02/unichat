@@ -1,6 +1,7 @@
-import type { CarteProfil } from "@unichat/shared";
-import { LoaderCircle, MessageSquareText, UserMinus, UserPlus, X } from "lucide-react";
+import { conversationDirecte, type CarteProfil } from "@unichat/shared";
+import { Ban, Flag, LoaderCircle, MessageSquareText, UserMinus, UserPlus, X } from "lucide-react";
 import { useEffect, useState } from "react";
+import { useActionsDiscussion } from "../composants/ActionsDiscussion";
 import { Avatar } from "../composants/Avatar";
 import { Dialogue } from "../composants/Dialogue";
 import { contactsModifies } from "../composants/Lignes";
@@ -22,7 +23,9 @@ export function FicheContact({
   onMessage?: (id: string) => void;
 }) {
   const { sessionPerdue } = useCompte();
-  const { messagerie } = useMessagerie();
+  const { messagerie, etat } = useMessagerie();
+  const [avis, setAvis] = useState<string | null>(null);
+  const actions = useActionsDiscussion(conversationDirecte(messagerie.moi, id), { onAvis: setAvis });
   const [carte, setCarte] = useState<CarteProfil | null>(null);
   const [erreur, setErreur] = useState<string | null>(null);
   const [enCours, setEnCours] = useState(false);
@@ -122,9 +125,40 @@ export function FicheContact({
                 </button>
               </div>
             )}
+            {!carte.estSoi && (
+              <div className="animate-rise stagger-3 mt-2.5 mb-6 bg-panneau">
+                {/* L'état suit la messagerie : un blocage fait ailleurs se voit ici aussitôt. */}
+                {(etat.personnes[carte.id]?.bloque ?? carte.bloque) ? (
+                  <button
+                    type="button"
+                    onClick={() => actions.ouvrir("bloquer")}
+                    className="flex w-full items-center gap-6 px-8 py-4 text-left text-[16px] text-primaire transition-colors hover:bg-survol"
+                  >
+                    <Ban size={22} /> Débloquer {carte.nom}
+                  </button>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => actions.ouvrir("bloquer")}
+                    className="flex w-full items-center gap-6 px-8 py-4 text-left text-[16px] text-danger transition-colors hover:bg-survol"
+                  >
+                    <Ban size={22} /> Bloquer {carte.nom}
+                  </button>
+                )}
+                <button
+                  type="button"
+                  onClick={() => actions.ouvrir("signaler")}
+                  className="flex w-full items-center gap-6 px-8 py-4 text-left text-[16px] text-danger transition-colors hover:bg-survol"
+                >
+                  <Flag size={22} /> Signaler {carte.nom}
+                </button>
+              </div>
+            )}
+            {avis && <p role="status" className="animate-fade px-8 pb-6 text-sm text-texte-2">{avis}</p>}
           </>
         )}
       </div>
+      {actions.dialogue}
 
       {retrait && carte && (
         <Dialogue

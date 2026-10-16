@@ -78,6 +78,31 @@ export interface EvenementGroupe {
 
 export type EtatRemise = "remis" | "lu";
 
+/** Sourdine sans fin : une date que l'on n'atteindra pas. */
+export const MUET_TOUJOURS = 8.64e15;
+
+/**
+ * Réglages d'une discussion qui ne regardent que moi (sourdine, favori,
+ * archive, effacement). Ils passent par ma propre boîte pour que tous mes
+ * appareils les appliquent ; les autres participants n'en savent rien.
+ */
+export const schemaPreference = z
+  .object({
+    /** Fin de la sourdine (ms), null pour rétablir le son. */
+    muetJusqua: z.number().int().nonnegative().max(MUET_TOUJOURS).nullable().optional(),
+    favori: z.boolean().optional(),
+    archive: z.boolean().optional(),
+    /** Épinglée en haut de la liste (trois au plus, comme WhatsApp). */
+    epingle: z.boolean().optional(),
+    /** Messages effacés jusqu'à cette date incluse. */
+    effaceAvant: z.number().int().nonnegative().optional(),
+    /** Discussion retirée de la liste ; elle revient au prochain message. */
+    supprimee: z.boolean().optional(),
+  })
+  .strict()
+  .refine((p) => Object.keys(p).length > 0, "Réglage vide.");
+export type Preference = z.infer<typeof schemaPreference>;
+
 /** Élément du journal d'un utilisateur, numéroté : chaque appareil accuse réception jusqu'à un numéro. */
 export type Entree =
   | { seq: number; type: "message"; message: Message }
@@ -86,7 +111,10 @@ export type Entree =
   | { seq: number; type: "lu"; conversation: string; ids: string[]; le: number }
   | { seq: number; type: "reaction"; conversation: string; message: string; par: string; code: Reaction | null; le: number }
   | { seq: number; type: "suppression"; conversation: string; message: string; par: string; le: number }
-  | { seq: number; type: "groupe"; evenement: EvenementGroupe };
+  | { seq: number; type: "groupe"; evenement: EvenementGroupe }
+  /** Blocage ou déblocage fait sur l'un de mes appareils : les autres se mettent à jour. */
+  | { seq: number; type: "blocage"; conversation: string; personne: string; bloque: boolean; le: number }
+  | { seq: number; type: "preference"; conversation: string; preference: Preference; le: number };
 
 // --- Messages des applications -----------------------------------------------------
 
@@ -115,6 +143,7 @@ export const schemaClient = z.discriminatedUnion("t", [
   z.object({ t: z.literal("presence"), de: uuid }),
   z.object({ t: z.literal("reagir"), conversation, message: uuid, code: z.enum(REACTIONS).nullable() }),
   z.object({ t: z.literal("supprimer"), conversation, message: uuid }),
+  z.object({ t: z.literal("preference"), conversation, preference: schemaPreference }),
 ]);
 export type MessageClient = z.infer<typeof schemaClient>;
 

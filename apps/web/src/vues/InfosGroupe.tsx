@@ -1,6 +1,7 @@
-import { LIMITES_GROUPE, schemaNomGroupe, type Groupe, type MembreGroupe } from "@unichat/shared";
+import { LIMITES_GROUPE, conversationGroupe, schemaNomGroupe, type Groupe, type MembreGroupe } from "@unichat/shared";
 import clsx from "clsx";
-import { Crown, LogOut, MessageSquareText, UserMinus, UserPlus, X } from "lucide-react";
+import { Crown, Flag, LogOut, MessageSquareText, UserMinus, UserPlus, X } from "lucide-react";
+import { useActionsDiscussion } from "../composants/ActionsDiscussion";
 import { useEffect, useRef, useState } from "react";
 import { Avatar, AvatarGroupe } from "../composants/Avatar";
 import { ChampModifiable } from "../composants/ChampModifiable";
@@ -27,6 +28,8 @@ export function InfosGroupe({
   const [quitter, setQuitter] = useState(false);
   const [retrait, setRetrait] = useState<MembreGroupe | null>(null);
   const [erreur, setErreur] = useState<string | null>(null);
+  const [avis, setAvis] = useState<string | null>(null);
+  const actions = useActionsDiscussion(conversationGroupe(groupeId), { onAvis: setAvis });
 
   useEffect(() => {
     void messagerie.chargerGroupe(groupeId, true);
@@ -152,8 +155,8 @@ export function InfosGroupe({
 
           {erreur && <p className="animate-fade px-8 py-3 text-sm text-danger">{erreur}</p>}
 
-          {groupe.moiMembre && (
-            <div className="animate-rise stagger-3 mt-2.5 mb-6 bg-panneau">
+          <div className="animate-rise stagger-3 mt-2.5 mb-6 bg-panneau">
+            {groupe.moiMembre && (
               <button
                 type="button"
                 onClick={() => setQuitter(true)}
@@ -161,8 +164,16 @@ export function InfosGroupe({
               >
                 <LogOut size={22} /> Quitter le groupe
               </button>
-            </div>
-          )}
+            )}
+            <button
+              type="button"
+              onClick={() => actions.ouvrir("signaler")}
+              className="flex w-full items-center gap-6 px-8 py-4 text-left text-[16px] text-danger transition-colors hover:bg-survol"
+            >
+              <Flag size={22} /> Signaler le groupe
+            </button>
+          </div>
+          {avis && <p role="status" className="animate-fade px-8 pb-6 text-sm text-texte-2">{avis}</p>}
         </div>
       )}
 

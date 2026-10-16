@@ -44,7 +44,9 @@ export function visible(reglage: Visibilite, estSoi: boolean, lecteurEstSonConta
 const SELECTION_CARTE = `
   u.id, u.nom, u.pseudo, u.infos, u.photo_version, u.visibilite_photo, u.visibilite_infos,
   EXISTS (SELECT 1 FROM contacts c WHERE c.proprietaire_id = u.id AND c.contact_id = ?1) AS lecteur_est_son_contact,
-  EXISTS (SELECT 1 FROM contacts c WHERE c.proprietaire_id = ?1 AND c.contact_id = u.id) AS est_contact`;
+  EXISTS (SELECT 1 FROM contacts c WHERE c.proprietaire_id = ?1 AND c.contact_id = u.id) AS est_contact,
+  EXISTS (SELECT 1 FROM blocages b WHERE b.bloqueur_id = ?1 AND b.bloque_id = u.id) AS bloque,
+  EXISTS (SELECT 1 FROM blocages b WHERE b.bloqueur_id = u.id AND b.bloque_id = ?1) AS lecteur_bloque`;
 
 interface LigneCarte {
   id: string;
@@ -56,19 +58,25 @@ interface LigneCarte {
   visibilite_infos: Visibilite;
   lecteur_est_son_contact: number;
   est_contact: number;
+  bloque: number;
+  lecteur_bloque: number;
 }
 
 function versCarte(l: LigneCarte, lecteurId: string): CarteProfil {
   const estSoi = l.id === lecteurId;
   const relation = l.lecteur_est_son_contact === 1;
+  // Bloqué par la personne : on la voit comme si elle avait choisi « Personne »,
+  // sans autre indice — c'est ce que voit quiconque n'y a pas droit.
+  const masque = l.lecteur_bloque === 1;
   return {
     id: l.id,
     nom: l.nom,
     pseudo: l.pseudo,
-    infos: visible(l.visibilite_infos, estSoi, relation) ? l.infos : null,
-    photo: visible(l.visibilite_photo, estSoi, relation) ? l.photo_version : null,
+    infos: !masque && visible(l.visibilite_infos, estSoi, relation) ? l.infos : null,
+    photo: !masque && visible(l.visibilite_photo, estSoi, relation) ? l.photo_version : null,
     estContact: l.est_contact === 1,
     estSoi,
+    bloque: l.bloque === 1,
   };
 }
 
@@ -105,4 +113,17 @@ export async function contactsDe(db: D1Database, proprietaireId: string): Promis
     .bind(proprietaireId)
     .all<LigneCarte>();
   return results.map((l) => versCarte(l, proprietaireId));
+}
+
+export async function bloquesDe(db: D1Database, bloqueurId: string): Promise<CarteProfil[]> {
+  const { results } = await db
+    .prepare(
+      `SELECT ${SELECTION_CARTE}
+       FROM blocages b JOIN utilisateurs u ON u.id = b.bloque_id
+       WHERE b.bloqueur_id = ?1
+       ORDER BY b.bloque_le DESC`,
+    )
+    .bind(bloqueurId)
+    .all<LigneCarte>();
+  return results.map((l) => versCarte(l, bloqueurId));
 }
