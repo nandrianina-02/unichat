@@ -75,6 +75,7 @@ import { ErreurApi, api } from "../lib/api";
 import { useCompte, useMoi } from "../lib/compte";
 import { heureCourte, jourMessage, resumeMessage, tailleFichier, texteEphemere, texteEvenement, vuLe } from "../lib/format";
 import { useMessagerie, useMessages } from "../lib/messagerie-react";
+import { useRetourSysteme } from "../lib/retour";
 import type { Epingle, MessageLocal } from "../lib/stockage";
 
 const dateCopie = new Intl.DateTimeFormat("fr-FR", { day: "2-digit", month: "2-digit", year: "numeric" });
@@ -1135,6 +1136,7 @@ function DialogueSuppression({
         Date.now() - message.le < DELAI_SUPPRESSION,
     );
   const premier = useRef<HTMLButtonElement>(null);
+  useRetourSysteme(true, onFermer);
   useEffect(() => {
     premier.current?.focus();
     const echap = (e: KeyboardEvent) => e.key === "Escape" && onFermer();
@@ -1255,6 +1257,7 @@ function BarreSelection({
     window.addEventListener("keydown", echap);
     return () => window.removeEventListener("keydown", echap);
   }, [onFermer]);
+  useRetourSysteme(true, onFermer);
   const vide = nombre === 0;
   return (
     <footer className="animate-fade flex shrink-0 items-center gap-1 bg-entete px-2 py-2.5 md:px-4">

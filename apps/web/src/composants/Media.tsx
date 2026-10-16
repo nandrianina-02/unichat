@@ -6,6 +6,7 @@ import { ErreurApi } from "../lib/api";
 import { urlOuvertureMedia } from "../lib/api-medias";
 import { dureeCourte, heureCourte, jourMessage, tailleFichier } from "../lib/format";
 import { useMessagerie } from "../lib/messagerie-react";
+import { useRetourSysteme } from "../lib/retour";
 import type { MessageLocal } from "../lib/stockage";
 
 export type MessageAvecMedia = MessageLocal & { media: MediaMessage };
@@ -453,6 +454,7 @@ export function Visionneuse({
   onFermer: () => void;
 }) {
   const fermer = useRef<HTMLButtonElement>(null);
+  useRetourSysteme(true, onFermer);
   useEffect(() => {
     fermer.current?.focus();
     const echap = (e: KeyboardEvent) => e.key === "Escape" && onFermer();

@@ -4,6 +4,7 @@ import { CircleAlert, Eye, FileText, Headphones, LoaderCircle, Plus, SendHorizon
 import { useEffect, useRef, useState } from "react";
 import { tailleFichier } from "../lib/format";
 import { preparerFichier, type FichierPrepare } from "../lib/medias";
+import { useRetourSysteme } from "../lib/retour";
 import { BoutonIcone } from "./BoutonIcone";
 
 /** Au-delà, l'envoi groupé ressemble à un transfert de dossier : mieux vaut plusieurs fois. */
@@ -72,6 +73,7 @@ export function EnvoiFichiers({
     };
   }, []);
 
+  useRetourSysteme(true, onAnnuler);
   useEffect(() => {
     champ.current?.focus();
     const echap = (e: KeyboardEvent) => e.key === "Escape" && onAnnuler();

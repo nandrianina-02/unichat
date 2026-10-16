@@ -42,6 +42,7 @@ import { api } from "../lib/api";
 import { useCompte, useMoi } from "../lib/compte";
 import { dateListe, dureeCourte, libelleMedia, lieu, quand, texteEvenement } from "../lib/format";
 import { estMuette } from "../lib/messagerie";
+import { activerPush } from "../lib/notifications";
 import { useMessagerie } from "../lib/messagerie-react";
 import type { ConversationLocale } from "../lib/stockage";
 
@@ -538,11 +539,17 @@ function BanniereNotifications() {
       </span>
       <div className="min-w-0 text-sm">
         <p className="font-medium text-texte">Soyez prévenu des nouveaux messages</p>
-        <p className="mt-0.5 text-texte-2">Une notification s'affiche quand UniChat est en arrière-plan.</p>
+        <p className="mt-0.5 text-texte-2">Une notification s'affiche même quand UniChat est fermé.</p>
         <div className="mt-2 flex gap-5 font-medium">
           <button
             type="button"
-            onClick={() => void Notification.requestPermission().finally(() => setVisible(false))}
+            onClick={() =>
+              void Notification.requestPermission()
+                .then((reponse) => {
+                  if (reponse === "granted") return activerPush();
+                })
+                .finally(() => setVisible(false))
+            }
             className="text-primaire-texte hover:underline"
           >
             Activer

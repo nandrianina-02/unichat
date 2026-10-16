@@ -15,7 +15,7 @@ Les choix techniques et leurs raisons : [docs/ARCHITECTURE.md](docs/ARCHITECTURE
 | 2 bis. Discussions | Groupes (jusqu'à 40 membres, administrateurs, ajout, retrait, départ), réponses citées, réactions, suppression pour tous ou pour soi | Fait (web) |
 | 2 ter. Médias | Photos, vidéos, documents et messages vocaux (Karaks Storage, 30 jours), aperçu avec légende, visionneuse | Fait (web) |
 | 2 quinquies. Quotidien | Bloquer, signaler ; sourdine, favoris, archives, épingles, effacer, supprimer, exporter une discussion ; transférer, sélectionner, modifier, messages importants, épingler un message, rechercher dans une discussion ; emoji, liens cliquables et aperçus, mentions @ ; confidentialité de la présence et des confirmations de lecture, ajout aux groupes, photo et lien d'invitation des groupes ; médias, liens et documents, infos du message, marquer comme non lu, fond des discussions ; messages éphémères, vue unique, position, contact, sondages | Fait (web) |
-| 2 quater. Android | Application Android | À venir |
+| 2 quater. Android | Application installable (PWA, hors connexion, bouton Retour), notifications Web Push même fermée, application Android (Trusted Web Activity) | En cours |
 | 3. Sécurité | Chiffrement de bout en bout (protocole Signal), notifications, appareils liés | À venir |
 | 4. Appels et statuts | Appels audio et vidéo (WebRTC), statuts | À venir |
 | 5. API UniChat | Comptes entreprise et bots, REST, webhooks signés, documentation | À venir |
@@ -66,7 +66,11 @@ signe de vrais jetons.
    npx wrangler secret put GOOGLE_CLIENT_ID
    npx wrangler secret put GOOGLE_CLIENT_SECRET
    npx wrangler secret put KARAKS_STORAGE_CLE
+   npx wrangler secret put VAPID_PRIVEE   # clé privée VAPID (JWK) pour les notifications
    ```
+   Une clé VAPID se crée avec
+   `node -e "crypto.subtle.generateKey({name:'ECDSA',namedCurve:'P-256'},true,['sign']).then(p=>crypto.subtle.exportKey('jwk',p.privateKey)).then(k=>console.log(JSON.stringify(k)))"`
+   (à coller directement dans `wrangler secret put`, sans la garder ailleurs).
    La clé Karaks Storage se crée dans le projet « UniChat » du service
    (`KARAKS_STORAGE_URL` dans `wrangler.jsonc`) : préréglage « Application
    cliente », plus « Mettre à la corbeille et supprimer ». Sans elle, tout

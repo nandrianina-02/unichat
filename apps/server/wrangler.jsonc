@@ -38,7 +38,8 @@
 
   // Stockage des fichiers joints. La clé est un secret :
   // `wrangler secret put KARAKS_STORAGE_CLE`.
-  "vars": { "KARAKS_STORAGE_URL": "https://nuvora-cloud.vercel.app" },
+  "vars": { "KARAKS_STORAGE_URL": "https://nuvora-cloud.vercel.app",
+    "VAPID_CONTACT": "mailto:randriantsoa54@gmail.com" },
 
   // Nettoyage horaire : états de connexion, compteurs, vieilles sessions, et
   // fichiers expirés (un nombre limité à chaque passage).

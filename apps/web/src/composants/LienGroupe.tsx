@@ -5,11 +5,13 @@ import { createPortal } from "react-dom";
 import { ErreurApi, api } from "../lib/api";
 import { useCompte } from "../lib/compte";
 import { lienGroupe } from "../lib/invitation";
+import { useRetourSysteme } from "../lib/retour";
 import { AvatarGroupe } from "./Avatar";
 import { BoutonIcone } from "./BoutonIcone";
 import { Dialogue } from "./Dialogue";
 
 function Cadre({ titre, onFermer, children }: { titre: string; onFermer: () => void; children: React.ReactNode }) {
+  useRetourSysteme(true, onFermer);
   useEffect(() => {
     const echap = (e: KeyboardEvent) => e.key === "Escape" && onFermer();
     window.addEventListener("keydown", echap);

@@ -6,6 +6,7 @@ import { createPortal } from "react-dom";
 import { api } from "../lib/api";
 import { useMoi } from "../lib/compte";
 import { useMessagerie } from "../lib/messagerie-react";
+import { useRetourSysteme } from "../lib/retour";
 import type { MessageLocal } from "../lib/stockage";
 import { Avatar, AvatarGroupe } from "./Avatar";
 import { BoutonIcone } from "./BoutonIcone";
@@ -39,6 +40,7 @@ export function DialogueTransfert({
   const [choisis, setChoisis] = useState<string[]>([]);
   const [enCours, setEnCours] = useState(false);
   const champ = useRef<HTMLInputElement>(null);
+  useRetourSysteme(true, onFermer);
 
   useEffect(() => {
     champ.current?.focus();

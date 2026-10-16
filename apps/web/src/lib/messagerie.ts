@@ -22,6 +22,7 @@ import {
 import { ErreurApi, api } from "./api";
 import { retirerMedia, telechargerMedia, transfererMedia } from "./api-medias";
 import { heureCourte, resumeMessage } from "./format";
+import { activerPush, montrerNotification, pushActif } from "./notifications";
 import { envoyerParMorceaux, type FichierPrepare } from "./medias";
 import {
   ouvrirStockage,
@@ -165,6 +166,7 @@ export class Messagerie {
     }
     window.addEventListener("online", this.surRetourReseau);
     this.connecter();
+    void activerPush();
   }
 
   arreter(): void {
@@ -1184,7 +1186,8 @@ export class Messagerie {
 
   /** Notification du système, seulement si la page n'est pas sous les yeux. */
   private notifier(nouveaux: MessageLocal[]): void {
-    if (!("Notification" in window) || Notification.permission !== "granted" || !document.hidden) return;
+    // Web Push actif sur cet appareil : c'est le service worker qui notifie, une seule fois.
+    if (!("Notification" in window) || Notification.permission !== "granted" || !document.hidden || pushActif()) return;
     for (const m of nouveaux) {
       const discussion = this.etat.conversations.find((c) => c.id === m.conversation);
       // En sourdine, seule une mention fait encore sonner, comme dans WhatsApp.
@@ -1193,12 +1196,7 @@ export class Messagerie {
       const auteur = this.nom(m.de, m.conversation);
       const titre = groupe ? groupe.nom : auteur;
       const corps = groupe ? `${auteur} : ${resumeMessage(m)}` : resumeMessage(m);
-      const notification = new Notification(titre, { body: corps.slice(0, 200), tag: m.conversation, icon: "/icone.svg" });
-      notification.onclick = () => {
-        window.focus();
-        this.surOuverture?.(m.conversation);
-        notification.close();
-      };
+      void montrerNotification(titre, { corps: corps.slice(0, 200), conversation: m.conversation }, (c) => this.surOuverture?.(c)).catch(() => {});
     }
   }
 }

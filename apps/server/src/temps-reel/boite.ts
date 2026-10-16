@@ -15,6 +15,8 @@ import {
   type Preference,
 } from "@unichat/shared";
 import { blocageEntre } from "../lib/blocages";
+import { pousser, resumer } from "../lib/push";
+import { vapid } from "../routes/push";
 import { visibilites, type Visibilites } from "../lib/confidentialite";
 import { membresDe } from "../lib/groupes";
 import type { Bindings } from "../types";
@@ -533,15 +535,62 @@ export class Boite extends DurableObject<Bindings> {
   }
 
   private async distribuer(destinataires: string[], entree: NouvelleEntree): Promise<void> {
-    const resultats = await Promise.allSettled(destinataires.map((id) => this.boite(id).recevoir(entree)));
+    const resultats = await Promise.allSettled(destinataires.map((id) => this.boite(id).recevoir(entree, id)));
     for (const r of resultats) if (r.status === "rejected") console.warn("remise impossible", String(r.reason));
   }
 
   // --- Appels des autres boîtes et du serveur (RPC) -------------------------------
 
-  async recevoir(entree: NouvelleEntree): Promise<void> {
+  /** `proprietaire` : à qui appartient cette boîte (elle ne connaît pas son propre nom). */
+  async recevoir(entree: NouvelleEntree, proprietaire?: string): Promise<void> {
     if (entree.type === "blocage") this.blocagesConnus.delete(entree.personne);
     this.ajouter(entree);
+    // La notification part sans retarder l'expéditeur.
+    if (entree.type === "message" && proprietaire && entree.message.de !== proprietaire) {
+      this.ctx.waitUntil(this.notifier(proprietaire, entree.message).catch((e) => console.warn("notification non envoyée", String(e))));
+    }
+  }
+
+  /**
+   * Notification Web Push vers chaque appareil abonné (session encore valable).
+   * Discussion en sourdine : rien, sauf si l'on m'y mentionne. L'application
+   * n'affiche rien quand elle est déjà sous les yeux (service worker).
+   */
+  private async notifier(moi: string, message: Message): Promise<void> {
+    const cles = vapid(this.env);
+    if (!cles) return;
+    const maintenant = Date.now();
+    const sourdine = this.sql
+      .exec<{ valeur: string }>("SELECT valeur FROM etat WHERE cle = ?", `muet:${message.conversation}`)
+      .toArray()[0];
+    if (sourdine && Number(sourdine.valeur) > maintenant && !message.mentions?.includes(moi)) return;
+
+    const { results: abonnements } = await this.env.DB.prepare(
+      `SELECT a.endpoint, a.p256dh, a.auth FROM abonnements_push a JOIN sessions s ON s.id = a.session_id
+       WHERE a.utilisateur_id = ?1 AND s.revoquee_le IS NULL AND s.expire_le > ?2 LIMIT 10`,
+    )
+      .bind(moi, maintenant)
+      .all<{ endpoint: string; p256dh: string; auth: string }>();
+    if (abonnements.length === 0) return;
+
+    const auteur = await this.env.DB.prepare("SELECT nom FROM utilisateurs WHERE id = ?1").bind(message.de).first<{ nom: string }>();
+    const groupe = estGroupe(message.conversation)
+      ? await this.env.DB.prepare("SELECT nom FROM groupes WHERE id = ?1").bind(idGroupe(message.conversation)).first<{ nom: string }>()
+      : null;
+    const nom = auteur?.nom ?? "Quelqu'un";
+    const resume = resumer(message);
+    const notification = {
+      titre: groupe ? groupe.nom : nom,
+      corps: groupe ? `${nom} : ${resume}` : resume,
+      conversation: message.conversation,
+    };
+    await Promise.allSettled(
+      abonnements.map(async (a) => {
+        const statut = await pousser((entree, init) => fetch(entree, init), a, notification, cles, maintenant);
+        // Abonnement disparu (application désinstallée, permission retirée) : on l'oublie.
+        if (statut === 404 || statut === 410) await this.env.DB.prepare("DELETE FROM abonnements_push WHERE endpoint = ?1").bind(a.endpoint).run();
+      }),
+    );
   }
 
   /** Blocage posé ou levé par quelqu'un : il s'applique tout de suite, sans attendre le cache. */
@@ -589,6 +638,11 @@ export class Boite extends DurableObject<Bindings> {
   // --- Outils ----------------------------------------------------------------------
 
   private ajouter(e: NouvelleEntree): Entree {
+    if (e.type === "preference" && e.preference.muetJusqua !== undefined) {
+      if (e.preference.muetJusqua) {
+        this.sql.exec("INSERT OR REPLACE INTO etat (cle, valeur) VALUES (?, ?)", `muet:${e.conversation}`, String(e.preference.muetJusqua));
+      } else this.sql.exec("DELETE FROM etat WHERE cle = ?", `muet:${e.conversation}`);
+    }
     const message = e.type === "message" ? e.message : null;
     const { seq } = this.sql
       .exec<{ seq: number }>(

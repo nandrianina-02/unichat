@@ -1,6 +1,7 @@
 import clsx from "clsx";
 import { ArrowLeft } from "lucide-react";
 import { useCallback, useRef, useState, type ReactNode } from "react";
+import { useRetourSysteme } from "../lib/retour";
 
 /**
  * Panneau latéral (paramètres, nouvelle discussion…) : il recouvre la liste
@@ -58,13 +59,16 @@ export function CouchePanneau({
   fermeture,
   niveau,
   onFini,
+  onRetour,
   children,
 }: {
   fermeture: boolean;
   niveau: number;
   onFini: () => void;
+  onRetour: () => void;
   children: ReactNode;
 }) {
+  useRetourSysteme(!fermeture, onRetour);
   return (
     <div
       className={clsx("absolute inset-0 flex flex-col bg-panneau", fermeture ? "panneau-sortie" : "panneau-entree")}

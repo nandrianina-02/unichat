@@ -52,13 +52,12 @@ sont gratuites et ne comptent pas dans le quota du Worker.
 ```
 apps/server     Worker Cloudflare : API, temps réel, tâches planifiées
 apps/web        Application web (React, Vite, Tailwind)
-apps/android    Application Android (Expo) — étape 2
+apps/android    Application Android (Trusted Web Activity, générée par Bubblewrap)
 apps/desktop    Application desktop (Tauri) — étape 6
 packages/shared Schémas zod et types communs à toutes les applications
 ```
 
-Espaces de travail npm plutôt que pnpm : React Native (Expo) s'y retrouve
-sans réglage particulier.
+Espaces de travail npm plutôt que pnpm : un seul `npm install` pour tout le dépôt.
 
 ## Connexion et sessions
 
@@ -231,6 +230,49 @@ de WhatsApp.
   comme les réactions, vérifiés par chaque application.
 - **Fond des discussions** : jetons `--fond-*` déclinés par thème, réglage de
   l'appareil appliqué avant le premier affichage (`theme.js`).
+
+## Application installable et Android
+
+Prévue d'abord avec Expo (React Native), l'application Android est
+finalement l'application web installable (PWA), enveloppée dans une
+**Trusted Web Activity** : la méthode de Google pour publier une PWA comme
+application Android. Raisons, pour un développeur seul et sans budget :
+
+- **Une seule base de code** : toutes les fonctions du web (fichiers,
+  vocaux, groupes, sondages…) existent aussitôt sur Android, et chaque mise
+  en ligne met l'application à jour sans nouvelle version à distribuer.
+- **Le moteur de Chrome**, pas une WebView : la connexion Google fonctionne
+  (Google la refuse dans les WebView), comme le micro, l'appareil photo, la
+  position et les fichiers.
+- **Notifications Web Push**, même application fermée, sans projet Firebase
+  ni frais : une paire de clés VAPID suffit (voir plus bas).
+
+Une réécriture native reste possible plus tard si un besoin l'impose
+(appels en arrière-plan, accès aux contacts du téléphone).
+
+- **Service worker** (`public/sw.js`) : coquille de l'application gardée
+  pour s'ouvrir hors connexion (l'historique est déjà sur l'appareil, le
+  profil aussi) ; fichiers de construction en cache (noms versionnés) ;
+  l'API n'est jamais mise en cache.
+- **Bouton Retour** (`lib/retour.ts`) : chaque couche ouverte (discussion,
+  panneau, boîte de dialogue) ajoute une entrée d'historique ; Retour
+  referme la plus récente au lieu de quitter l'application.
+
+### Notifications (Web Push)
+
+- Abonnement par appareil (table `abonnements_push`, liée à la session),
+  envoyé quand la permission est accordée, retiré à la déconnexion.
+- La boîte du destinataire envoie la notification (`ctx.waitUntil`, sans
+  retarder l'expéditeur) : chiffrée pour l'appareil (RFC 8291) et signée
+  VAPID (RFC 8292). Le service du navigateur (Google, Mozilla, Microsoft)
+  ne peut pas la lire. Seuls les services connus sont acceptés comme
+  adresse d'envoi.
+- Une discussion en sourdine ne notifie pas (la boîte retient la sourdine
+  depuis les réglages), sauf mention. Le service worker n'affiche rien si
+  UniChat est déjà sous les yeux ; avec Web Push actif, la page ne notifie
+  plus elle-même (pas de doublon).
+- Secret `VAPID_PRIVEE` (clé privée JWK) ; sans lui, la page continue de
+  notifier tant qu'elle est ouverte.
 
 ## Chiffrement de bout en bout (étape 3)
 

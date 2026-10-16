@@ -112,6 +112,15 @@
         par nos serveurs seulement le temps d'atteindre vos autres appareils.
       </p>
 
+      <p>
+        <strong>Notifications.</strong> Si vous les autorisez, votre navigateur nous confie une adresse de notification propre
+        à cet appareil. Chaque notification (nom de l'expéditeur et début du message) est chiffrée pour votre seul appareil
+        avant de partir : le service de votre navigateur qui l'achemine (Google pour Chrome et Android, Mozilla pour Firefox,
+        Microsoft pour Edge) ne peut pas la lire. L'adresse est effacée à la déconnexion de l'appareil ou dès que le service
+        nous signale qu'elle n'existe plus. Une discussion en sourdine n'envoie pas de notification, sauf si l'on vous y
+        mentionne.
+      </p>
+
       <h2>4. Sécurité et fonctionnement du service</h2>
       <ul>
         <li>
@@ -161,7 +170,8 @@
         Nous ne vendons aucune donnée, n'affichons aucune publicité et ne partageons rien avec des tiers à des fins
         commerciales. Nos prestataires techniques traitent les données pour notre compte, uniquement pour faire fonctionner le
         service : <strong>Cloudflare</strong> (hébergement, base de données, transmission des messages),
-        <strong>Google</strong> (connexion) et <strong>Karaks Storage</strong> (stockage temporaire des fichiers envoyés,
+        <strong>Google</strong> (connexion), le service de notification de votre navigateur (acheminement des notifications
+        chiffrées) et <strong>Karaks Storage</strong> (stockage temporaire des fichiers envoyés,
         hébergé chez Vercel, les fichiers étant conservés dans un espace Google Drive réservé à ce service et jamais rendus
         publics). Nous pouvons être tenus de communiquer des informations si la loi l'exige.
       </p>
@@ -176,6 +186,7 @@
           <tr><td>Nom, description et photo d'un groupe</td><td>Tant que le groupe a des membres</td></tr>
           <tr><td>Messages en attente de remise</td><td>Jusqu'à leur remise, 30 jours au plus</td></tr>
           <tr><td>Photos, vidéos, messages vocaux, documents</td><td>30 jours après l'envoi, ou dès leur suppression pour tout le monde</td></tr>
+          <tr><td>Adresse de notification d'un appareil</td><td>Jusqu'à la déconnexion de l'appareil</td></tr>
           <tr><td>Sessions (appareils connectés)</td><td>Fermées après 30 jours d'inactivité ou 90 jours au plus ; effacées 30 jours après</td></tr>
           <tr><td>Journal de sécurité</td><td>6 mois</td></tr>
           <tr><td>Signalements et messages joints</td><td>6 mois</td></tr>

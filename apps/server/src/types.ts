@@ -9,6 +9,9 @@ export interface Bindings {
   /** Stockage des fichiers joints (Karaks Storage) : adresse publique, et clé secrète. */
   KARAKS_STORAGE_URL?: string;
   KARAKS_STORAGE_CLE?: string;
+  /** Web Push : clé privée VAPID (JWK, secret) et contact annoncé aux services de notification. */
+  VAPID_PRIVEE?: string;
+  VAPID_CONTACT?: string;
 }
 
 /**

@@ -1,6 +1,7 @@
 import clsx from "clsx";
 import { useEffect, useRef, type ReactNode } from "react";
 import { createPortal } from "react-dom";
+import { useRetourSysteme } from "../lib/retour";
 
 interface Props {
   titre: string;
@@ -17,6 +18,7 @@ interface Props {
 /** Boîte de confirmation : titre, explication, deux actions alignées à droite. */
 export function Dialogue({ titre, children, confirmer, annuler = "Annuler", danger, enCours, onConfirmer, onFermer }: Props) {
   const boutonRef = useRef<HTMLButtonElement>(null);
+  useRetourSysteme(true, onFermer);
 
   useEffect(() => {
     boutonRef.current?.focus();

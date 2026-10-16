@@ -17,6 +17,7 @@ import { Bloques } from "../panneaux/Bloques";
 import { ChoixAjoutGroupes, ChoixVisibilite, ChoixVu, Confidentialite } from "../panneaux/Confidentialite";
 import { DialogueRejoindre } from "../composants/LienGroupe";
 import { invitationGroupeEnAttente, oublierInvitationGroupe } from "../lib/invitation";
+import { useRetourSysteme } from "../lib/retour";
 import { Discussions } from "../panneaux/Discussions";
 import { NouveauGroupe } from "../panneaux/NouveauGroupe";
 import { NouvelleDiscussion } from "../panneaux/NouvelleDiscussion";
@@ -73,13 +74,32 @@ export function Application() {
     [moi.id, ouvrirDiscussion],
   );
 
-  // Un clic sur une notification ramène à la discussion concernée.
+  // Un clic sur une notification ramène à la discussion concernée : directement,
+  // par le service worker si la page était ouverte, ou par l'adresse sinon.
   useEffect(() => {
     messagerie.surOuverture = ouvrirDiscussion;
+    const surMessage = (e: MessageEvent<{ type?: string; conversation?: string }>) => {
+      if (e.data?.type === "ouvrir" && e.data.conversation) ouvrirDiscussion(e.data.conversation);
+    };
+    navigator.serviceWorker?.addEventListener("message", surMessage);
     return () => {
       messagerie.surOuverture = null;
+      navigator.serviceWorker?.removeEventListener("message", surMessage);
     };
   }, [messagerie, ouvrirDiscussion]);
+  useEffect(() => {
+    const parametres = new URLSearchParams(location.search);
+    const conversation = parametres.get("conversation");
+    if (!conversation && !parametres.has("source")) return;
+    history.replaceState(null, "", "/");
+    if (conversation && /^(d|g):[0-9a-f:-]+$/i.test(conversation)) ouvrirDiscussion(conversation);
+  }, [ouvrirDiscussion]);
+
+  // Retour (Android, navigateur) : referme le panneau d'à côté, puis la discussion.
+  useRetourSysteme(principal.type === "discussion", () => setPrincipal(ACCUEIL));
+  useRetourSysteme(principal.type === "discussion" && principal.cote !== null, () =>
+    setPrincipal((p) => (p.type === "discussion" ? { ...p, cote: null } : p)),
+  );
 
   // Lien de contact reçu avant la connexion : on ouvre directement la recherche
   // (une seule fois, même si React rejoue l'effet en développement).
@@ -199,7 +219,7 @@ export function Application() {
           onDeconnexion={() => setDeconnexion(true)}
         />
         {pile.map((e, i) => (
-          <CouchePanneau key={e.cle} fermeture={e.fermeture} niveau={i} onFini={() => retirer(e.cle)}>
+          <CouchePanneau key={e.cle} fermeture={e.fermeture} niveau={i} onFini={() => retirer(e.cle)} onRetour={retour}>
             {rendre(e.vue)}
           </CouchePanneau>
         ))}
