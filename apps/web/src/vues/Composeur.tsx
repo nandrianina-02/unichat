@@ -9,6 +9,7 @@ import { ACCEPTE_DOCUMENTS, ACCEPTE_VISUELS } from "../composants/EnvoiFichiers"
 import { Menu, useFermetureExterieure } from "../composants/Menu";
 import { premierLien } from "../composants/TexteMessage";
 import { api } from "../lib/api";
+import { estTactile } from "../lib/appui";
 import { resumeMessage } from "../lib/format";
 import type { MessageLocal } from "../lib/stockage";
 
@@ -68,13 +69,16 @@ export function Composeur({
   const documents = useRef<HTMLInputElement>(null);
   useFermetureExterieure(menu, menuRef, () => setMenu(false));
 
+  // Répondre ou modifier : le clavier s'ouvre, c'est ce que l'on vient de demander.
+  // À l'ouverture d'une discussion, seulement sur ordinateur : sur téléphone,
+  // le clavier attend que l'on touche le champ, comme dans WhatsApp.
   useEffect(() => {
-    champ.current?.focus();
+    if (reponse || !estTactile()) champ.current?.focus();
   }, [reponse]);
   // Modifier : le texte d'origine remplace le brouillon, qui revient ensuite.
   useEffect(() => {
     setTexte(edition ? edition.texte : (brouillons.get(conversation) ?? ""));
-    champ.current?.focus();
+    if (edition || !estTactile()) champ.current?.focus();
   }, [edition, conversation]);
   useEffect(() => {
     if (edition) return;

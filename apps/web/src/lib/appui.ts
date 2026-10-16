@@ -53,3 +53,10 @@ export function useAppuiLong(surAppui: () => void, actif = true) {
     },
   };
 }
+
+/**
+ * Écran tactile, sans survol (téléphone, tablette). On n'y donne pas le
+ * focus au champ de saisie de soi-même : cela ouvrirait le clavier sans que
+ * la personne l'ait demandé.
+ */
+export const estTactile = () => typeof window !== "undefined" && window.matchMedia("(hover: none)").matches;

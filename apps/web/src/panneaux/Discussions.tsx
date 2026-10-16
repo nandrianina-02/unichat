@@ -437,6 +437,8 @@ function LigneConversation({
       onKeyDown={(e) => e.target === e.currentTarget && (e.key === "Enter" || e.key === " ") && (e.preventDefault(), onClick())}
       className={clsx(
         "group relative flex cursor-pointer items-center gap-3.5 pl-3 transition-colors hover:bg-survol tactile:select-none tactile:[-webkit-touch-callout:none]",
+        // Une ligne animée forme sa propre couche : sans cela, son menu passerait sous la ligne suivante.
+        menu && "z-20",
         selection && "bg-selection hover:bg-selection",
         className,
       )}

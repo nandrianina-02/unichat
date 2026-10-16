@@ -931,6 +931,8 @@ function Bulle({
       onClick={selectionActive ? () => onBasculerSelection(m) : undefined}
       className={clsx(
         "relative flex flex-col rounded-lg px-[5%] md:px-[7%]",
+        // Le menu ouvert reste au-dessus des bulles suivantes.
+        (menu || reactionRapide) && "z-20",
         mien ? "items-end" : "items-start",
         premier ? "mt-2.5" : "mt-0.5",
         // En sélection, toute la ligne se coche, la case à gauche comme dans WhatsApp.

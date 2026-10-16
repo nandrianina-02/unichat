@@ -6,6 +6,7 @@ import { createPortal } from "react-dom";
 import { api } from "../lib/api";
 import { useMoi } from "../lib/compte";
 import { useMessagerie } from "../lib/messagerie-react";
+import { estTactile } from "../lib/appui";
 import { useRetourSysteme } from "../lib/retour";
 import type { MessageLocal } from "../lib/stockage";
 import { Avatar, AvatarGroupe } from "./Avatar";
@@ -43,7 +44,7 @@ export function DialogueTransfert({
   useRetourSysteme(true, onFermer);
 
   useEffect(() => {
-    champ.current?.focus();
+    if (!estTactile()) champ.current?.focus();
     api.contacts().then(
       (r) => setContacts(r.contacts),
       () => setContacts([]),

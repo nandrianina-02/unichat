@@ -4,6 +4,7 @@ import { CircleAlert, Eye, FileText, Headphones, LoaderCircle, Plus, SendHorizon
 import { useEffect, useRef, useState } from "react";
 import { tailleFichier } from "../lib/format";
 import { preparerFichier, type FichierPrepare } from "../lib/medias";
+import { estTactile } from "../lib/appui";
 import { useRetourSysteme } from "../lib/retour";
 import { BoutonIcone } from "./BoutonIcone";
 
@@ -75,7 +76,8 @@ export function EnvoiFichiers({
 
   useRetourSysteme(true, onAnnuler);
   useEffect(() => {
-    champ.current?.focus();
+    // Sur téléphone, le clavier couvrirait l'aperçu : il attend qu'on touche la légende.
+    if (!estTactile()) champ.current?.focus();
     const echap = (e: KeyboardEvent) => e.key === "Escape" && onAnnuler();
     window.addEventListener("keydown", echap);
     return () => window.removeEventListener("keydown", echap);
