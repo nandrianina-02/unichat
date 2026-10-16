@@ -128,6 +128,10 @@
   }
 }
 
+/* Écran tactile, sans survol : les boutons qui n'apparaissent qu'au survol y
+   sont remplacés par l'appui long et le glissement (lib/appui.ts). */
+@custom-variant tactile (@media (hover: none));
+
 @theme inline {
   --color-fond: var(--fond);
   --color-panneau: var(--panneau);

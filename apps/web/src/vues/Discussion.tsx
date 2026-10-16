@@ -75,6 +75,7 @@ import { ErreurApi, api } from "../lib/api";
 import { useCompte, useMoi } from "../lib/compte";
 import { heureCourte, jourMessage, resumeMessage, tailleFichier, texteEphemere, texteEvenement, vuLe } from "../lib/format";
 import { useMessagerie, useMessages } from "../lib/messagerie-react";
+import { useAppuiLong } from "../lib/appui";
 import { useRetourSysteme } from "../lib/retour";
 import type { Epingle, MessageLocal } from "../lib/stockage";
 
@@ -692,6 +693,21 @@ function ListeMessages({
     if (enBas.current || (dernier?.de === moiId && dernier.etat === "attente")) z.scrollTop = z.scrollHeight;
   }, [messages, moiId, cible]);
 
+  // Clavier ouvert ou fermé, fenêtre redimensionnée : ce qui était en bas
+  // de l'écran y reste, comme dans WhatsApp.
+  useEffect(() => {
+    const z = zone.current;
+    if (!z || typeof ResizeObserver === "undefined") return;
+    let hauteur = z.clientHeight;
+    const observateur = new ResizeObserver(() => {
+      const avant = hauteur;
+      hauteur = z.clientHeight;
+      if (avant !== hauteur) z.scrollTop += avant - hauteur;
+    });
+    observateur.observe(z);
+    return () => observateur.disconnect();
+  }, []);
+
   function surDefilement() {
     const z = zone.current;
     if (!z) return;
@@ -856,7 +872,11 @@ function Bulle({
 } & ActionsMessage) {
   const [menu, setMenu] = useState<"bas" | "haut" | null>(null);
   const [reactionRapide, setReactionRapide] = useState(false);
+  const [glisse, setGlisse] = useState(0);
+  // La distance vit aussi dans la référence : au relâchement, l'état n'a pas forcément été redessiné.
+  const toucher = useRef<{ x: number; y: number; horizontal: boolean | null; dx: number } | null>(null);
   const cadre = useRef<HTMLDivElement>(null);
+  const appui = useAppuiLong(() => (selectionActive ? onBasculerSelection(m) : ouvrirMenu()));
   useFermetureExterieure(menu !== null || reactionRapide, cadre, () => {
     setMenu(null);
     setReactionRapide(false);
@@ -931,10 +951,54 @@ function Bulle({
           {selectionne && <Check size={14} strokeWidth={3} className="text-sur-primaire" />}
         </span>
       )}
-      <div ref={cadre} className={clsx("group relative max-w-[min(85%,560px)] md:max-w-[min(65%,560px)]", selectionActive && "pointer-events-none")}>
+      {/* Glisser vers la droite pour répondre : la flèche apparaît à mesure. */}
+      {glisse > 0 && (
+        <span
+          aria-hidden="true"
+          className="absolute top-1/2 left-3 flex size-8 -translate-y-1/2 items-center justify-center rounded-full bg-panneau text-texte-2 shadow"
+          style={{ opacity: Math.min(1, glisse / 56) }}
+        >
+          <Reply size={17} />
+        </span>
+      )}
+      <div
+        ref={cadre}
+        className={clsx(
+          "group relative max-w-[min(85%,560px)] md:max-w-[min(65%,560px)]",
+          selectionActive && "pointer-events-none",
+          glisse === 0 && "transition-transform duration-200",
+        )}
+        style={glisse ? { transform: `translateX(${glisse}px)` } : undefined}
+      >
         <div
+          {...appui.gestionnaires}
+          onTouchStart={(e) => {
+            if (selectionActive || m.supprime) return;
+            const t = e.touches[0]!;
+            toucher.current = { x: t.clientX, y: t.clientY, horizontal: null, dx: 0 };
+          }}
+          onTouchMove={(e) => {
+            const d = toucher.current;
+            if (!d) return;
+            const t = e.touches[0]!;
+            const dx = t.clientX - d.x;
+            const dy = t.clientY - d.y;
+            if (d.horizontal === null && (Math.abs(dx) > 10 || Math.abs(dy) > 10)) d.horizontal = dx > 0 && Math.abs(dx) > Math.abs(dy) * 1.5;
+            if (d.horizontal) {
+              d.dx = Math.min(Math.max(dx, 0), 80);
+              setGlisse(d.dx);
+            }
+          }}
+          onTouchEnd={() => {
+            if (toucher.current?.horizontal && toucher.current.dx > 56) {
+              navigator.vibrate?.(10);
+              onRepondre(m);
+            }
+            toucher.current = null;
+            setGlisse(0);
+          }}
           className={clsx(
-            "relative rounded-lg text-[14.5px] leading-[19px] text-texte shadow-sm",
+            "relative touch-pan-y rounded-lg text-[14.5px] leading-[19px] text-texte shadow-sm tactile:select-none tactile:[-webkit-touch-callout:none]",
             visuel ? "p-[3px]" : "px-2.5 pt-1.5 pb-2",
             mien ? "bg-bulle-envoyee" : "bg-bulle-recue",
             premier && (mien ? "rounded-tr-none" : "rounded-tl-none"),
@@ -1021,7 +1085,7 @@ function Bulle({
             title="Actions"
             onClick={ouvrirMenu}
             className={clsx(
-              "absolute top-1 right-1 flex size-6 items-center justify-center rounded-full text-texte-2 opacity-0 transition-opacity group-hover:opacity-100 focus-visible:opacity-100",
+              "absolute top-1 right-1 flex size-6 items-center justify-center rounded-full text-texte-2 opacity-0 transition-opacity group-hover:opacity-100 focus-visible:opacity-100 tactile:hidden",
               mien ? "bg-bulle-envoyee" : "bg-bulle-recue",
               menu && "opacity-100",
             )}
@@ -1033,7 +1097,7 @@ function Bulle({
         {!m.supprime && !selectionActive && (
           <div
             className={clsx(
-              "absolute top-1/2 flex -translate-y-1/2 items-center gap-0.5 opacity-0 transition-opacity group-hover:opacity-100 focus-within:opacity-100",
+              "absolute top-1/2 flex -translate-y-1/2 items-center gap-0.5 opacity-0 transition-opacity group-hover:opacity-100 focus-within:opacity-100 tactile:hidden",
               mien ? "right-full mr-1.5" : "left-full ml-1.5",
               (reactionRapide || menu) && "opacity-100",
             )}

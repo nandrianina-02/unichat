@@ -43,6 +43,7 @@ import { useCompte, useMoi } from "../lib/compte";
 import { dateListe, dureeCourte, libelleMedia, lieu, quand, texteEvenement } from "../lib/format";
 import { estMuette } from "../lib/messagerie";
 import { activerPush } from "../lib/notifications";
+import { useAppuiLong } from "../lib/appui";
 import { useMessagerie } from "../lib/messagerie-react";
 import type { ConversationLocale } from "../lib/stockage";
 
@@ -417,20 +418,25 @@ function LigneConversation({
     const r = cadre.current?.getBoundingClientRect();
     setMenu(r && r.bottom > window.innerHeight - 340 ? "haut" : "bas");
   }
+  // Au doigt : appui long pour les options, comme dans WhatsApp ; le relâchement n'ouvre pas la discussion.
+  const appui = useAppuiLong(ouvrirMenu);
 
   return (
     <div
       ref={cadre}
       role="button"
       tabIndex={0}
-      onClick={onClick}
-      onContextMenu={(e) => {
-        e.preventDefault();
-        ouvrirMenu();
+      {...appui.gestionnaires}
+      onClick={() => {
+        if (appui.declenche.current) {
+          appui.declenche.current = false;
+          return;
+        }
+        onClick();
       }}
       onKeyDown={(e) => e.target === e.currentTarget && (e.key === "Enter" || e.key === " ") && (e.preventDefault(), onClick())}
       className={clsx(
-        "group relative flex cursor-pointer items-center gap-3.5 pl-3 transition-colors hover:bg-survol",
+        "group relative flex cursor-pointer items-center gap-3.5 pl-3 transition-colors hover:bg-survol tactile:select-none tactile:[-webkit-touch-callout:none]",
         selection && "bg-selection hover:bg-selection",
         className,
       )}
@@ -493,7 +499,7 @@ function LigneConversation({
               else ouvrirMenu();
             }}
             className={clsx(
-              "-mr-1 flex size-6 shrink-0 items-center justify-center rounded-full text-texte-2 transition-opacity",
+              "-mr-1 flex size-6 shrink-0 items-center justify-center rounded-full text-texte-2 transition-opacity tactile:hidden",
               menu ? "opacity-100" : "opacity-0 group-hover:opacity-100 focus-visible:opacity-100",
             )}
           >
