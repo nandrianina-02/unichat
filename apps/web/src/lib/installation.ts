@@ -1,7 +1,11 @@
 import { useEffect, useState } from "react";
 
-/** L'application Android, publiée avec chaque version sur GitHub (gratuit, sans Play Store). */
-export const LIEN_ANDROID = "https://github.com/nandrianina-02/unichat/releases/latest/download/UniChat.apk";
+/**
+ * Installation de l'application : sur Android, Chrome fabrique et signe
+ * lui-même l'application (sur les serveurs de Google) à partir du manifeste ;
+ * sur ordinateur, Chrome et Edge l'ouvrent dans sa propre fenêtre. Rien à
+ * télécharger ni à construire de notre côté.
+ */
 
 interface InvitationInstallation extends Event {
   prompt: () => Promise<void>;

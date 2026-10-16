@@ -79,10 +79,15 @@ signe de vrais jetons.
 
 ## Application Android
 
-L'application Android est l'application web installable, enveloppée dans une
-Trusted Web Activity (méthode de Google, outil Bubblewrap) : chaque mise en
-ligne du site la met à jour. Prérequis : Android Studio (JDK et SDK, avec
-Android 36 et les build-tools 36.1.0).
+**Installation recommandée** : ouvrir le site dans Chrome sur Android, puis
+« Installer l'application » (proposé par UniChat, ou menu ⋮ de Chrome).
+Chrome fabrique et signe lui-même l'application sur les serveurs de Google
+(WebAPK) : icône, plein écran, notifications, mises à jour avec le site.
+
+**APK à distribuer soi-même** (facultatif) : la même application enveloppée
+dans une Trusted Web Activity (outil Bubblewrap). À construire sur un poste
+sain uniquement. Prérequis : Android Studio (JDK et SDK, avec Android 36 et
+les build-tools 36.1.0).
 
 ```bash
 cd apps/android

@@ -2,7 +2,7 @@ import { CircleAlert, KeyRound, MonitorSmartphone, ShieldCheck, Smartphone } fro
 import { useMemo } from "react";
 import { BoutonGoogle } from "../composants/BoutonGoogle";
 import { Cadre } from "../composants/Cadre";
-import { LIEN_ANDROID, estAndroid, estApplication } from "../lib/installation";
+import { estAndroid, estApplication, useInstallation } from "../lib/installation";
 import { invitationEnAttente } from "../lib/invitation";
 
 const MESSAGES: Record<string, string> = {
@@ -86,11 +86,7 @@ export function Connexion({ motif }: { motif: string | null }) {
       </section>
       <footer className="mt-8 flex flex-col items-center gap-2 text-center text-[13px] text-texte-3">
         <p>UniChat, messagerie gratuite sur le web, Android et ordinateur.</p>
-        {estAndroid() && !estApplication() && (
-          <a href={LIEN_ANDROID} className="inline-flex items-center gap-1.5 font-medium text-primaire-texte hover:underline">
-            <Smartphone size={15} /> Télécharger l'application Android
-          </a>
-        )}
+        <BoutonInstaller />
         <p className="flex gap-4">
           <a href="/confidentialite" className="hover:text-texte-2 hover:underline">
             Règles de confidentialité
@@ -101,5 +97,27 @@ export function Connexion({ motif }: { motif: string | null }) {
         </p>
       </footer>
     </Cadre>
+  );
+}
+
+/** Sur Android : installer UniChat comme application, directement depuis Chrome. */
+function BoutonInstaller() {
+  const installation = useInstallation();
+  if (!estAndroid() || estApplication()) return null;
+  if (!installation.possible) {
+    return (
+      <p className="inline-flex items-center gap-1.5">
+        <Smartphone size={15} /> Pour l'installer : menu ⋮ de Chrome, puis « Installer l'application ».
+      </p>
+    );
+  }
+  return (
+    <button
+      type="button"
+      onClick={() => void installation.installer()}
+      className="inline-flex items-center gap-1.5 font-medium text-primaire-texte hover:underline"
+    >
+      <Smartphone size={15} /> Installer l'application
+    </button>
   );
 }

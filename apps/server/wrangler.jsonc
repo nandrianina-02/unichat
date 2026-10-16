@@ -40,9 +40,10 @@
   // `wrangler secret put KARAKS_STORAGE_CLE`.
   "vars": { "KARAKS_STORAGE_URL": "https://nuvora-cloud.vercel.app",
     "VAPID_CONTACT": "mailto:randriantsoa54@gmail.com",
-    // Application Android (apps/android) : identifiant et empreinte publique de sa clé de signature.
+    // Application Android (apps/android) : identifiant et empreintes publiques de ses clés de
+    // signature. Vide pour l'instant : la première clé, créée sur un poste infecté, est écartée.
     "ANDROID_PAQUET": "io.github.nandrianina02.unichat",
-    "ANDROID_EMPREINTES": "4D:E7:9D:63:2A:A4:B7:55:8A:95:DC:A3:A0:2F:29:99:2D:7F:9A:3A:DC:07:C0:4E:7F:E3:AC:36:20:F2:A8:D4" },
+    "ANDROID_EMPREINTES": "" },
 
   // Nettoyage horaire : états de connexion, compteurs, vieilles sessions, et
   // fichiers expirés (un nombre limité à chaque passage).

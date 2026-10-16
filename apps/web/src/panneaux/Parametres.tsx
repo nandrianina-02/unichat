@@ -3,7 +3,7 @@ import { Avatar } from "../composants/Avatar";
 import { LigneReglage } from "../composants/Lignes";
 import { EnTetePanneau } from "../composants/Panneau";
 import { useMoi } from "../lib/compte";
-import { LIEN_ANDROID, estAndroid, estApplication, useInstallation } from "../lib/installation";
+import { estAndroid, estApplication, useInstallation } from "../lib/installation";
 import type { Vue } from "./vues";
 
 interface Props {
@@ -43,21 +43,18 @@ export function Parametres({ onRetour, onOuvrir, onTheme, onFond, onDeconnexion 
           />
           <LigneReglage icone={Palette} titre="Thème" detail="Clair, sombre ou selon le système" onClick={onTheme} fleche={false} />
           <LigneReglage icone={Wallpaper} titre="Fond des discussions" detail="Teinte et motif, sur cet appareil" onClick={onFond} fleche={false} />
-          {estAndroid() && !application && (
+          {!application && (installation.possible || estAndroid()) && (
             <LigneReglage
-              icone={Smartphone}
-              titre="Application Android"
-              detail="Notifications, ouverture directe depuis l'écran d'accueil"
-              onClick={() => (window.location.href = LIEN_ANDROID)}
-              fleche={false}
-            />
-          )}
-          {installation.possible && !application && !estAndroid() && (
-            <LigneReglage
-              icone={Download}
+              icone={estAndroid() ? Smartphone : Download}
               titre="Installer UniChat"
-              detail="Une fenêtre à part, ouverte depuis le bureau"
-              onClick={() => void installation.installer()}
+              detail={
+                installation.possible
+                  ? estAndroid()
+                    ? "Sur l'écran d'accueil, avec les notifications"
+                    : "Une fenêtre à part, ouverte depuis le bureau"
+                  : "Dans Chrome : menu ⋮, puis « Installer l'application »"
+              }
+              onClick={installation.possible ? () => void installation.installer() : undefined}
               fleche={false}
             />
           )}
