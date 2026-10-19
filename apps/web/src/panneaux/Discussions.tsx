@@ -21,6 +21,7 @@ import {
   MessageSquarePlus,
   Mic,
   Pin,
+  RefreshCw,
   Search,
   Settings,
   ShieldAlert,
@@ -46,6 +47,7 @@ import { useCompte, useMoi } from "../lib/compte";
 import { dateListe, dureeCourte, libelleMedia, lieu, quand, texteEvenement } from "../lib/format";
 import { estMuette } from "../lib/messagerie";
 import { activerPush } from "../lib/notifications";
+import { useNouvelleVersion } from "../lib/version";
 import { useAppuiLong } from "../lib/appui";
 import { useMessagerie } from "../lib/messagerie-react";
 import type { ConversationLocale } from "../lib/stockage";
@@ -249,6 +251,7 @@ export function Discussions({ selection, onOuvrir, onOuvrirPersonne, onNouvelle,
             </Anime>
           )}
         </Apparition>
+        <BanniereVersion />
         <BanniereLiaison />
         <BanniereNotifications />
         <AlerteConnexion />
@@ -582,6 +585,32 @@ function BanniereLiaison() {
       </Apparition>
       <Apparition>{nouvellesCles && <DialogueNouvellesCles aucunAppareil={false} onFermer={() => setNouvellesCles(false)} />}</Apparition>
     </>
+  );
+}
+
+/** Une nouvelle version est en ligne : la recharger, quand la personne le veut. */
+function BanniereVersion() {
+  const disponible = useNouvelleVersion();
+  const [plusTard, setPlusTard] = useState(false);
+  if (!disponible || plusTard) return null;
+  return (
+    <div role="status" className="animate-rise mx-3 mb-2 flex gap-4 rounded-lg bg-entete px-4 py-3.5">
+      <span className="flex size-10 shrink-0 items-center justify-center rounded-full bg-primaire text-sur-primaire">
+        <RefreshCw size={20} />
+      </span>
+      <div className="min-w-0 text-sm">
+        <p className="font-medium text-texte">Nouvelle version d'UniChat</p>
+        <p className="mt-0.5 text-texte-2">Rechargez pour profiter des dernières corrections.</p>
+        <div className="mt-2 flex gap-5 font-medium">
+          <button type="button" onClick={() => window.location.reload()} className="text-primaire-texte hover:underline">
+            Recharger
+          </button>
+          <button type="button" onClick={() => setPlusTard(true)} className="text-texte-2 hover:underline">
+            Plus tard
+          </button>
+        </div>
+      </div>
+    </div>
   );
 }
 

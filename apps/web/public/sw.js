@@ -44,7 +44,8 @@ self.addEventListener("fetch", (e) => {
   const requete = e.request;
   if (requete.method !== "GET") return;
   const url = new URL(requete.url);
-  if (url.origin !== self.location.origin || url.pathname.startsWith("/api/")) return;
+  // version.json dit si une nouvelle version est en ligne : toujours le réseau.
+  if (url.origin !== self.location.origin || url.pathname.startsWith("/api/") || url.pathname === "/version.json") return;
 
   // Fichiers de construction : leur nom change avec leur contenu, le cache suffit.
   if (url.pathname.startsWith("/assets/")) {

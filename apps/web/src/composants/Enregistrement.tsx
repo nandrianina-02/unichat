@@ -141,7 +141,8 @@ export function Enregistrement({
       <BoutonIcone libelle="Supprimer l'enregistrement" onClick={onAnnuler}>
         <Trash2 size={21} className="text-danger" />
       </BoutonIcone>
-      <div className="flex min-h-[42px] flex-1 items-center gap-3 rounded-lg bg-panneau px-4">
+      {/* min-w-0 : sans lui, les barres de l'onde imposent leur largeur et poussent le bouton d'envoi hors de l'écran du téléphone. */}
+      <div className="flex min-h-[42px] min-w-0 flex-1 items-center gap-3 rounded-lg bg-panneau px-4">
         <span className={debut === null ? "size-2.5 rounded-full bg-texte-3" : "enregistrement size-2.5 rounded-full bg-danger"} aria-hidden="true" />
         <span className="text-[15px] tabular-nums text-texte" aria-live="off">
           {dureeCourte(ecoule)}
