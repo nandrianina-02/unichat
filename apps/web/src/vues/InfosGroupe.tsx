@@ -9,6 +9,7 @@ import { useEffect, useRef, useState } from "react";
 import { Avatar, AvatarGroupe } from "../composants/Avatar";
 import { ChampModifiable } from "../composants/ChampModifiable";
 import { Dialogue } from "../composants/Dialogue";
+import { useFermetureExterieure } from "../composants/Menu";
 import { Anime, Apparition } from "../composants/Apparition";
 import { ErreurApi, api } from "../lib/api";
 import { useCompte } from "../lib/compte";
@@ -244,12 +245,7 @@ function LigneMembre({
 }) {
   const [menu, setMenu] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
-  useEffect(() => {
-    if (!menu) return;
-    const fermer = (e: MouseEvent) => !ref.current?.contains(e.target as Node) && setMenu(false);
-    document.addEventListener("mousedown", fermer);
-    return () => document.removeEventListener("mousedown", fermer);
-  }, [menu]);
+  useFermetureExterieure(menu, ref, () => setMenu(false));
 
   const actions = [
     { icone: MessageSquareText, libelle: `Écrire à ${m.nom}`, action: onMessage, danger: false },

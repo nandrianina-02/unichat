@@ -94,12 +94,7 @@ export function Discussions({ selection, onOuvrir, onOuvrirPersonne, onNouvelle,
     return () => window.removeEventListener(EVENEMENT_CONTACTS, charger);
   }, [sessionPerdue]);
 
-  useEffect(() => {
-    if (!menu) return;
-    const fermer = (e: MouseEvent) => !menuRef.current?.contains(e.target as Node) && setMenu(false);
-    document.addEventListener("mousedown", fermer);
-    return () => document.removeEventListener("mousedown", fermer);
-  }, [menu]);
+  useFermetureExterieure(menu, menuRef, () => setMenu(false));
 
   const nomDe = (c: ConversationLocale) =>
     estGroupe(c.id)

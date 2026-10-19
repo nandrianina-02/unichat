@@ -1,6 +1,6 @@
 import clsx from "clsx";
 import type { LucideIcon } from "lucide-react";
-import { useEffect, type ReactNode, type RefObject } from "react";
+import { useEffect, useRef, type ReactNode, type RefObject } from "react";
 import { useSortie } from "./Apparition";
 
 export type ElementMenu = { icone: LucideIcon; libelle: string; action: () => void; danger?: boolean } | "separateur";
@@ -46,17 +46,32 @@ export function Menu({
   );
 }
 
-/** Ferme un menu au clic à l'extérieur ou sur Échap. */
+/** Le menu ouvert, quel qu'il soit : en ouvrir un autre le referme. Un seul à la fois. */
+let fermerOuvert: (() => void) | null = null;
+
+/**
+ * Ferme un menu au toucher ou au clic à l'extérieur, et sur Échap. « pointerdown »
+ * plutôt que « mousedown » : un appui long au doigt n'émet pas de mousedown, et
+ * le menu d'un message restait ouvert sous celui du suivant.
+ */
 export function useFermetureExterieure(ouvert: boolean, ref: RefObject<HTMLElement | null>, fermer: () => void) {
+  const rappel = useRef(fermer);
+  useEffect(() => {
+    rappel.current = fermer;
+  });
   useEffect(() => {
     if (!ouvert) return;
-    const surClic = (e: MouseEvent) => !ref.current?.contains(e.target as Node) && fermer();
-    const surTouche = (e: KeyboardEvent) => e.key === "Escape" && fermer();
-    document.addEventListener("mousedown", surClic);
+    const celuiCi = () => rappel.current();
+    fermerOuvert?.();
+    fermerOuvert = celuiCi;
+    const surAppui = (e: PointerEvent) => !ref.current?.contains(e.target as Node) && rappel.current();
+    const surTouche = (e: KeyboardEvent) => e.key === "Escape" && rappel.current();
+    document.addEventListener("pointerdown", surAppui);
     document.addEventListener("keydown", surTouche);
     return () => {
-      document.removeEventListener("mousedown", surClic);
+      if (fermerOuvert === celuiCi) fermerOuvert = null;
+      document.removeEventListener("pointerdown", surAppui);
       document.removeEventListener("keydown", surTouche);
     };
-  }, [ouvert, ref, fermer]);
+  }, [ouvert, ref]);
 }
