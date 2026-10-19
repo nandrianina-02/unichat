@@ -6,6 +6,7 @@ import { ErreurApi } from "../lib/api";
 import { urlOuvertureMedia } from "../lib/api-medias";
 import { dureeCourte, heureCourte, jourMessage, tailleFichier } from "../lib/format";
 import { useMessagerie } from "../lib/messagerie-react";
+import { ONDE_NEUTRE, ondeDuSon } from "../lib/onde";
 import { useRetourSysteme } from "../lib/retour";
 import { useSortie } from "./Apparition";
 import type { MessageLocal } from "../lib/stockage";
@@ -261,11 +262,26 @@ function MessageAudio({ message, progression }: { message: MessageAvecMedia; pro
   const [position, setPosition] = useState(0);
   const [duree, setDuree] = useState(m.duree ?? 0);
   const [vitesse, setVitesse] = useState(1);
+  const { messagerie } = useMessagerie();
+  const [onde, setOnde] = useState<readonly number[]>(ONDE_NEUTRE);
   const pret = etat.statut === "pret";
+  const lu = duree > 0 ? Math.min(1, position / duree) : 0;
 
   useEffect(() => {
     if (audio.current) audio.current.playbackRate = vitesse;
   }, [vitesse, pret]);
+
+  useEffect(() => {
+    if (!pret) return;
+    let actif = true;
+    ondeDuSon(message.id, m.taille, () => messagerie.recupererFichier(message.id, m.id)).then(
+      (calculee) => actif && setOnde(calculee),
+      () => undefined,
+    );
+    return () => {
+      actif = false;
+    };
+  }, [pret, messagerie, message.id, m.id, m.taille]);
 
   function basculer() {
     if (!pret) {
@@ -315,21 +331,34 @@ function MessageAudio({ message, progression }: { message: MessageAvecMedia; pro
         {bouton}
       </button>
       <div className="min-w-0 flex-1">
-        <input
-          type="range"
-          min={0}
-          max={duree || 1}
-          step={0.01}
-          value={Math.min(position, duree || 1)}
-          disabled={!pret}
-          onChange={(e) => {
-            const valeur = Number(e.target.value);
-            if (audio.current) audio.current.currentTime = valeur;
-            setPosition(valeur);
-          }}
-          aria-label="Position dans le message"
-          className="block h-4 w-full cursor-pointer accent-primaire disabled:cursor-default"
-        />
+        {/* Le curseur natif, transparent, reste au-dessus de l'onde : clavier, lecteur d'écran et glisser du doigt sans rien réécrire. */}
+        <div className="relative h-7 rounded-sm has-[input:focus-visible]:outline-2 has-[input:focus-visible]:outline-offset-2 has-[input:focus-visible]:outline-primaire">
+          <div className="flex h-full items-center justify-between" aria-hidden="true">
+            {onde.map((niveau, i) => (
+              <span
+                key={i}
+                className={clsx("w-[3px] shrink-0 rounded-full transition-colors duration-150", (i + 0.5) / onde.length <= lu ? "bg-primaire" : "bg-texte-3")}
+                style={{ height: `${Math.round(4 + niveau * 22)}px` }}
+              />
+            ))}
+          </div>
+          <input
+            type="range"
+            min={0}
+            max={duree || 1}
+            step={0.01}
+            value={Math.min(position, duree || 1)}
+            disabled={!pret}
+            onChange={(e) => {
+              const valeur = Number(e.target.value);
+              if (audio.current) audio.current.currentTime = valeur;
+              setPosition(valeur);
+            }}
+            aria-label="Position dans le message"
+            aria-valuetext={`${dureeCourte(position)} sur ${dureeCourte(duree)}`}
+            className="absolute inset-0 h-full w-full cursor-pointer opacity-0 focus-visible:outline-none disabled:cursor-default"
+          />
+        </div>
         <div className="flex h-[15px] items-center gap-2 text-[11px] tabular-nums text-texte-2">
           <span>{dureeCourte(lecture || position > 0 ? position : duree)}</span>
           {(lecture || position > 0) && (

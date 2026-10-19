@@ -1,7 +1,12 @@
 import { SendHorizontal, Trash2 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { dureeCourte } from "../lib/format";
+import { niveauInstantane } from "../lib/onde";
 import { BoutonIcone } from "./BoutonIcone";
+
+/** Barres visibles pendant l'enregistrement, la plus récente à droite ; celles qui débordent à gauche sont masquées. */
+const BARRES_DIRECT = 56;
+const RYTHME_ONDE = 90;
 
 /** 15 minutes : environ 4 Mo en Opus à 32 kbit/s, loin de la limite de 16 Mo. */
 const DUREE_MAX = 15 * 60;
@@ -25,6 +30,8 @@ export function Enregistrement({
 }) {
   const [debut, setDebut] = useState<number | null>(null);
   const [ecoule, setEcoule] = useState(0);
+  const [onde, setOnde] = useState<number[]>(() => Array.from({ length: BARRES_DIRECT }, () => 0));
+  const analyseur = useRef<AnalyserNode | null>(null);
   const enregistreur = useRef<MediaRecorder | null>(null);
   const envoyerALaFin = useRef(false);
   const rappels = useRef({ onTerminer, onErreur });
@@ -37,7 +44,12 @@ export function Enregistrement({
     let annule = false;
     let flux: MediaStream | null = null;
     let rec: MediaRecorder | null = null;
-    const couperMicro = () => flux?.getTracks().forEach((piste) => piste.stop());
+    let ecoute: AudioContext | null = null;
+    const couperMicro = () => {
+      flux?.getTracks().forEach((piste) => piste.stop());
+      void ecoute?.close().catch(() => undefined);
+      analyseur.current = null;
+    };
 
     void (async () => {
       if (!navigator.mediaDevices?.getUserMedia || typeof MediaRecorder === "undefined") {
@@ -53,6 +65,17 @@ export function Enregistrement({
       if (annule) {
         couperMicro();
         return;
+      }
+      // Le niveau du micro, pour voir que le son passe ; sans lui, l'enregistrement fonctionne quand même.
+      try {
+        ecoute = new AudioContext();
+        const noeud = ecoute.createAnalyser();
+        noeud.fftSize = 1024;
+        ecoute.createMediaStreamSource(flux).connect(noeud);
+        analyseur.current = noeud;
+        void ecoute.resume().catch(() => undefined);
+      } catch {
+        ecoute = null;
       }
       const format = FORMATS.find((f) => MediaRecorder.isTypeSupported(f));
       const morceaux: Blob[] = [];
@@ -94,6 +117,18 @@ export function Enregistrement({
     return () => clearInterval(minuterie);
   }, [debut]);
 
+  useEffect(() => {
+    if (debut === null) return;
+    const tampon = new Float32Array(1024);
+    const minuterie = setInterval(() => {
+      const noeud = analyseur.current;
+      if (!noeud) return;
+      const niveau = niveauInstantane(noeud, tampon);
+      setOnde((avant) => [...avant.slice(1), niveau]);
+    }, RYTHME_ONDE);
+    return () => clearInterval(minuterie);
+  }, [debut]);
+
   function terminer() {
     const rec = enregistreur.current;
     if (!rec || rec.state === "inactive") return;
@@ -111,7 +146,18 @@ export function Enregistrement({
         <span className="text-[15px] tabular-nums text-texte" aria-live="off">
           {dureeCourte(ecoule)}
         </span>
-        <span className="truncate text-sm text-texte-2">{debut === null ? "Accès au micro…" : "Enregistrement en cours"}</span>
+        {debut === null ? (
+          <span className="truncate text-sm text-texte-2">Accès au micro…</span>
+        ) : (
+          <>
+            <span className="sr-only">Enregistrement en cours</span>
+            <span className="animate-fade flex h-7 min-w-0 flex-1 items-center justify-end gap-[2px] overflow-hidden" aria-hidden="true">
+              {onde.map((niveau, i) => (
+                <span key={i} className="w-[3px] shrink-0 rounded-full bg-texte-2" style={{ height: `${Math.round(3 + niveau * 23)}px` }} />
+              ))}
+            </span>
+          </>
+        )}
       </div>
       <button
         type="button"
