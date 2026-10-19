@@ -337,6 +337,36 @@ Node ; elles imposeraient leur licence à toute l'application.
   version 6), préparées sous verrou (Web Locks) pour que deux onglets ne
   créent pas deux identités. La bibliothèque est chargée à la demande.
 
+### Relier un appareil (lot 2)
+
+Comme WhatsApp Web : le nouvel appareil affiche un QR code, un appareil déjà
+relié le lit et lui transmet l'identité. L'inverse marche aussi (ordinateur
+sans appareil photo), et le code peut se copier-coller.
+
+- **Le code** (`UC1.<canal>.<clé>.<secret>.<rôle>`) : canal du relais
+  (`/api/cles/liaisons`, cinq minutes), clé X25519 éphémère et secret de
+  128 bits. Il ne passe que par l'écran : le serveur ne voit ni le secret
+  ni la clé privée.
+- **La réponse** de l'appareil qui lit : sa propre clé éphémère et une preuve
+  (HMAC sous le secret) que lui seul, ayant vu l'écran, peut produire. Un
+  serveur qui substituerait sa clé ne saurait pas la forger.
+- **L'identité** part scellée (AES-256-GCM) sous une clé tirée de l'échange
+  X25519, salée par le secret, liée au canal. L'appareil qui la reçoit
+  recalcule les clés publiques, vérifie la preuve d'identité et la compare à
+  celle de l'annuaire avant de la ranger.
+- **L'inscription** d'un appareil relié n'est acceptée qu'au nom d'une
+  liaison achevée, une seule fois, et seulement si les clés ont été déposées
+  par un appareil inscrit du même compte. Un code d'un autre compte répond
+  comme un code inconnu : un QR code présenté par un tiers ne mène nulle part.
+- **Lecture** : détecteur du navigateur s'il existe (Chrome sur Android,
+  macOS), sinon jsQR chargé à la demande (Chrome sur Windows). Le QR code est
+  dessiné en SVG depuis la matrice (uqr), sans balisage injecté.
+- **Nouvelles clés** : sans plus aucun appareil pour transmettre l'identité,
+  un appareil en crée une nouvelle (connexion Google de moins de 24 heures).
+  La version de l'identité augmente, les autres appareils sortent de
+  l'annuaire et devront être reliés ; l'événement figure dans l'activité du
+  compte.
+
 ### Messages (lots suivants)
 
 - **Contenu chiffré une fois** sous une clé aléatoire (AES-256-GCM) ; cette
@@ -355,8 +385,8 @@ Node ; elles imposeraient leur licence à toute l'application.
 
 ### Lots
 
-1. Socle cryptographique, annuaire des clés, inscription du premier appareil.
-2. Relier un appareil (QR code), réinitialiser les clés du compte.
+1. Socle cryptographique, annuaire des clés, inscription du premier appareil (fait).
+2. Relier un appareil (QR code), réinitialiser les clés du compte (fait).
 3. Discussions à deux chiffrées : messages, réactions, modifications,
    suppressions, votes.
 4. Groupes.

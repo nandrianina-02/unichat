@@ -6,6 +6,7 @@ import {
   AtSign,
   BellOff,
   BellRing,
+  Link2,
   Camera,
   ChevronDown,
   EllipsisVertical,
@@ -34,6 +35,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { estGroupe } from "@unichat/shared";
 import { useActionsDiscussion } from "../composants/ActionsDiscussion";
 import { Anime, Apparition } from "../composants/Apparition";
+import { DialogueNouvellesCles, Liaison } from "../composants/Liaison";
 import { Menu, useFermetureExterieure } from "../composants/Menu";
 import { Avatar, AvatarGroupe } from "../composants/Avatar";
 import { BoutonIcone } from "../composants/BoutonIcone";
@@ -252,6 +254,7 @@ export function Discussions({ selection, onOuvrir, onOuvrirPersonne, onNouvelle,
             </Anime>
           )}
         </Apparition>
+        <BanniereLiaison />
         <BanniereNotifications />
         <AlerteConnexion />
         <Apparition>
@@ -538,6 +541,54 @@ function LigneConversation({
 const CLE_NOTIFICATIONS = "unichat.notifications-refusees";
 
 /** Proposition d'activer les notifications, tant que le navigateur n'a pas reçu de réponse. */
+/**
+ * Appareil pas encore relié : les clés du compte sont sur un autre. Rappel
+ * discret, qu'on peut écarter jusqu'au prochain démarrage.
+ */
+function BanniereLiaison() {
+  const { etat } = useMessagerie();
+  const [ecartee, setEcartee] = useState(false);
+  const [liaison, setLiaison] = useState(false);
+  const [nouvellesCles, setNouvellesCles] = useState(false);
+  if (etat.chiffrement !== "a-relier" && !liaison && !nouvellesCles) return null;
+  return (
+    <>
+      {etat.chiffrement === "a-relier" && !ecartee && (
+        <div className="animate-rise mx-3 mb-2 flex gap-4 rounded-lg bg-entete px-4 py-3.5">
+          <span className="flex size-10 shrink-0 items-center justify-center rounded-full bg-primaire text-sur-primaire">
+            <Link2 size={20} />
+          </span>
+          <div className="min-w-0 text-sm">
+            <p className="font-medium text-texte">Reliez cet appareil</p>
+            <p className="mt-0.5 text-texte-2">Les clés de votre compte sont sur un autre appareil. Reliez celui-ci pour les recevoir.</p>
+            <div className="mt-2 flex gap-5 font-medium">
+              <button type="button" onClick={() => setLiaison(true)} className="text-primaire-texte hover:underline">
+                Relier
+              </button>
+              <button type="button" onClick={() => setEcartee(true)} className="text-texte-2 hover:underline">
+                Plus tard
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+      <Apparition>
+        {liaison && (
+          <Liaison
+            role="receveur"
+            onFermer={() => setLiaison(false)}
+            onReinitialiser={() => {
+              setLiaison(false);
+              setNouvellesCles(true);
+            }}
+          />
+        )}
+      </Apparition>
+      <Apparition>{nouvellesCles && <DialogueNouvellesCles aucunAppareil={false} onFermer={() => setNouvellesCles(false)} />}</Apparition>
+    </>
+  );
+}
+
 function BanniereNotifications() {
   const [visible, setVisible] = useState(() => {
     if (!("Notification" in window) || Notification.permission !== "default") return false;

@@ -3,7 +3,8 @@ import clsx from "clsx";
 import { LoaderCircle } from "lucide-react";
 import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import { Dialogue } from "../../composants/Dialogue";
-import { ErreurApi, api } from "../../lib/api";
+import { ErreurApi } from "../../lib/api";
+import { reconnecter, reconnexionRequise } from "../../lib/reconnexion";
 import { estTactile } from "../../lib/appui";
 import { useCompte } from "../../lib/compte";
 
@@ -18,18 +19,6 @@ export const dateHeure = (le: number) => jourHeure.format(new Date(le));
 export const nombre = (n: number) => (n >= 10_000 ? compact.format(n) : entier.format(n));
 
 export const messageErreur = (e: unknown, defaut: string) => (e instanceof ErreurApi ? e.message : defaut);
-export const reconnexionRequise = (e: unknown) => e instanceof ErreurApi && e.code === "reconnexion_requise";
-
-/**
- * Supprimer un compte ou fermer un groupe demande une connexion Google de
- * moins de 24 heures : on ferme cette session (l'appareil garde ses clés et
- * son historique), puis on repasse par Google.
- */
-export async function reconnecter(): Promise<void> {
-  await api.deconnexion().catch(() => {});
-  location.assign("/api/auth/google");
-}
-
 /** Chargement d'une liste ou d'une fiche, avec la session perdue traitée comme partout ailleurs. */
 export function useChargement<T>(charger: () => Promise<T>, cle: string) {
   const { sessionPerdue } = useCompte();

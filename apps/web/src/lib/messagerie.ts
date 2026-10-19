@@ -20,7 +20,8 @@ import {
   type Reaction,
 } from "@unichat/shared";
 import { ErreurApi, api } from "./api";
-import { preparerCles, type EtatChiffrement } from "./cles";
+import { identiteLocale, preparerCles, reinitialiserCles, relierCles, type EtatChiffrement } from "./cles";
+import type { IdentitePrivee } from "@unichat/chiffrement";
 import { retirerMedia, telechargerMedia, transfererMedia } from "./api-medias";
 import { heureCourte, resumeMessage } from "./format";
 import { activerPush, montrerNotification, pushActif } from "./notifications";
@@ -183,6 +184,21 @@ export class Messagerie {
       // Session perdue : la connexion temps réel la signale de son côté.
       if (!(erreur instanceof ErreurApi && erreur.statut === 401) && !this.arretee) this.publier({ chiffrement: "indisponible" });
     }
+  }
+
+  /** Identité du compte, quand cet appareil la détient (pour relier un autre appareil). */
+  identite(): Promise<IdentitePrivee | undefined> {
+    return identiteLocale(this.db);
+  }
+
+  /** Identité reçue d'un appareil relié : cet appareil s'inscrit avec elle. */
+  async relier(canal: string, identite: IdentitePrivee): Promise<void> {
+    this.publier({ chiffrement: await relierCles(this.db, this.moi, canal, identite) });
+  }
+
+  /** Nouvelles clés pour le compte : les autres appareils devront être reliés à celui-ci. */
+  async reinitialiserCles(): Promise<void> {
+    this.publier({ chiffrement: await reinitialiserCles(this.db, this.moi) });
   }
 
   arreter(): void {

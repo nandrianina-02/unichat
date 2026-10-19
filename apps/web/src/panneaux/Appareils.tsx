@@ -1,9 +1,10 @@
 import type { AppareilConnecte } from "@unichat/shared";
 import clsx from "clsx";
-import { CloudOff, Globe, KeyRound, Laptop, Link2, LoaderCircle, LogOut, MonitorSmartphone, Smartphone, type LucideIcon } from "lucide-react";
+import { CloudOff, Globe, KeyRound, Laptop, Link2, LoaderCircle, LogOut, MonitorSmartphone, RotateCw, Smartphone, type LucideIcon } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import { Dialogue } from "../composants/Dialogue";
 import { Apparition } from "../composants/Apparition";
+import { DialogueNouvellesCles, Liaison } from "../composants/Liaison";
 import { TitreSection } from "../composants/Lignes";
 import { EnTetePanneau } from "../composants/Panneau";
 import { ErreurApi, api } from "../lib/api";
@@ -34,6 +35,17 @@ export function Appareils({ onRetour }: { onRetour: () => void }) {
   const { sessionPerdue, deconnecter } = useCompte();
   const { etat } = useMessagerie();
   const cles = CLES[etat.chiffrement];
+  const [liaison, setLiaison] = useState<"donneur" | "receveur" | null>(null);
+  const [nouvellesCles, setNouvellesCles] = useState(false);
+  // À relier : reste-t-il un appareil pour transmettre les clés ? Sinon, il faut en créer.
+  const [sansDonneur, setSansDonneur] = useState(false);
+  useEffect(() => {
+    if (etat.chiffrement !== "a-relier") return;
+    api.etatCles().then(
+      (e) => setSansDonneur(e.appareilsInscrits === 0),
+      () => {},
+    );
+  }, [etat.chiffrement]);
   const [appareils, setAppareils] = useState<AppareilConnecte[] | null>(null);
   const [erreur, setErreur] = useState<string | null>(null);
   const [cible, setCible] = useState<AppareilConnecte | "autres" | null>(null);
@@ -89,7 +101,24 @@ export function Appareils({ onRetour }: { onRetour: () => void }) {
           </span>
           <span className="min-w-0 flex-1 pt-1">
             <span className="block text-[16px] text-texte">{cles.titre}</span>
-            {cles.detail && <span className="mt-0.5 block text-[13px] leading-relaxed text-texte-2">{cles.detail}</span>}
+            <span className="mt-0.5 block text-[13px] leading-relaxed text-texte-2">
+              {etat.chiffrement === "a-relier" && sansDonneur ? "Aucun appareil ne détient plus les clés de votre compte : créez-en de nouvelles ici." : cles.detail}
+            </span>
+            {etat.chiffrement === "pret" && (
+              <BoutonCles icone={Link2} onClick={() => setLiaison("donneur")}>
+                Relier un appareil
+              </BoutonCles>
+            )}
+            {etat.chiffrement === "a-relier" &&
+              (sansDonneur ? (
+                <BoutonCles icone={RotateCw} onClick={() => setNouvellesCles(true)}>
+                  Créer de nouvelles clés
+                </BoutonCles>
+              ) : (
+                <BoutonCles icone={Link2} onClick={() => setLiaison("receveur")}>
+                  Relier cet appareil
+                </BoutonCles>
+              ))}
           </span>
         </div>
 
@@ -139,6 +168,23 @@ export function Appareils({ onRetour }: { onRetour: () => void }) {
       </div>
 
       <Apparition>
+        {liaison && (
+          <Liaison
+            role={liaison}
+            onFermer={() => setLiaison(null)}
+            onReinitialiser={
+              liaison === "receveur"
+                ? () => {
+                    setLiaison(null);
+                    setNouvellesCles(true);
+                  }
+                : undefined
+            }
+          />
+        )}
+      </Apparition>
+      <Apparition>{nouvellesCles && <DialogueNouvellesCles aucunAppareil={sansDonneur} onFermer={() => setNouvellesCles(false)} />}</Apparition>
+      <Apparition>
         {cible && (
           <Dialogue
             titre={cible === "autres" ? `Déconnecter ${autres} appareil${autres > 1 ? "s" : ""} ?` : cible.actuel ? "Se déconnecter de cet appareil ?" : "Déconnecter cet appareil ?"}
@@ -155,5 +201,17 @@ export function Appareils({ onRetour }: { onRetour: () => void }) {
         )}
       </Apparition>
     </>
+  );
+}
+
+function BoutonCles({ icone: Icone, onClick, children }: { icone: LucideIcon; onClick: () => void; children: string }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className="mt-3 inline-flex items-center gap-2 rounded-full border border-bordure px-4 py-1.5 text-[13.5px] font-medium text-primaire-texte transition-colors hover:bg-survol"
+    >
+      <Icone size={16} /> {children}
+    </button>
   );
 }

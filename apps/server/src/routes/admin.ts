@@ -1,7 +1,6 @@
 import { Hono, type Context } from "hono";
 import { createMiddleware } from "hono/factory";
 import {
-  CONNEXION_RECENTE,
   PAGE_ADMIN,
   schemaDecision,
   schemaFermetureGroupe,
@@ -21,7 +20,7 @@ import type { LigneUtilisateur } from "../lib/profils";
 import { supprimerCompte } from "../lib/suppression";
 import type { AppEnv } from "../types";
 import { exigerSession } from "./garde";
-import { corpsJson } from "./outils";
+import { corpsJson, exigerConnexionRecente } from "./outils";
 
 export const admin = new Hono<AppEnv>();
 admin.use("*", exigerSession);
@@ -40,13 +39,6 @@ async function administrateur(c: Context<AppEnv>): Promise<Trace["admin"]> {
   const id = c.get("session").utilisateur_id;
   const ligne = await c.env.DB.prepare("SELECT nom FROM utilisateurs WHERE id = ?1").bind(id).first<{ nom: string }>();
   return { id, nom: ligne?.nom ?? "Administration" };
-}
-
-/** Supprimer, fermer : réservé à une connexion Google récente, pour qu'une session dérobée ne suffise pas. */
-function exigerConnexionRecente(c: Context<AppEnv>): void {
-  if (c.get("deps").maintenant() - c.get("session").cree_le > CONNEXION_RECENTE) {
-    throw new Refus(403, "reconnexion_requise", "Par sécurité, reconnectez-vous avec Google avant cette action : elle demande une connexion de moins de 24 heures.");
-  }
 }
 
 /** Un administrateur n'agit ni sur lui-même ni sur un autre administrateur : chacun gère son compte comme tout le monde. */

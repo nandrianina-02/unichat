@@ -43,6 +43,31 @@ export const schemaInscriptionCles = z
 export const schemaRepriseCles = z.object({ numero, jeton: cle }).strict();
 export const schemaClesUniques = z.object({ cles: clesUniques }).strict();
 export const schemaNouvelleCleSignee = z.object({ cleSignee: schemaCleSignee }).strict();
+/** Un code de liaison vaut cinq minutes ; l'inscription qui suit a cinq minutes de plus. */
+export const LIAISON = { duree: 5 * 60 * 1000, inscription: 5 * 60 * 1000 } as const;
+const canal = z.string().regex(/^[A-Za-z0-9_-]{22}$/, "Code de liaison invalide.");
+// Identité scellée : quelques centaines d'octets en base64.
+const scelle = z.string().regex(/^[A-Za-z0-9_-]{40,2000}$/, "Clés scellées invalides.");
+
+export const schemaNouvelleLiaison = z.object({ role: z.enum(["donneur", "receveur"]) }).strict();
+export const schemaReponseLiaison = z.object({ cle, preuve: octets(32), cles: scelle.optional() }).strict();
+export const schemaClesLiaison = z.object({ cles: scelle }).strict();
+/** Appareil relié : il s'inscrit au nom de la liaison qui lui a remis l'identité. */
+export const schemaAppareilRelie = z
+  .object({ canal, appareil: z.object({ cleSignee: schemaCleSignee, clesUniques, jeton: cle }).strict() })
+  .strict();
+
+export interface EtatLiaison {
+  /** attente : code affiché ; repondu : l'autre appareil a lu ; cles : identité déposée ; termine : appareil inscrit. */
+  etat: "attente" | "repondu" | "cles" | "termine";
+  role: "donneur" | "receveur";
+  expireLe: number;
+  reponse?: { cle: string; preuve: string };
+  cles?: string;
+  /** L'autre appareil, tel qu'il s'est présenté (« Chrome sur Android »). */
+  autre?: string;
+}
+
 export const schemaDemandePaquets = z
   .object({
     comptes: z
@@ -59,6 +84,8 @@ export type InscriptionCles = z.infer<typeof schemaInscriptionCles>;
 
 export interface EtatCles {
   identite: (IdentiteCles & { version: number }) | null;
+  /** Appareils du compte qui détiennent l'identité : sans aucun, il ne reste qu'à la refaire. */
+  appareilsInscrits: number;
   /** L'appareil de cette session, s'il est inscrit. */
   appareil: { numero: number; cleSigneeId: number; cleSigneeLe: number; clesUniques: number } | null;
 }

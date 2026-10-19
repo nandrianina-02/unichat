@@ -1,6 +1,6 @@
 import type { EvenementSecurite, TypeEvenement } from "@unichat/shared";
 import clsx from "clsx";
-import { AtSign, Ban, LoaderCircle, LogIn, LogOut, ShieldAlert, ShieldCheck, ShieldX, type LucideIcon } from "lucide-react";
+import { AtSign, Ban, KeyRound, Link2, LoaderCircle, LogIn, LogOut, ShieldAlert, ShieldCheck, ShieldX, type LucideIcon } from "lucide-react";
 import { useEffect, useState } from "react";
 import { EnTetePanneau } from "../composants/Panneau";
 import { api } from "../lib/api";
@@ -15,6 +15,8 @@ const DESCRIPTIONS: Record<TypeEvenement, { icone: LucideIcon; titre: string; al
   pseudo_modifie: { icone: AtSign, titre: "Nom d'utilisateur modifié" },
   compte_suspendu: { icone: Ban, titre: "Compte suspendu par la modération", alerte: true },
   suspension_levee: { icone: ShieldCheck, titre: "Suspension levée" },
+  appareil_relie: { icone: Link2, titre: "Appareil relié : il a reçu les clés du compte" },
+  cles_reinitialisees: { icone: KeyRound, titre: "Clés du compte refaites", alerte: true },
 };
 
 export function Activite({ onRetour }: { onRetour: () => void }) {

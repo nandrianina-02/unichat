@@ -71,7 +71,7 @@ describe("annuaire des clés", () => {
     const t = await preparer();
     const ana = await personne(t, "ana");
     const vide = (await (await ana.appareil.appel("/api/cles")).json()) as EtatCles;
-    expect(vide).toEqual({ identite: null, appareil: null });
+    expect(vide).toEqual({ identite: null, appareilsInscrits: 0, appareil: null });
 
     const k = trousseau();
     const r = await ana.appareil.appel("/api/cles/identite", { method: "POST", json: k.corps });

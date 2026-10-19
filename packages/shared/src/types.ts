@@ -57,7 +57,9 @@ export type TypeEvenement =
   | "reutilisation_jeton"
   | "pseudo_modifie"
   | "compte_suspendu"
-  | "suspension_levee";
+  | "suspension_levee"
+  | "appareil_relie"
+  | "cles_reinitialisees";
 
 export interface EvenementSecurite {
   id: string;

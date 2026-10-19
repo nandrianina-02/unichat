@@ -1,7 +1,8 @@
 import type { Context } from "hono";
 import { setCookie } from "hono/cookie";
 import type { z } from "zod";
-import { refus } from "../lib/erreurs";
+import { CONNEXION_RECENTE } from "@unichat/shared";
+import { Refus, refus } from "../lib/erreurs";
 import { autoriser } from "../lib/limites";
 import { DUREES } from "../lib/sessions";
 import type { AppEnv } from "../types";
@@ -45,6 +46,17 @@ export function lieu(c: Context<AppEnv>): { ville: string | null; pays: string |
 export async function limiter(c: Context<AppEnv>, cle: string, maximum: number, fenetreMs: number): Promise<void> {
   const r = await autoriser(c.env.DB, cle, maximum, fenetreMs, c.get("deps").maintenant());
   if (!r.ok) throw refus.tropDeDemandes(r.reessayerDans);
+}
+
+/**
+ * Action lourde (supprimer un compte, refaire ses clés) : réservée à une
+ * connexion Google de moins de 24 heures, pour qu'une session dérobée ne
+ * suffise pas.
+ */
+export function exigerConnexionRecente(c: Context<AppEnv>): void {
+  if (c.get("deps").maintenant() - c.get("session").cree_le > CONNEXION_RECENTE) {
+    throw new Refus(403, "reconnexion_requise", "Par sécurité, reconnectez-vous avec Google avant cette action : elle demande une connexion de moins de 24 heures.");
+  }
 }
 
 export async function corpsJson<S extends z.ZodType>(c: Context<AppEnv>, schema: S): Promise<z.output<S>> {

@@ -38,6 +38,9 @@
   --voile: rgb(17 24 39 / 0.45);
   /* Visionneuse de photos et vidéos : sombre dans les deux thèmes, l'image prime. */
   --visionneuse: #0b0c11;
+  /* QR code : sombre sur clair dans tous les thèmes, c'est ce que lisent les appareils photo. */
+  --qr-fond: #ffffff;
+  --qr-encre: #0b0c11;
   --sur-visionneuse: #eef0f6;
   --pastille-media: rgb(11 12 17 / 0.55);
   /* Bouton « Continuer avec Google » : couleurs imposées par la charte Google. */
@@ -158,6 +161,8 @@
   --color-coche-lue: var(--coche-lue);
   --color-voile: var(--voile);
   --color-visionneuse: var(--visionneuse);
+  --color-qr-fond: var(--qr-fond);
+  --color-qr-encre: var(--qr-encre);
   --color-sur-visionneuse: var(--sur-visionneuse);
   --color-pastille-media: var(--pastille-media);
   --color-google-fond: var(--google-fond);

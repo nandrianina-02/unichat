@@ -1,48 +1,13 @@
-import clsx from "clsx";
 import type { ApercuInvitation, Groupe } from "@unichat/shared";
-import { Copy, LoaderCircle, RotateCw, UsersRound, X } from "lucide-react";
+import { Copy, LoaderCircle, RotateCw, UsersRound } from "lucide-react";
 import { useEffect, useState } from "react";
-import { createPortal } from "react-dom";
 import { ErreurApi, api } from "../lib/api";
 import { useCompte } from "../lib/compte";
 import { lienGroupe } from "../lib/invitation";
-import { useRetourSysteme } from "../lib/retour";
-import { Anime, Apparition, useSortie } from "./Apparition";
+import { Anime, Apparition } from "./Apparition";
 import { AvatarGroupe } from "./Avatar";
-import { BoutonIcone } from "./BoutonIcone";
 import { Dialogue } from "./Dialogue";
-
-function Cadre({ titre, onFermer, children }: { titre: string; onFermer: () => void; children: React.ReactNode }) {
-  // Pendant sa sortie, la couche a déjà rendu son entrée d'historique.
-  const sortie = useSortie();
-  useRetourSysteme(!sortie, onFermer);
-  useEffect(() => {
-    if (sortie) return;
-    const echap = (e: KeyboardEvent) => e.key === "Escape" && onFermer();
-    window.addEventListener("keydown", echap);
-    return () => window.removeEventListener("keydown", echap);
-  }, [onFermer, sortie]);
-  return createPortal(
-    <div className={clsx(sortie ? "animate-fade-out pointer-events-none" : "animate-fade", "fixed inset-0 z-50 flex items-center justify-center bg-voile p-4")} onMouseDown={onFermer}>
-      <div
-        role="dialog"
-        aria-modal="true"
-        aria-label={titre}
-        className={clsx(sortie ? "animate-sink" : "animate-rise", "w-full max-w-md rounded-lg bg-panneau shadow-xl")}
-        onMouseDown={(e) => e.stopPropagation()}
-      >
-        <header className="flex items-center gap-3 px-3 pt-3">
-          <BoutonIcone libelle="Fermer" onClick={onFermer}>
-            <X size={22} />
-          </BoutonIcone>
-          <h2 className="text-[17px] text-texte">{titre}</h2>
-        </header>
-        <div className="px-6 pt-2 pb-6">{children}</div>
-      </div>
-    </div>,
-    document.body,
-  );
-}
+import { Fenetre } from "./Fenetre";
 
 /**
  * Lien d'invitation d'un groupe, pour les administrateurs : quiconque le
@@ -76,7 +41,7 @@ export function DialogueLienGroupe({ groupe, onFermer }: { groupe: Groupe; onFer
   }
 
   return (
-    <Cadre titre="Inviter avec un lien" onFermer={onFermer}>
+    <Fenetre titre="Inviter avec un lien" onFermer={onFermer}>
       <div className="flex items-center gap-4">
         <AvatarGroupe taille={56} groupeId={groupe.id} photo={groupe.photo} />
         <div className="min-w-0">
@@ -130,7 +95,7 @@ export function DialogueLienGroupe({ groupe, onFermer }: { groupe: Groupe; onFer
           </Dialogue>
         )}
       </Apparition>
-    </Cadre>
+    </Fenetre>
   );
 }
 
@@ -164,7 +129,7 @@ export function DialogueRejoindre({
   }
 
   return (
-    <Cadre titre="Invitation à un groupe" onFermer={onFermer}>
+    <Fenetre titre="Invitation à un groupe" onFermer={onFermer}>
       {erreur && <p className="text-sm text-danger">{erreur}</p>}
       {!apercu && !erreur && (
         <p className="flex justify-center py-6 text-texte-2">
@@ -190,6 +155,6 @@ export function DialogueRejoindre({
           </button>
         </div>
       )}
-    </Cadre>
+    </Fenetre>
   );
 }

@@ -1,4 +1,4 @@
-import { CLE_SIGNEE, CLES_UNIQUES, type CleSigneeTransport, type EtatCles, type IdentiteCles } from "@unichat/shared";
+import { CLE_SIGNEE, CLES_UNIQUES, type CleSigneeTransport, type EtatCles, type IdentiteCles, type InscriptionCles } from "@unichat/shared";
 import type { CleSignee, CleUnique, IdentitePrivee } from "@unichat/chiffrement";
 import { ErreurApi, api } from "./api";
 import type { Stockage } from "./stockage";
@@ -38,12 +38,37 @@ async function memeIdentite(locale: IdentitePrivee, distante: IdentiteCles): Pro
 }
 
 /**
- * Un seul onglet à la fois prépare les clés : deux onglets ouverts ensemble
+ * Un seul onglet à la fois touche aux clés : deux onglets ouverts ensemble
  * créeraient chacun une identité, et l'un écraserait celle de l'autre.
  */
-export async function preparerCles(db: Stockage, moi: string): Promise<EtatChiffrement> {
-  const tache = () => preparer(db);
+async function sousVerrou<T>(moi: string, tache: () => Promise<T>): Promise<T> {
   return navigator.locks ? await navigator.locks.request(`unichat-cles-${moi}`, tache) : tache();
+}
+
+export const preparerCles = (db: Stockage, moi: string) => sousVerrou(moi, () => preparer(db));
+
+/** Identité du compte, pour la transmettre à un appareil qu'on relie. */
+export const identiteLocale = async (db: Stockage) => (await db.get("cles", "identite")) as IdentitePrivee | undefined;
+
+/** Appareil relié : il range l'identité reçue et s'inscrit au nom de la liaison. */
+export function relierCles(db: Stockage, moi: string, canal: string, identite: IdentitePrivee): Promise<EtatChiffrement> {
+  return sousVerrou(moi, async (): Promise<EtatChiffrement> => {
+    const { appareil, jeton } = await ranger(db, identite);
+    const etat = await api.relierAppareil(canal, appareil);
+    await db.put("cles", { numero: etat.appareil!.numero, jeton } satisfies AppareilLocal, "appareil");
+    return "pret";
+  });
+}
+
+/** Plus d'autre appareil pour transmettre l'identité : celui-ci en crée une nouvelle. */
+export function reinitialiserCles(db: Stockage, moi: string): Promise<EtatChiffrement> {
+  return sousVerrou(moi, async (): Promise<EtatChiffrement> => {
+    const identite = (await bibliotheque()).creerIdentite();
+    const { appareil, jeton } = await ranger(db, identite);
+    const etat = await api.reinitialiserCles({ identite: await versTransport(identite), appareil });
+    await db.put("cles", { numero: etat.appareil!.numero, jeton } satisfies AppareilLocal, "appareil");
+    return "pret";
+  });
 }
 
 async function preparer(db: Stockage): Promise<EtatChiffrement> {
@@ -84,29 +109,40 @@ async function preparer(db: Stockage): Promise<EtatChiffrement> {
   return "a-relier";
 }
 
-/** Premier appareil du compte : identité, clé signée, réserve de clés uniques. */
-async function inscrire(db: Stockage, identite: IdentitePrivee): Promise<EtatChiffrement> {
+/**
+ * Clés neuves de l'appareil pour une identité : clé signée, réserve de clés
+ * uniques, jeton de reprise. Tout l'ancien contenu du trousseau part : il
+ * appartenait à une autre identité, ou à un essai qui n'a pas abouti.
+ * Rangé avant l'envoi : si la réponse se perd, l'appareil retrouvera sa place.
+ */
+async function ranger(db: Stockage, identite: IdentitePrivee): Promise<{ appareil: InscriptionCles["appareil"]; jeton: Uint8Array }> {
   const c = await bibliotheque();
   const signee = c.creerCleSignee(identite, 1, Date.now());
   const uniques = c.creerClesUniques(1, CLES_UNIQUES.lot);
   const jeton = c.aleatoire(32);
-  // Rangé avant l'envoi : si la réponse se perd, l'appareil retrouvera sa place.
   const tx = db.transaction("cles", "readwrite");
+  await tx.store.clear();
   await tx.store.put(identite, "identite");
   await tx.store.put({ numero: null, jeton } satisfies AppareilLocal, "appareil");
   await tx.store.put([signee], "signees");
   await tx.store.put(CLES_UNIQUES.lot + 1, "prochaine-unique");
   for (const u of uniques) await tx.store.put(u, `unique:${u.id}`);
   await tx.done;
+  return {
+    jeton,
+    appareil: {
+      cleSignee: await signeeTransport(signee),
+      clesUniques: uniques.map((u) => ({ id: u.id, cle: c.versBase64(u.paire.publique) })),
+      jeton: c.versBase64(jeton),
+    },
+  };
+}
+
+/** Premier appareil du compte : identité, clé signée, réserve de clés uniques. */
+async function inscrire(db: Stockage, identite: IdentitePrivee): Promise<EtatChiffrement> {
+  const { appareil, jeton } = await ranger(db, identite);
   try {
-    const etat = await api.inscrireCles({
-      identite: await versTransport(identite),
-      appareil: {
-        cleSignee: await signeeTransport(signee),
-        clesUniques: uniques.map((u) => ({ id: u.id, cle: c.versBase64(u.paire.publique) })),
-        jeton: c.versBase64(jeton),
-      },
-    });
+    const etat = await api.inscrireCles({ identite: await versTransport(identite), appareil });
     await db.put("cles", { numero: etat.appareil!.numero, jeton } satisfies AppareilLocal, "appareil");
     return "pret";
   } catch (erreur) {

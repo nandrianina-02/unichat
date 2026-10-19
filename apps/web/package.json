@@ -11,9 +11,11 @@
     "@unichat/shared": "*",
     "clsx": "^2.1.1",
     "idb": "^8.0.4",
+    "jsqr": "^1.4.0",
     "lucide-react": "^1.57.0",
     "react": "^19.3.0",
-    "react-dom": "^19.3.0"
+    "react-dom": "^19.3.0",
+    "uqr": "^0.1.3"
   },
   "devDependencies": {
     "@tailwindcss/vite": "^4.3.3",

@@ -37,6 +37,10 @@ export function paireSignature(): Paire {
   return { secrete: secretKey, publique: publicKey };
 }
 
+/** Clés publiques recalculées depuis les secrètes : une identité reçue doit être cohérente. */
+export const publiqueEchange = (secrete: Uint8Array) => x25519.getPublicKey(secrete);
+export const publiqueSignature = (secrete: Uint8Array) => ed25519.getPublicKey(secrete);
+
 /** Secret partagé X25519. Une clé publique de petit ordre est refusée (noble lève une erreur). */
 export function echanger(secrete: Uint8Array, publique: Uint8Array): Uint8Array {
   if (publique.length !== TAILLE_CLE) throw new Error("Clé publique invalide.");
