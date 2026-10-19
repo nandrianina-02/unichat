@@ -23,7 +23,7 @@ import {
   type Reaction,
 } from "@unichat/shared";
 import { ErreurApi, api } from "./api";
-import { Chiffreur } from "./chiffrement";
+import { Chiffreur, type Destination } from "./chiffrement";
 import { identiteLocale, preparerCles, reinitialiserCles, relierCles, type EtatChiffrement } from "./cles";
 import type { IdentitePrivee } from "@unichat/chiffrement";
 import { retirerMedia, telechargerMedia, transfererMedia } from "./api-medias";
@@ -111,6 +111,7 @@ function contenuMessage(m: MessageLocal): ContenuMessage {
     ...(m.position ? { position: m.position } : {}),
     ...(m.contact ? { contact: { id: m.contact.id, nom: m.contact.nom, pseudo: m.contact.pseudo } } : {}),
     ...(m.sondage ? { sondage: m.sondage } : {}),
+    ...(m.mentions?.length ? { mentions: m.mentions } : {}),
   };
 }
 
@@ -158,7 +159,7 @@ export class Messagerie {
   private db!: Stockage;
   private chiffreur!: Chiffreur;
   /** Envois chiffrés en attente de réponse : rechiffrés si la liste d'appareils a changé. */
-  private readonly envoisChiffres = new Map<string, { tentatives: number; relancer: () => Promise<void> }>();
+  private readonly envoisChiffres = new Map<string, { tentatives: number; relancer: (comptes?: string[]) => Promise<void> }>();
   private ws: WebSocket | null = null;
   private seq: number | null = null;
   private tentative = 0;
@@ -381,9 +382,12 @@ export class Messagerie {
         // Appareils de la discussion changés depuis la dernière liste : on rechiffre pour les bons.
         const envoi = m.id ? this.envoisChiffres.get(m.id) : undefined;
         if (envoi && m.code === "appareils" && envoi.tentatives < 2) {
+          // Les comptes de la réponse sont ceux que le serveur attend : pour un
+          // groupe, ses membres du moment, même si notre liste n'est pas à jour.
+          const comptes = Object.keys(m.appareils ?? {});
           envoi.tentatives += 1;
-          this.chiffreur.oublier(Object.keys(m.appareils ?? {}));
-          void envoi.relancer();
+          this.chiffreur.oublier(comptes);
+          void envoi.relancer(comptes);
           return;
         }
         if (m.id) this.envoisChiffres.delete(m.id);
@@ -463,6 +467,7 @@ export class Messagerie {
           ...(c.position ? { position: c.position } : {}),
           ...(c.contact ? { contact: c.contact } : {}),
           ...(c.sondage ? { sondage: c.sondage } : {}),
+          ...(c.mentions?.length ? { mentions: c.mentions } : {}),
         },
       };
     });
@@ -718,22 +723,44 @@ export class Messagerie {
    * de chiffrement ne fait jamais partir le message en clair ; il reste à
    * renvoyer.
    */
-  private async expedier(m: MessageLocal): Promise<void> {
-    if (!estGroupe(m.conversation)) {
-      if (!this.connecte) return;
-      try {
-        const enveloppe = await this.chiffreur.chiffrer(m.a, m.id, m.conversation, "message", contenuMessage(m));
-        if (enveloppe) {
-          this.envoisChiffres.set(m.id, { tentatives: this.envoisChiffres.get(m.id)?.tentatives ?? 0, relancer: () => this.expedier(m) });
-          this.brut(enveloppe);
-          return;
-        }
-      } catch {
-        if (this.connecte) await this.modifierMessage(m.id, (x) => ({ ...x, etat: "echec", erreur: "Envoi impossible pour le moment. Réessayez." }));
+  private async expedier(m: MessageLocal, comptes?: string[]): Promise<void> {
+    if (!this.connecte) return;
+    try {
+      const destination = await this.destination(m.conversation, comptes);
+      const enveloppe = await this.chiffreur.chiffrer({ ...destination, mentions: m.mentions }, m.id, "message", contenuMessage(m));
+      if (enveloppe) {
+        this.envoisChiffres.set(m.id, {
+          tentatives: this.envoisChiffres.get(m.id)?.tentatives ?? 0,
+          relancer: (imposes) => this.expedier(m, imposes),
+        });
+        this.brut(enveloppe);
         return;
       }
+    } catch {
+      if (this.connecte) await this.modifierMessage(m.id, (x) => ({ ...x, etat: "echec", erreur: "Envoi impossible pour le moment. Réessayez." }));
+      return;
     }
+    // Seul cas en clair : un destinataire n'a pas encore de clés (transition).
     this.envoyerEnClair(m);
+  }
+
+  /**
+   * À qui chiffrer dans cette discussion. Pour un groupe, ses membres, ou
+   * ceux qu'impose le serveur après un refus (liste périmée). Un groupe pas
+   * encore chargé ici (tout juste créé ou rejoint) l'est d'abord : faute de
+   * membres connus, on échoue plutôt que de partir en clair.
+   */
+  private async destination(conversation: string, comptes?: string[]): Promise<Destination> {
+    if (!estGroupe(conversation)) {
+      const a = autreParticipant(conversation, this.moi);
+      return { conversation, a, comptes: [a] };
+    }
+    const groupeId = idGroupe(conversation);
+    if (comptes) void this.chargerGroupe(groupeId, true);
+    else if (!this.etat.groupes[groupeId]?.membres.length) await this.chargerGroupe(groupeId, true);
+    const membres = comptes ?? this.etat.groupes[groupeId]?.membres.map((x) => x.id);
+    if (!membres?.length) throw new Error("Membres du groupe inconnus.");
+    return { conversation, groupe: groupeId, comptes: membres };
   }
 
   private envoyerEnClair(m: MessageLocal): void {
@@ -803,18 +830,18 @@ export class Messagerie {
    * vote, éphémères, vue unique ouverte) : chiffrée dans une discussion à
    * deux, en clair dans un groupe (lot 4). Faux si la connexion manque.
    */
-  private async agir(conversation: string, contenu: ContenuAction, enClair: MessageClient): Promise<boolean> {
+  private async agir(conversation: string, contenu: ContenuAction, enClair: MessageClient, pour?: string): Promise<boolean> {
     if (!this.connecte) return false;
-    if (estGroupe(conversation)) return this.brut(enClair);
-    const a = autreParticipant(conversation, this.moi);
     const id = crypto.randomUUID();
-    const envoyer = async (): Promise<boolean> => {
-      const enveloppe = await this.chiffreur.chiffrer(a, id, conversation, "action", contenu);
+    const envoyer = async (comptes?: string[]): Promise<boolean> => {
+      // Action réservée à un membre : lui seul (et mes autres appareils) la reçoit.
+      const destination = await this.destination(conversation, comptes ?? (pour && estGroupe(conversation) ? [pour] : undefined));
+      const enveloppe = await this.chiffreur.chiffrer({ ...destination, ...(pour && destination.groupe ? { pour } : {}) }, id, "action", contenu);
       if (!enveloppe) return this.brut(enClair);
       this.envoisChiffres.set(id, {
         tentatives: this.envoisChiffres.get(id)?.tentatives ?? 0,
-        relancer: async () => {
-          await envoyer().catch(() => false);
+        relancer: async (imposes) => {
+          await envoyer(imposes).catch(() => false);
         },
       });
       return this.brut(enveloppe);
@@ -861,6 +888,7 @@ export class Messagerie {
       message.conversation,
       { v: 1, action: "ouvert", message: message.id },
       { t: "ouvert", conversation: message.conversation, message: message.id, auteur: message.de },
+      message.de,
     );
   }
 

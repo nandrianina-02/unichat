@@ -213,3 +213,78 @@ describe("discussion à deux chiffrée", () => {
     expect(apres.appareil?.clesUniques).toBe(avant.appareil?.clesUniques);
   });
 });
+
+describe("groupe chiffré", () => {
+  async function groupe(t: Contexte) {
+    const ana = await personne(t, "ana");
+    const bob = await personne(t, "bob");
+    const lova = await personne(t, "lova");
+    for (const id of [bob.id, lova.id]) await ana.appareil.appel("/api/contacts", { method: "POST", json: { id } });
+    const g = await json<{ id: string }>(await ana.appareil.appel("/api/groupes", { method: "POST", json: { nom: "Famille", membres: [bob.id, lova.id] } }));
+    return { ana, bob, lova, groupeId: g.id };
+  }
+
+  it("chaque membre reçoit l'enveloppe avec les seules clés de ses appareils ; mentions limitées aux membres", async () => {
+    const t = await preparer();
+    const { ana, bob, lova, groupeId } = await groupe(t);
+    const wsAna = await ouvrir(ana.appareil);
+    const wsBob = await ouvrir(bob.appareil);
+    const wsLova = await ouvrir(lova.appareil);
+    const id = crypto.randomUUID();
+    const intrus = crypto.randomUUID();
+    wsAna.envoyer({
+      t: "chiffre",
+      id,
+      groupe: groupeId,
+      genre: "message",
+      mentions: [bob.id, intrus],
+      corps: faux(),
+      cles: { [bob.id]: { "1": "cle-bob" }, [lova.id]: { "1": "cle-lova" }, [ana.id]: {} },
+    });
+    const accepte = await wsAna.attendre(reponse(id));
+    expect(accepte).toMatchObject({ t: "accepte", destinataires: 2 });
+    const chezBob = (await wsBob.attendre(estChiffre)).entree as Extract<Entree, { type: "chiffre" }>;
+    const chezLova = (await wsLova.attendre(estChiffre)).entree as Extract<Entree, { type: "chiffre" }>;
+    expect(chezBob.enveloppe).toMatchObject({ conversation: `g:${groupeId}`, a: groupeId, cles: { "1": "cle-bob" }, mentions: [bob.id] });
+    expect(chezLova.enveloppe.cles).toEqual({ "1": "cle-lova" });
+  });
+
+  it("un membre oublié : refus avec la liste de tous les membres", async () => {
+    const t = await preparer();
+    const { ana, bob, lova, groupeId } = await groupe(t);
+    const wsAna = await ouvrir(ana.appareil);
+    const id = crypto.randomUUID();
+    wsAna.envoyer({ t: "chiffre", id, groupe: groupeId, genre: "message", corps: faux(), cles: { [bob.id]: { "1": faux() } } });
+    expect(await wsAna.attendre(reponse(id))).toMatchObject({ t: "refuse", code: "appareils", appareils: { [bob.id]: [1], [lova.id]: [1], [ana.id]: [] } });
+
+    // Un compte qui n'est pas membre ne peut pas être visé.
+    const autre = await personne(t, "lalao");
+    const id2 = crypto.randomUUID();
+    wsAna.envoyer({ t: "chiffre", id: id2, groupe: groupeId, genre: "message", corps: faux(), cles: { [bob.id]: { "1": faux() }, [lova.id]: { "1": faux() }, [autre.id]: { "1": faux() } } });
+    expect(await wsAna.attendre(reponse(id2))).toMatchObject({ t: "refuse", code: "appareils" });
+  });
+
+  it("qui n'est pas membre ne peut pas écrire au groupe", async () => {
+    const t = await preparer();
+    const { groupeId } = await groupe(t);
+    const dehors = await personne(t, "lalao");
+    const ws = await ouvrir(dehors.appareil);
+    const id = crypto.randomUUID();
+    ws.envoyer({ t: "chiffre", id, groupe: groupeId, genre: "message", corps: faux(), cles: {} });
+    expect(await ws.attendre(reponse(id))).toMatchObject({ t: "refuse" });
+  });
+
+  it("une action réservée à un membre (vue unique ouverte) ne va qu'à lui", async () => {
+    const t = await preparer();
+    const { ana, bob, lova, groupeId } = await groupe(t);
+    const wsAna = await ouvrir(ana.appareil);
+    const wsBob = await ouvrir(bob.appareil);
+    const wsLova = await ouvrir(lova.appareil);
+    const id = crypto.randomUUID();
+    wsLova.envoyer({ t: "chiffre", id, groupe: groupeId, pour: ana.id, genre: "action", corps: faux(), cles: { [ana.id]: { "1": faux() }, [lova.id]: {} } });
+    expect(await wsLova.attendre(reponse(id))).toMatchObject({ t: "accepte", destinataires: 1 });
+    expect((await wsAna.attendre(estChiffre)).t).toBe("entree");
+    await new Promise((r) => setTimeout(r, 200));
+    expect(wsBob.recus.some(estChiffre)).toBe(false);
+  });
+});

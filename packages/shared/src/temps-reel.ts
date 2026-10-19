@@ -185,7 +185,13 @@ export interface EnveloppeChiffree {
   de: string;
   /** Appareil de l'expéditeur : celui dont la session déchiffre la clé. */
   deAppareil: number;
+  /** Destinataire : une personne, ou le groupe. */
   a: string;
+  /**
+   * Membres mentionnés dans un groupe : en clair, pour qu'une mention fasse
+   * sonner une discussion en sourdine. Le texte, lui, reste chiffré.
+   */
+  mentions?: string[];
   genre: "message" | "action";
   /** Contenu scellé (AES-256-GCM), en base64. */
   corps: string;
@@ -252,6 +258,8 @@ const choixVote = z.array(z.number().int().min(0).max(SONDAGE.optionsMax - 1)).m
 const base64 = (maximum: number) => z.string().regex(/^[A-Za-z0-9_-]+$/, "Données invalides.").max(maximum);
 /** Appareils d'un même compte qu'une enveloppe peut viser. */
 export const APPAREILS_PAR_COMPTE = 25;
+/** Comptes qu'une enveloppe peut viser : les membres d'un groupe (40 au plus, moi compris). */
+export const COMPTES_PAR_ENVELOPPE = 40;
 
 export const schemaClient = z.discriminatedUnion("t", [
   /** Ouverture : l'appareil indique le dernier numéro reçu (null : appareil neuf). */
@@ -303,17 +311,24 @@ export const schemaClient = z.discriminatedUnion("t", [
   /** Vue unique ouverte : seul l'auteur en est averti (avec mes autres appareils). */
   z.object({ t: z.literal("ouvert"), conversation, message: uuid, auteur: uuid }),
   z.object({ t: z.literal("voter"), conversation, message: uuid, choix: choixVote }),
-  /** Discussion à deux chiffrée : la clé du contenu pour chaque appareil, par compte. */
+  /** Message ou action chiffrés : la clé du contenu pour chaque appareil, par compte. */
   z
     .object({
       t: z.literal("chiffre"),
       id: uuid,
-      a: uuid,
+      a: uuid.optional(),
+      groupe: uuid.optional(),
+      /** Action de groupe réservée à un membre : vue unique ouverte, que seul l'auteur apprend. */
+      pour: uuid.optional(),
+      mentions: z.array(uuid).max(MENTIONS_MAX).optional(),
       genre: z.enum(["message", "action"]),
       corps: base64(120_000),
       cles: z.record(uuid, z.record(z.string().regex(/^[1-9][0-9]{0,8}$/), base64(4000))),
     })
-    .refine((m) => Object.keys(m.cles).length <= 2, "Trop de destinataires.")
+    .refine((m) => Boolean(m.a) !== Boolean(m.groupe), "Destinataire manquant.")
+    .refine((m) => !m.pour || (m.groupe && m.genre === "action"), "Destinataire invalide.")
+    .refine((m) => !m.mentions || (m.groupe && m.genre === "message"), "Mentions hors d'un groupe.")
+    .refine((m) => Object.keys(m.cles).length <= COMPTES_PAR_ENVELOPPE, "Trop de destinataires.")
     .refine((m) => Object.values(m.cles).every((c) => Object.keys(c).length <= APPAREILS_PAR_COMPTE), "Trop d'appareils."),
 ]);
 export type MessageClient = z.infer<typeof schemaClient>;
@@ -344,6 +359,7 @@ export const schemaContenuMessage = z
     position: position.optional(),
     contact: z.object({ id: uuid, nom: z.string().max(100), pseudo: z.string().max(40).nullable() }).strict().optional(),
     sondage: sondage.optional(),
+    mentions: z.array(uuid).max(MENTIONS_MAX).optional(),
   })
   .strict()
   .refine((m) => m.texte.trim().length > 0 || m.media || m.position || m.contact || m.sondage, "Message vide.");

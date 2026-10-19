@@ -483,10 +483,34 @@ export class Boite extends DurableObject<Bindings> {
       this.envoyer(ws, { t: "refuse", id: m.id, message: "Vous envoyez trop de messages. Patientez quelques secondes." });
       return;
     }
-    const conversation = conversationDirecte(moi, m.a);
-    const annonces = m.a === moi ? 0 : 1;
-    let destinataires = m.a === moi ? [] : [m.a];
-    if (m.a !== moi) {
+    // Comptes que l'enveloppe doit viser (tous leurs appareils), et ceux à qui elle parviendra.
+    let conversation: string;
+    let comptes: string[];
+    let destinataires: string[];
+    let mentions: string[] | undefined;
+    if (m.groupe) {
+      conversation = conversationGroupe(m.groupe);
+      const autres = await this.participants(conversation, moi);
+      if (!autres) {
+        this.envoyer(ws, { t: "refuse", id: m.id, message: "Vous ne faites pas partie de ce groupe." });
+        return;
+      }
+      if (m.pour && !autres.includes(m.pour)) {
+        this.envoyer(ws, { t: "refuse", id: m.id, message: "Cette personne ne fait plus partie du groupe." });
+        return;
+      }
+      destinataires = m.pour ? [m.pour] : autres;
+      comptes = [...destinataires, moi];
+      // Seuls des membres peuvent être mentionnés.
+      if (m.mentions?.length) mentions = [...new Set(m.mentions)].filter((id) => autres.includes(id));
+    } else {
+      const a = m.a!;
+      conversation = conversationDirecte(moi, a);
+      comptes = a === moi ? [moi] : [a, moi];
+      destinataires = a === moi ? [] : [a];
+    }
+    const annonces = m.groupe ? destinataires.length : m.a === moi ? 0 : 1;
+    if (m.a && m.a !== moi) {
       if (!(await this.destinataireExiste(m.a))) {
         this.envoyer(ws, { t: "refuse", id: m.id, message: "Cette personne n'existe pas ou plus sur UniChat." });
         return;
@@ -511,7 +535,6 @@ export class Boite extends DurableObject<Bindings> {
       return;
     }
 
-    const comptes = m.a === moi ? [moi] : [m.a, moi];
     const { results } = await this.env.DB.prepare(
       "SELECT utilisateur_id, numero, session_id FROM appareils_cles WHERE utilisateur_id IN (SELECT value FROM json_each(?1))",
     )
@@ -543,13 +566,14 @@ export class Boite extends DurableObject<Bindings> {
       conversation,
       de: moi,
       deAppareil: emetteur.numero,
-      a: m.a,
+      a: m.groupe ?? m.a!,
+      ...(mentions?.length ? { mentions } : {}),
       genre: m.genre,
       corps: m.corps,
       cles: m.cles[pour] ?? {},
       le: maintenant,
     });
-    for (const id of destinataires) await this.distribuer([id], { type: "chiffre", enveloppe: enveloppe(id) });
+    await Promise.all(destinataires.map((id) => this.distribuer([id], { type: "chiffre", enveloppe: enveloppe(id) })));
     this.ajouter({ type: "chiffre", enveloppe: enveloppe(moi) });
     this.envoyer(ws, { t: "accepte", id: m.id, le: maintenant, destinataires: annonces });
   }
@@ -642,7 +666,9 @@ export class Boite extends DurableObject<Bindings> {
       this.ctx.waitUntil(this.notifier(proprietaire, { conversation: m.conversation, de: m.de, mentions: m.mentions, resume: resumer(m) }).catch(echec));
     } else if (entree.type === "chiffre" && entree.enveloppe.genre === "message" && entree.enveloppe.de !== proprietaire) {
       const e = entree.enveloppe;
-      this.ctx.waitUntil(this.notifier(proprietaire, { conversation: e.conversation, de: e.de, resume: "Nouveau message", enveloppe: e }).catch(echec));
+      this.ctx.waitUntil(
+        this.notifier(proprietaire, { conversation: e.conversation, de: e.de, mentions: e.mentions, resume: "Nouveau message", enveloppe: e }).catch(echec),
+      );
     }
   }
 

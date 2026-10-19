@@ -422,9 +422,30 @@ sans appareil photo), et le code peut se copier-coller.
 - La base d'un compte absente de l'appareil n'est jamais créée par le
   service worker : la notification garde alors son texte générique.
 
+### Groupes chiffrés (lot 4)
+
+- **Même enveloppe** (`groupe` au lieu de `a`) : la clé du contenu part vers
+  chaque appareil de chaque membre, par sa session. Le serveur vérifie
+  l'appartenance au groupe et que chaque membre est visé avec tous ses
+  appareils, ni plus ni moins ; chaque boîte ne reçoit que ses clés. Une
+  liste de membres périmée (ajout, départ) est corrigée par la réponse du
+  serveur, qui sert de liste pour le nouvel essai.
+- **Groupe pas encore chargé** sur l'appareil (tout juste créé ou rejoint) :
+  ses membres sont lus avant de chiffrer. Faute de liste, le message attend
+  d'être renvoyé ; il ne part jamais en clair par défaut.
+- **Mentions** : la liste des membres mentionnés reste en clair dans
+  l'enveloppe (filtrée par le serveur sur les membres), pour qu'une mention
+  fasse sonner une discussion en sourdine ; elle est aussi dans le contenu
+  chiffré, qui fait foi pour l'affichage.
+- **Vue unique ouverte** : action réservée à un membre (`pour`), qui ne
+  parvient qu'à l'auteur, comme en clair.
+- **Transition** : tant qu'un membre n'a pas de clés, le groupe reste en clair.
+- **Coût** : une clé chiffrée par appareil de chaque membre (quelques
+  centaines d'octets chacune) ; 40 membres au plus restent bien sous la
+  taille d'un message WebSocket.
+
 ### Suite
 
-- **Groupes** (lot 4) : même enveloppe, une clé par appareil de chaque membre.
 - **Fichiers** (lot 5) : chiffrés sur l'appareil avant l'envoi ; nom, type et
   vignette voyagent déjà dans le contenu chiffré, Karaks Storage ne verra
   plus que des octets.
@@ -436,7 +457,7 @@ sans appareil photo), et le code peut se copier-coller.
 2. Relier un appareil (QR code), réinitialiser les clés du compte (fait).
 3. Discussions à deux chiffrées : messages, réactions, modifications,
    suppressions, votes (fait).
-4. Groupes.
+4. Groupes (fait).
 5. Fichiers.
 6. Notifications déchiffrées sur l'appareil (fait).
 7. Code de sécurité et avertissement de changement d'identité.

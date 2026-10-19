@@ -49,6 +49,20 @@ export type Dechiffrement =
 
 export type EnveloppeSortante = Extract<MessageClient, { t: "chiffre" }>;
 
+/** À qui chiffrer : l'autre personne d'une discussion à deux, ou les membres d'un groupe. */
+export interface Destination {
+  conversation: string;
+  /** Discussion à deux : l'autre personne (ou moi, discussion avec soi-même). */
+  a?: string;
+  groupe?: string;
+  /** Comptes visés, moi exclu : mes autres appareils sont ajoutés d'office. */
+  comptes: string[];
+  /** Action de groupe réservée à un membre (vue unique ouverte). */
+  pour?: string;
+  /** Membres mentionnés (groupe) : en clair dans l'enveloppe, pour la sourdine. */
+  mentions?: string[];
+}
+
 const cleCorrespondant = (compte: string, numero: number) => `correspondant:${compte}:${numero}`;
 
 export class Chiffreur {
@@ -102,18 +116,19 @@ export class Chiffreur {
   }
 
   /**
-   * Enveloppe chiffrée pour une discussion à deux, ou null si le
-   * destinataire n'a pas encore de clés (ou si cet appareil n'est pas
-   * relié) : le message part alors en clair, le temps de la transition.
+   * Enveloppe chiffrée, ou null si un destinataire n'a pas encore de clés
+   * (ou si cet appareil n'est pas relié) : le message part alors en clair,
+   * le temps de la transition.
    */
-  chiffrer(a: string, id: string, conversation: string, genre: "message" | "action", contenu: ContenuMessage | ContenuAction): Promise<EnveloppeSortante | null> {
+  chiffrer(d: Destination, id: string, genre: "message" | "action", contenu: ContenuMessage | ContenuAction): Promise<EnveloppeSortante | null> {
     return sousVerrou(this.moi, async () => {
       const c = await bibliotheque();
       const local = await this.local();
       if (!local) return null;
-      const comptes = a === this.moi ? [this.moi] : [a, this.moi];
+      const { conversation } = d;
+      const comptes = [...new Set([...d.comptes.filter((x) => x !== this.moi), this.moi])];
       const fiches = await this.fiches(comptes);
-      if (a !== this.moi && !fiches.get(a)?.identite) return null;
+      if (comptes.some((x) => x !== this.moi && !fiches.get(x)?.identite)) return null;
 
       // Appareils visés, et ceux avec qui aucune session n'est encore ouverte.
       const cibles: { compte: string; numero: number; correspondant?: Correspondant }[] = [];
@@ -156,7 +171,16 @@ export class Chiffreur {
         await this.db.put("cles", correspondant, cleCorrespondant(x.compte, x.numero));
         cles[x.compte]![String(x.numero)] = c.versBase64(message);
       }
-      return { t: "chiffre", id, a, genre, corps: c.versBase64(corps), cles };
+      return {
+        t: "chiffre",
+        id,
+        ...(d.groupe ? { groupe: d.groupe } : { a: d.a ?? this.moi }),
+        ...(d.pour ? { pour: d.pour } : {}),
+        ...(d.mentions?.length ? { mentions: d.mentions } : {}),
+        genre,
+        corps: c.versBase64(corps),
+        cles,
+      };
     });
   }
 
