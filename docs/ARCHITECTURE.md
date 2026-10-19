@@ -404,9 +404,23 @@ sans appareil photo), et le code peut se copier-coller.
   mettra fin au clair.
 - **Ce que le serveur voit encore**, comme chez WhatsApp : qui écrit à qui,
   quand, la taille, les accusés, « écrit… », la présence, les réglages de
-  discussion, les groupes (nom, membres, photo). Les notifications d'un
-  message chiffré disent « Nouveau message » jusqu'au lot 6, où l'appareil
-  les déchiffrera lui-même.
+  discussion, les groupes (nom, membres, photo).
+
+### Notifications déchiffrées sur l'appareil (lot 6)
+
+- **La notification d'un message chiffré** emporte l'enveloppe et la clé
+  destinée à cet appareil-là (chaque abonnement Web Push appartient à une
+  session, donc à un appareil), si le tout tient en 3 000 octets ; sinon
+  elle dit « Nouveau message ». Le serveur n'y ajoute rien qu'il ne relaie
+  déjà, et le service du navigateur ne lit rien (RFC 8291).
+- **Le service worker déchiffre en lecture seule** (`src/sw/dechiffrement.ts`,
+  construit à part en `sw-dechiffrement.js` et chargé par `public/sw.js`) :
+  il lit l'état de la session sans le réécrire, sous le verrou des clés en
+  mode partagé. La page, à son retour, déchiffre le même message depuis le
+  même état ; rien ne se désynchronise, même si elle ne s'ouvre jamais. Un
+  message déjà ouvert par la page est lu tel qu'elle l'a rangé.
+- La base d'un compte absente de l'appareil n'est jamais créée par le
+  service worker : la notification garde alors son texte générique.
 
 ### Suite
 
@@ -424,7 +438,7 @@ sans appareil photo), et le code peut se copier-coller.
    suppressions, votes (fait).
 4. Groupes.
 5. Fichiers.
-6. Notifications déchiffrées sur l'appareil.
+6. Notifications déchiffrées sur l'appareil (fait).
 7. Code de sécurité et avertissement de changement d'identité.
 8. Historique transmis à un appareil relié ; fin des messages non chiffrés.
 

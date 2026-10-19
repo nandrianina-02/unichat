@@ -2,6 +2,14 @@
 // (l'historique est sur l'appareil), et les notifications arrivent même
 // quand elle est fermée (Web Push). L'API n'est jamais mise en cache.
 
+// Déchiffrement des notifications (construit à part : vite.sw.config.ts).
+// Sans lui, les notifications gardent leur texte générique.
+try {
+  importScripts("/sw-dechiffrement.js");
+} catch {
+  // Fichier absent (serveur de développement) : rien à déchiffrer.
+}
+
 const COQUILLE = "unichat-coquille-v1";
 const FICHIERS = "unichat-fichiers-v1";
 const ESSENTIELS = ["/", "/theme.js", "/icone.svg", "/manifest.webmanifest", "/icones/icone-192.png", "/icones/icone-badge.png"];
@@ -105,8 +113,17 @@ self.addEventListener("push", (e) => {
     (async () => {
       if (await fenetreVisible()) return;
       const titre = donnees.titre || "UniChat";
+      let corps = donnees.corps || "Nouveau message";
+      // Message chiffré : déchiffré ici même, sans que le serveur l'ait lu.
+      if (donnees.chiffre && typeof self.dechiffrerNotification === "function") {
+        const texte = await self.dechiffrerNotification(donnees).catch(() => null);
+        if (texte) {
+          const groupe = String(donnees.conversation || "").startsWith("g:");
+          corps = (groupe && donnees.auteur ? `${donnees.auteur} : ${texte}` : texte).slice(0, 200);
+        }
+      }
       await self.registration.showNotification(titre, {
-        body: donnees.corps || "Nouveau message",
+        body: corps,
         tag: donnees.conversation || "unichat",
         renotify: true,
         icon: "/icones/icone-192.png",

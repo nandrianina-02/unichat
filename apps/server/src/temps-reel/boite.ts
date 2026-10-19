@@ -7,6 +7,7 @@ import {
   estGroupe,
   idGroupe,
   schemaClient,
+  type ContenuNotification,
   type EnveloppeChiffree,
   type Entree,
   type MediaMessage,
@@ -16,7 +17,7 @@ import {
   type Preference,
 } from "@unichat/shared";
 import { blocageEntre } from "../lib/blocages";
-import { pousser, resumer } from "../lib/push";
+import { joindreChiffre, pousser, resumer } from "../lib/push";
 import { vapid } from "../routes/push";
 import { visibilites, type Visibilites } from "../lib/confidentialite";
 import { membresDe } from "../lib/groupes";
@@ -641,7 +642,7 @@ export class Boite extends DurableObject<Bindings> {
       this.ctx.waitUntil(this.notifier(proprietaire, { conversation: m.conversation, de: m.de, mentions: m.mentions, resume: resumer(m) }).catch(echec));
     } else if (entree.type === "chiffre" && entree.enveloppe.genre === "message" && entree.enveloppe.de !== proprietaire) {
       const e = entree.enveloppe;
-      this.ctx.waitUntil(this.notifier(proprietaire, { conversation: e.conversation, de: e.de, resume: "Nouveau message" }).catch(echec));
+      this.ctx.waitUntil(this.notifier(proprietaire, { conversation: e.conversation, de: e.de, resume: "Nouveau message", enveloppe: e }).catch(echec));
     }
   }
 
@@ -650,7 +651,10 @@ export class Boite extends DurableObject<Bindings> {
    * Discussion en sourdine : rien, sauf si l'on m'y mentionne. L'application
    * n'affiche rien quand elle est déjà sous les yeux (service worker).
    */
-  private async notifier(moi: string, message: { conversation: string; de: string; mentions?: string[]; resume: string }): Promise<void> {
+  private async notifier(
+    moi: string,
+    message: { conversation: string; de: string; mentions?: string[]; resume: string; enveloppe?: EnveloppeChiffree },
+  ): Promise<void> {
     const cles = vapid(this.env);
     if (!cles) return;
     const maintenant = Date.now();
@@ -659,12 +663,14 @@ export class Boite extends DurableObject<Bindings> {
       .toArray()[0];
     if (sourdine && Number(sourdine.valeur) > maintenant && !message.mentions?.includes(moi)) return;
 
+    // Chaque abonnement appartient à une session, donc à un appareil : il reçoit sa propre clé.
     const { results: abonnements } = await this.env.DB.prepare(
-      `SELECT a.endpoint, a.p256dh, a.auth FROM abonnements_push a JOIN sessions s ON s.id = a.session_id
+      `SELECT a.endpoint, a.p256dh, a.auth, k.numero FROM abonnements_push a JOIN sessions s ON s.id = a.session_id
+       LEFT JOIN appareils_cles k ON k.session_id = a.session_id
        WHERE a.utilisateur_id = ?1 AND s.revoquee_le IS NULL AND s.expire_le > ?2 LIMIT 10`,
     )
       .bind(moi, maintenant)
-      .all<{ endpoint: string; p256dh: string; auth: string }>();
+      .all<{ endpoint: string; p256dh: string; auth: string; numero: number | null }>();
     if (abonnements.length === 0) return;
 
     const auteur = await this.env.DB.prepare("SELECT nom FROM utilisateurs WHERE id = ?1").bind(message.de).first<{ nom: string }>();
@@ -673,14 +679,16 @@ export class Boite extends DurableObject<Bindings> {
       : null;
     const nom = auteur?.nom ?? "Quelqu'un";
     const resume = message.resume;
-    const notification = {
+    const notification: ContenuNotification = {
       titre: groupe ? groupe.nom : nom,
       corps: groupe ? `${nom} : ${resume}` : resume,
       conversation: message.conversation,
+      pour: moi,
+      auteur: nom,
     };
     await Promise.allSettled(
       abonnements.map(async (a) => {
-        const statut = await pousser((entree, init) => fetch(entree, init), a, notification, cles, maintenant);
+        const statut = await pousser((entree, init) => fetch(entree, init), a, joindreChiffre(notification, message.enveloppe, a.numero), cles, maintenant);
         // Abonnement disparu (application désinstallée, permission retirée) : on l'oublie.
         if (statut === 404 || statut === 410) await this.env.DB.prepare("DELETE FROM abonnements_push WHERE endpoint = ?1").bind(a.endpoint).run();
       }),

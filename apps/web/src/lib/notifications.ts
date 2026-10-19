@@ -33,7 +33,8 @@ export async function montrerNotification(
 export function enregistrerServiceWorker(): void {
   if (!import.meta.env.PROD || !("serviceWorker" in navigator)) return;
   window.addEventListener("load", () => {
-    void navigator.serviceWorker.register("/sw.js").catch(() => {
+    // Sans le cache HTTP : le script de déchiffrement qu'il charge se met à jour avec lui.
+    void navigator.serviceWorker.register("/sw.js", { updateViaCache: "none" }).catch(() => {
       // Navigation privée ou stockage refusé : l'application marche sans.
     });
   });

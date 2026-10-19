@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { conversationDirecte, type MessageServeur, type Moi } from "@unichat/shared";
 import { env } from "cloudflare:workers";
 import { decodeProtectedHeader, importJWK, jwtVerify } from "jose";
-import { base64url, chiffrer, clePubliqueVapid, depuisBase64url, enteteVapid, serviceAutorise } from "../src/lib/push";
+import { base64url, chiffrer, clePubliqueVapid, depuisBase64url, enteteVapid, joindreChiffre, serviceAutorise } from "../src/lib/push";
 import { identite, preparer } from "./outils";
 
 type Contexte = Awaited<ReturnType<typeof preparer>>;
@@ -120,5 +120,33 @@ describe("Web Push", () => {
     await wsAna2.attendre((m): m is Extract<MessageServeur, { t: "entree" }> => m.t === "entree" && m.entree.type === "preference");
     wsBob.envoyer({ t: "envoyer", id: crypto.randomUUID(), a: ana.id, texte: "Tu es là ?" });
     expect(await attendre(async () => (await compter()) === 0)).toBe(true);
+  });
+});
+
+describe("notification d'un message chiffré", () => {
+  const base = { titre: "Ana", corps: "Nouveau message", conversation: "d:a:b", pour: "b" };
+  const enveloppe = {
+    id: "m1",
+    conversation: "d:a:b",
+    de: "a",
+    deAppareil: 1,
+    a: "b",
+    genre: "message" as const,
+    corps: "c".repeat(200),
+    cles: { "2": "cle-pour-2", "3": "cle-pour-3" },
+    le: 0,
+  };
+
+  it("chaque appareil reçoit sa propre clé, et seulement la sienne", () => {
+    const n = joindreChiffre(base, enveloppe, 3);
+    expect(n.chiffre).toMatchObject({ id: "m1", deAppareil: 1, cle: "cle-pour-3", corps: enveloppe.corps });
+    expect(JSON.stringify(n)).not.toContain("cle-pour-2");
+  });
+
+  it("sans clé pour l'appareil, ou trop long : le texte générique seul", () => {
+    expect(joindreChiffre(base, enveloppe, 7).chiffre).toBeUndefined();
+    expect(joindreChiffre(base, enveloppe, null).chiffre).toBeUndefined();
+    expect(joindreChiffre(base, { ...enveloppe, corps: "c".repeat(5000) }, 2).chiffre).toBeUndefined();
+    expect(joindreChiffre(base, undefined, 2)).toEqual(base);
   });
 });

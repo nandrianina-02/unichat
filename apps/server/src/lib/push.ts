@@ -1,3 +1,4 @@
+import { NOTIFICATION_OCTETS_MAX, type ContenuNotification, type EnveloppeChiffree } from "@unichat/shared";
 import { SignJWT, importJWK, type JWK } from "jose";
 
 /**
@@ -13,11 +14,7 @@ export interface Abonnement {
   auth: string;
 }
 
-export interface Notification {
-  titre: string;
-  corps: string;
-  conversation: string;
-}
+export type Notification = ContenuNotification;
 
 /** Services de notification connus : le serveur n'envoie rien ailleurs (pas d'URL arbitraire). */
 const SERVICES = [/^fcm\.googleapis\.com$/, /^updates\.push\.services\.mozilla\.com$/, /^push\.services\.mozilla\.com$/, /\.notify\.windows\.com$/, /^web\.push\.apple\.com$/];
@@ -155,4 +152,19 @@ export function resumer(m: {
   if (m.contact) return `Contact : ${m.contact.nom}`;
   if (m.sondage) return `Sondage : ${m.sondage.question}`;
   return "Nouveau message";
+}
+
+/**
+ * Message chiffré : la notification d'un appareil emporte l'enveloppe et la
+ * clé qui lui est destinée, pour qu'il en montre le texte. Sans clé pour lui,
+ * ou trop long pour tenir dans une notification : le texte générique reste.
+ */
+export function joindreChiffre(notification: ContenuNotification, enveloppe: EnveloppeChiffree | undefined, numero: number | null): ContenuNotification {
+  const cle = enveloppe && numero ? enveloppe.cles[String(numero)] : undefined;
+  if (!enveloppe || !cle) return notification;
+  const complete: ContenuNotification = {
+    ...notification,
+    chiffre: { id: enveloppe.id, de: enveloppe.de, deAppareil: enveloppe.deAppareil, conversation: enveloppe.conversation, corps: enveloppe.corps, cle },
+  };
+  return new TextEncoder().encode(JSON.stringify(complete)).length <= NOTIFICATION_OCTETS_MAX ? complete : notification;
 }
