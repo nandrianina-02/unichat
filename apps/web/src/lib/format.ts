@@ -138,21 +138,24 @@ export function libelleMedia(media: { type: string; nom: string; vocal?: boolean
 /** Texte qui résume un message ailleurs que dans sa bulle : citation, notification, liste. */
 export const resumeMessage = (m: {
   texte: string;
+  indechiffrable?: boolean;
   media?: { type: string; nom: string; vocal?: boolean; vueUnique?: boolean };
   position?: unknown;
   contact?: { nom: string };
   sondage?: { question: string };
 }) =>
   m.texte ||
-  (m.media
-    ? libelleMedia(m.media)
-    : m.position
-      ? "Position"
-      : m.contact
-        ? `Contact : ${m.contact.nom}`
-        : m.sondage
-          ? `Sondage : ${m.sondage.question}`
-          : "");
+  (m.indechiffrable
+    ? "Message illisible sur cet appareil"
+    : m.media
+      ? libelleMedia(m.media)
+      : m.position
+        ? "Position"
+        : m.contact
+          ? `Contact : ${m.contact.nom}`
+          : m.sondage
+            ? `Sondage : ${m.sondage.question}`
+            : "");
 
 /** « 24 heures », « 7 jours », « 90 jours ». */
 export function dureeEphemere(ms: number): string {

@@ -16,7 +16,7 @@ Les choix techniques et leurs raisons : [docs/ARCHITECTURE.md](docs/ARCHITECTURE
 | 2 ter. Médias | Photos, vidéos, documents et messages vocaux (Karaks Storage, 30 jours), aperçu avec légende, visionneuse | Fait (web) |
 | 2 quinquies. Quotidien | Bloquer, signaler ; sourdine, favoris, archives, épingles, effacer, supprimer, exporter une discussion ; transférer, sélectionner, modifier, messages importants, épingler un message, rechercher dans une discussion ; emoji, liens cliquables et aperçus, mentions @ ; confidentialité de la présence et des confirmations de lecture, ajout aux groupes, photo et lien d'invitation des groupes ; médias, liens et documents, infos du message, marquer comme non lu, fond des discussions ; messages éphémères, vue unique, position, contact, sondages | Fait (web) |
 | 2 quater. Android | Application installée depuis Chrome (PWA, hors connexion, bouton Retour, appui long et glissement), notifications Web Push même fermée, animations d'ouverture et de fermeture | Fait |
-| 3. Sécurité | Chiffrement de bout en bout (spécifications de Signal), appareils reliés, code de sécurité | En cours (lots 1 et 2 sur 8 : clés, annuaire, appareils reliés par QR code) |
+| 3. Sécurité | Chiffrement de bout en bout (spécifications de Signal), appareils reliés, code de sécurité | En cours (lots 1 à 3 sur 8 : clés, appareils reliés par QR code, discussions à deux chiffrées) |
 | 4. Appels et statuts | Appels audio et vidéo (WebRTC), statuts | À venir |
 | 5. API UniChat | Comptes entreprise et bots, REST, webhooks signés, documentation | À venir |
 | 6. Ordinateur | Application Tauri, communautés, chaînes | À venir |

@@ -150,3 +150,14 @@ function dechiffrerSur(sessions: Session[], i: number, entete: Uint8Array, chiff
     nouvelleSession: false,
   };
 }
+
+/**
+ * Clés locales que réclame un message d'ouverture (clé signée, clé unique),
+ * lues avant de déchiffrer : l'application les cherche dans son stockage.
+ * Null pour un message ordinaire.
+ */
+export function exigencesOuverture(message: Uint8Array): { cleSigneeId: number; cleUniqueId: number } | null {
+  if (message.length < 2 + TAILLE_OUVERTURE || message[0] !== VERSION || message[1] !== TYPE_OUVERTURE) return null;
+  const o = lireOuverture(message, 2);
+  return { cleSigneeId: o.cleSigneeId, cleUniqueId: o.cleUniqueId };
+}

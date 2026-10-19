@@ -367,28 +367,61 @@ sans appareil photo), et le code peut se copier-coller.
   l'annuaire et devront être reliés ; l'événement figure dans l'activité du
   compte.
 
-### Messages (lots suivants)
+### Discussions à deux chiffrées (lot 3)
 
-- **Contenu chiffré une fois** sous une clé aléatoire (AES-256-GCM) ; cette
-  clé part vers chaque appareil destinataire, et vers mes autres appareils,
-  par sa session Double Ratchet. Le serveur garde son rôle (relayer, compter,
-  accuser réception) sans lire. Il refuse un envoi qui oublie un appareil
-  inscrit : l'application refait ses sessions et renvoie.
+- **Enveloppe** (`t: "chiffre"`) : identifiant, destinataire, genre (message
+  ou action), contenu scellé une fois (AES-256-GCM, données associées
+  `identifiant|discussion|auteur` : il ne peut pas être déplacé), et pour
+  chaque appareil la clé du contenu suivie de l'identifiant, chiffrée par sa
+  session Double Ratchet. Chaque boîte ne reçoit que les clés de ses
+  appareils ; mes autres appareils reçoivent la leur.
+- **Contenu chiffré** : texte, réponse citée, aperçu de lien, transfert,
+  durée éphémère, position, fiche de contact, sondage, caractéristiques du
+  fichier joint. **Actions chiffrées** : réaction, modification, suppression
+  pour tous, épingle, vote, réglage éphémère, vue unique ouverte. Le contenu
+  déchiffré est vérifié par l'application (`schemaContenuMessage`,
+  `schemaContenuAction`), puis traité comme l'entrée en clair qu'il aurait
+  été : mêmes contrôles d'auteur et de délai.
+- **Le serveur vérifie** ce qu'il peut : existence et blocage comme en clair,
+  et que l'enveloppe vise exactement les appareils inscrits (refus
+  `appareils` avec la bonne liste, l'application rechiffre et renvoie ; deux
+  essais au plus). L'appareil qui envoie doit être inscrit (`non_relie`).
+- **Côté appareil** (`lib/chiffrement.ts`) : listes d'appareils relues
+  toutes les 5 minutes (`/api/cles/appareils`, sans consommer de clé
+  unique), paquets demandés pour les seuls appareils sans session, état de
+  session rangé avant que le message parte (une clé de message ne sert
+  jamais deux fois), déchiffrement par lots sous le verrou des clés. Un
+  message déjà lu n'est pas déchiffré deux fois (journal rejoué, autre
+  onglet).
+- **Identité épinglée** au premier contact ; un changement est retenu et
+  noté, pour l'avertissement du lot 7.
+- **Message illisible** sur un appareil relié après l'envoi : sa place est
+  marquée (« Message illisible sur cet appareil »). L'historique d'avant la
+  liaison viendra avec le lot 8.
+- **Transition** : vers un compte qui n'a pas encore de clés, ou depuis un
+  appareil pas encore relié, le message part en clair comme avant. Une
+  erreur de chiffrement ne fait jamais partir un message en clair. Le lot 8
+  mettra fin au clair.
 - **Ce que le serveur voit encore**, comme chez WhatsApp : qui écrit à qui,
   quand, la taille, les accusés, « écrit… », la présence, les réglages de
-  discussion, les groupes (nom, membres, photo).
-- **Fichiers** chiffrés sur l'appareil avant l'envoi ; nom, type et vignette
-  voyagent dans le message chiffré. Karaks Storage ne voit que des octets.
-- **Notifications** : le service worker déchiffre sur l'appareil.
-- **Code de sécurité** à comparer de vive voix ou par QR code ; un changement
-  d'identité d'un contact est signalé dans la discussion.
+  discussion, les groupes (nom, membres, photo). Les notifications d'un
+  message chiffré disent « Nouveau message » jusqu'au lot 6, où l'appareil
+  les déchiffrera lui-même.
+
+### Suite
+
+- **Groupes** (lot 4) : même enveloppe, une clé par appareil de chaque membre.
+- **Fichiers** (lot 5) : chiffrés sur l'appareil avant l'envoi ; nom, type et
+  vignette voyagent déjà dans le contenu chiffré, Karaks Storage ne verra
+  plus que des octets.
+- **Code de sécurité** (lot 7) à comparer de vive voix ou par QR code.
 
 ### Lots
 
 1. Socle cryptographique, annuaire des clés, inscription du premier appareil (fait).
 2. Relier un appareil (QR code), réinitialiser les clés du compte (fait).
 3. Discussions à deux chiffrées : messages, réactions, modifications,
-   suppressions, votes.
+   suppressions, votes (fait).
 4. Groupes.
 5. Fichiers.
 6. Notifications déchiffrées sur l'appareil.

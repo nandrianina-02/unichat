@@ -41,7 +41,7 @@ async function memeIdentite(locale: IdentitePrivee, distante: IdentiteCles): Pro
  * Un seul onglet à la fois touche aux clés : deux onglets ouverts ensemble
  * créeraient chacun une identité, et l'un écraserait celle de l'autre.
  */
-async function sousVerrou<T>(moi: string, tache: () => Promise<T>): Promise<T> {
+export async function sousVerrou<T>(moi: string, tache: () => Promise<T>): Promise<T> {
   return navigator.locks ? await navigator.locks.request(`unichat-cles-${moi}`, tache) : tache();
 }
 

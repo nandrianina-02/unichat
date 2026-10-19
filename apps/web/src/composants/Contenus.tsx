@@ -94,6 +94,10 @@ export function CarteContact({ contact, onMessage }: { contact: NonNullable<Mess
   const connue = etat.personnes[contact.id];
   const [ajout, setAjout] = useState<"oui" | "en-cours" | null>(null);
   const estSoi = contact.id === messagerie.moi;
+  // Chiffrée, la fiche porte le nom qu'a écrit l'expéditeur : on affiche celui du serveur dès qu'il est connu.
+  useEffect(() => {
+    if (!estSoi) void messagerie.chargerPersonne(contact.id);
+  }, [messagerie, contact.id, estSoi]);
 
   async function ajouter() {
     setAjout("en-cours");
@@ -108,10 +112,10 @@ export function CarteContact({ contact, onMessage }: { contact: NonNullable<Mess
   return (
     <div className="w-[280px] max-w-full overflow-hidden rounded-md bg-texte/5">
       <div className="flex items-center gap-3 p-2.5">
-        <Avatar id={contact.id} photo={connue?.photo ?? null} nom={contact.nom} taille={44} />
+        <Avatar id={contact.id} photo={connue?.photo ?? null} nom={connue?.nom ?? contact.nom} taille={44} />
         <span className="min-w-0 flex-1">
-          <span className="block truncate text-[14.5px] font-medium text-texte">{contact.nom}</span>
-          {contact.pseudo && <span className="block truncate text-[12.5px] text-texte-2">@{contact.pseudo}</span>}
+          <span className="block truncate text-[14.5px] font-medium text-texte">{connue?.nom ?? contact.nom}</span>
+          {(connue?.pseudo ?? contact.pseudo) && <span className="block truncate text-[12.5px] text-texte-2">@{connue?.pseudo ?? contact.pseudo}</span>}
         </span>
       </div>
       {!estSoi && (

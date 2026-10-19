@@ -7,6 +7,7 @@ import {
   estGroupe,
   idGroupe,
   schemaClient,
+  type EnveloppeChiffree,
   type Entree,
   type MediaMessage,
   type Message,
@@ -45,6 +46,7 @@ const AUCUN_BLOCAGE = { jeBloque: false, ilBloque: false };
 
 function conversationDe(e: NouvelleEntree): string {
   if (e.type === "message") return e.message.conversation;
+  if (e.type === "chiffre") return e.enveloppe.conversation;
   if (e.type === "groupe") return e.evenement.conversation;
   return e.conversation;
 }
@@ -157,6 +159,8 @@ export class Boite extends DurableObject<Bindings> {
         return this.recu(attache, m.jusqua);
       case "envoyer":
         return this.envoyerMessage(ws, attache, m);
+      case "chiffre":
+        return this.envoyerChiffre(ws, attache, m);
       case "lu": {
         const maintenant = Date.now();
         // L'auteur ne fait confiance à cet accusé que pour ses propres messages
@@ -321,7 +325,7 @@ export class Boite extends DurableObject<Bindings> {
     const aRemettre = this.sql
       .exec<{ seq: number; message_id: string; expediteur: string; conversation: string }>(
         `SELECT seq, message_id, expediteur, conversation FROM journal
-         WHERE seq <= ? AND type = 'message' AND remis_envoye = 0 AND expediteur <> ?
+         WHERE seq <= ? AND type IN ('message', 'chiffre') AND remis_envoye = 0 AND expediteur <> ?
          ORDER BY seq`,
         jusqua,
         attache.utilisateurId,
@@ -352,7 +356,7 @@ export class Boite extends DurableObject<Bindings> {
       }
     }
     // Mes propres messages n'appellent pas d'accusé.
-    this.sql.exec("UPDATE journal SET remis_envoye = 1 WHERE seq <= ? AND type = 'message' AND expediteur = ?", jusqua, attache.utilisateurId);
+    this.sql.exec("UPDATE journal SET remis_envoye = 1 WHERE seq <= ? AND type IN ('message', 'chiffre') AND expediteur = ?", jusqua, attache.utilisateurId);
     this.nettoyer(maintenant);
   }
 
@@ -465,6 +469,90 @@ export class Boite extends DurableObject<Bindings> {
     this.envoyer(ws, { t: "accepte", id: m.id, le: maintenant, destinataires: annonces });
   }
 
+  /**
+   * Discussion à deux chiffrée. Le serveur ne lit rien ; il vérifie ce
+   * qu'il peut vérifier : les droits (existence, blocage), et que la clé du
+   * contenu part bien vers chaque appareil inscrit, ni plus ni moins. Sinon
+   * l'application reçoit la bonne liste, refait ses sessions et renvoie.
+   */
+  private async envoyerChiffre(ws: WebSocket, attache: Attache, m: Extract<MessageClient, { t: "chiffre" }>): Promise<void> {
+    const maintenant = Date.now();
+    const moi = attache.utilisateurId;
+    if (!this.autoriserEnvoi(attache.sessionId, maintenant)) {
+      this.envoyer(ws, { t: "refuse", id: m.id, message: "Vous envoyez trop de messages. Patientez quelques secondes." });
+      return;
+    }
+    const conversation = conversationDirecte(moi, m.a);
+    const annonces = m.a === moi ? 0 : 1;
+    let destinataires = m.a === moi ? [] : [m.a];
+    if (m.a !== moi) {
+      if (!(await this.destinataireExiste(m.a))) {
+        this.envoyer(ws, { t: "refuse", id: m.id, message: "Cette personne n'existe pas ou plus sur UniChat." });
+        return;
+      }
+      const relation = await this.blocage(moi, m.a);
+      if (relation.jeBloque) {
+        this.envoyer(ws, { t: "refuse", id: m.id, message: "Vous avez bloqué ce contact. Débloquez-le pour lui écrire." });
+        return;
+      }
+      // Comme en clair : un message à qui m'a bloqué est accepté sans lui parvenir ;
+      // une action ne traverse un blocage dans aucun sens.
+      if (relation.ilBloque || (m.genre === "action" && this.bloqueDansUnSens(relation))) destinataires = [];
+    }
+
+    // Renvoi après une coupure : déjà accepté, on confirme sans redistribuer.
+    const deja = this.sql
+      .exec<{ contenu: string }>("SELECT contenu FROM journal WHERE message_id = ? AND type IN ('chiffre', 'chiffre_action') AND expediteur = ?", m.id, moi)
+      .toArray()[0];
+    if (deja) {
+      const { enveloppe } = JSON.parse(deja.contenu) as { enveloppe: EnveloppeChiffree };
+      this.envoyer(ws, { t: "accepte", id: m.id, le: enveloppe.le, destinataires: annonces });
+      return;
+    }
+
+    const comptes = m.a === moi ? [moi] : [m.a, moi];
+    const { results } = await this.env.DB.prepare(
+      "SELECT utilisateur_id, numero, session_id FROM appareils_cles WHERE utilisateur_id IN (SELECT value FROM json_each(?1))",
+    )
+      .bind(JSON.stringify(comptes))
+      .all<{ utilisateur_id: string; numero: number; session_id: string | null }>();
+    const emetteur = results.find((a) => a.utilisateur_id === moi && a.session_id === attache.sessionId);
+    if (!emetteur) {
+      this.envoyer(ws, { t: "refuse", id: m.id, code: "non_relie", message: "Cet appareil n'a pas les clés du compte : reliez-le pour écrire." });
+      return;
+    }
+    const attendus: Record<string, number[]> = {};
+    for (const id of comptes) {
+      attendus[id] = results
+        .filter((a) => a.utilisateur_id === id && !(id === moi && a.numero === emetteur.numero))
+        .map((a) => a.numero)
+        .sort((x, y) => x - y);
+    }
+    const vises = (id: string) => Object.keys(m.cles[id] ?? {}).map(Number).sort((x, y) => x - y);
+    const conforme =
+      Object.keys(m.cles).every((id) => comptes.includes(id)) && comptes.every((id) => vises(id).join(",") === attendus[id]!.join(","));
+    if (!conforme) {
+      this.envoyer(ws, { t: "refuse", id: m.id, code: "appareils", message: "Les appareils de la discussion ont changé.", appareils: attendus });
+      return;
+    }
+
+    // Chaque boîte ne reçoit que les clés de ses propres appareils.
+    const enveloppe = (pour: string): EnveloppeChiffree => ({
+      id: m.id,
+      conversation,
+      de: moi,
+      deAppareil: emetteur.numero,
+      a: m.a,
+      genre: m.genre,
+      corps: m.corps,
+      cles: m.cles[pour] ?? {},
+      le: maintenant,
+    });
+    for (const id of destinataires) await this.distribuer([id], { type: "chiffre", enveloppe: enveloppe(id) });
+    this.ajouter({ type: "chiffre", enveloppe: enveloppe(moi) });
+    this.envoyer(ws, { t: "accepte", id: m.id, le: maintenant, destinataires: annonces });
+  }
+
   /** Réaction ou suppression : transmise à chaque participant et à mes autres appareils. */
   private async partager(ws: WebSocket, moi: string, conversation: string, entree: NouvelleEntree): Promise<void> {
     const autres = await this.destinatairesPermis(conversation, moi);
@@ -546,8 +634,14 @@ export class Boite extends DurableObject<Bindings> {
     if (entree.type === "blocage") this.blocagesConnus.delete(entree.personne);
     this.ajouter(entree);
     // La notification part sans retarder l'expéditeur.
-    if (entree.type === "message" && proprietaire && entree.message.de !== proprietaire) {
-      this.ctx.waitUntil(this.notifier(proprietaire, entree.message).catch((e) => console.warn("notification non envoyée", String(e))));
+    if (!proprietaire) return;
+    const echec = (e: unknown) => console.warn("notification non envoyée", String(e));
+    if (entree.type === "message" && entree.message.de !== proprietaire) {
+      const m = entree.message;
+      this.ctx.waitUntil(this.notifier(proprietaire, { conversation: m.conversation, de: m.de, mentions: m.mentions, resume: resumer(m) }).catch(echec));
+    } else if (entree.type === "chiffre" && entree.enveloppe.genre === "message" && entree.enveloppe.de !== proprietaire) {
+      const e = entree.enveloppe;
+      this.ctx.waitUntil(this.notifier(proprietaire, { conversation: e.conversation, de: e.de, resume: "Nouveau message" }).catch(echec));
     }
   }
 
@@ -556,7 +650,7 @@ export class Boite extends DurableObject<Bindings> {
    * Discussion en sourdine : rien, sauf si l'on m'y mentionne. L'application
    * n'affiche rien quand elle est déjà sous les yeux (service worker).
    */
-  private async notifier(moi: string, message: Message): Promise<void> {
+  private async notifier(moi: string, message: { conversation: string; de: string; mentions?: string[]; resume: string }): Promise<void> {
     const cles = vapid(this.env);
     if (!cles) return;
     const maintenant = Date.now();
@@ -578,7 +672,7 @@ export class Boite extends DurableObject<Bindings> {
       ? await this.env.DB.prepare("SELECT nom FROM groupes WHERE id = ?1").bind(idGroupe(message.conversation)).first<{ nom: string }>()
       : null;
     const nom = auteur?.nom ?? "Quelqu'un";
-    const resume = resumer(message);
+    const resume = message.resume;
     const notification = {
       titre: groupe ? groupe.nom : nom,
       corps: groupe ? `${nom} : ${resume}` : resume,
@@ -643,12 +737,13 @@ export class Boite extends DurableObject<Bindings> {
         this.sql.exec("INSERT OR REPLACE INTO etat (cle, valeur) VALUES (?, ?)", `muet:${e.conversation}`, String(e.preference.muetJusqua));
       } else this.sql.exec("DELETE FROM etat WHERE cle = ?", `muet:${e.conversation}`);
     }
-    const message = e.type === "message" ? e.message : null;
+    const message = e.type === "message" ? e.message : e.type === "chiffre" ? e.enveloppe : null;
+    const type = e.type === "chiffre" && e.enveloppe.genre === "action" ? "chiffre_action" : e.type;
     const { seq } = this.sql
       .exec<{ seq: number }>(
         `INSERT INTO journal (type, contenu, expediteur, message_id, conversation, cree_le)
          VALUES (?, ?, ?, ?, ?, ?) RETURNING seq`,
-        e.type,
+        type,
         JSON.stringify(e),
         message?.de ?? null,
         message?.id ?? null,

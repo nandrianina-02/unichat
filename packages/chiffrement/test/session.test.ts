@@ -9,6 +9,7 @@ import {
   creerIdentite,
   dechiffrer,
   depuisBase64,
+  exigencesOuverture,
   identitePublique,
   octetsVersTexte,
   ouvrir,
@@ -252,6 +253,16 @@ describe("sessions", () => {
     s.versBob(s.deAlice("ouverture"));
     const copie = structuredClone(s.chezAlice);
     expect(copie).toEqual(s.chezAlice);
+  });
+
+  it("une ouverture dit quelles clés locales elle réclame ; un message ordinaire, aucune", () => {
+    const s = paire();
+    const ouverture = s.deAlice("x");
+    const unique = s.bob.paquet().cleUnique!.id;
+    expect(exigencesOuverture(ouverture)).toEqual({ cleSigneeId: 1, cleUniqueId: unique });
+    s.versBob(ouverture);
+    s.versAlice(s.deBob("ok"));
+    expect(exigencesOuverture(s.deAlice("y"))).toBeNull();
   });
 
   it("l'identité de l'expéditeur est rendue pour être comparée", () => {

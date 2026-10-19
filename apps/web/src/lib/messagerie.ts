@@ -9,6 +9,9 @@ import {
   idGroupe,
   type CarteProfil,
   type Citation,
+  type ContenuAction,
+  type ContenuMessage,
+  type EnveloppeChiffree,
   type Entree,
   type Groupe,
   type MessageClient,
@@ -20,6 +23,7 @@ import {
   type Reaction,
 } from "@unichat/shared";
 import { ErreurApi, api } from "./api";
+import { Chiffreur } from "./chiffrement";
 import { identiteLocale, preparerCles, reinitialiserCles, relierCles, type EtatChiffrement } from "./cles";
 import type { IdentitePrivee } from "@unichat/chiffrement";
 import { retirerMedia, telechargerMedia, transfererMedia } from "./api-medias";
@@ -67,6 +71,70 @@ const plusAvance = (a: EtatMessage | undefined, b: EtatMessage): EtatMessage =>
 const DUREE_ECRIT = 5000;
 const INTERVALLE_PING = 25_000;
 
+/**
+ * Entrée prête à appliquer : les enveloppes chiffrées sont ouvertes (et
+ * deviennent les entrées en clair qu'elles portaient), écartées, ou
+ * marquées illisibles sur cet appareil.
+ */
+type EntreeLocale =
+  | Exclude<Entree, { type: "chiffre" }>
+  | { seq: number; type: "ignore" }
+  | { seq: number; type: "illisible"; message: { id: string; conversation: string; de: string; a: string; le: number } };
+
+/** Ce qui part chiffré d'un message : tout sauf l'enveloppe (identifiant, auteur, heure), que voit le serveur. */
+function contenuMessage(m: MessageLocal): ContenuMessage {
+  const f = m.media;
+  return {
+    v: 1,
+    texte: m.texte,
+    ...(f
+      ? {
+          media: {
+            id: f.id,
+            type: f.type,
+            mime: f.mime,
+            nom: f.nom,
+            taille: f.taille,
+            ...(f.largeur ? { largeur: f.largeur } : {}),
+            ...(f.hauteur ? { hauteur: f.hauteur } : {}),
+            ...(f.duree !== undefined ? { duree: f.duree } : {}),
+            ...(f.apercu ? { apercu: f.apercu } : {}),
+            ...(f.vocal ? { vocal: true } : {}),
+            ...(f.vueUnique ? { vueUnique: true } : {}),
+          },
+        }
+      : {}),
+    ...(m.reponseA ? { reponseA: { id: m.reponseA.id, de: m.reponseA.de, extrait: m.reponseA.extrait } } : {}),
+    ...(m.transfere ? { transfere: m.transfere } : {}),
+    ...(m.lien ? { lien: m.lien } : {}),
+    ...(m.ephemere ? { ephemere: m.ephemere } : {}),
+    ...(m.position ? { position: m.position } : {}),
+    ...(m.contact ? { contact: { id: m.contact.id, nom: m.contact.nom, pseudo: m.contact.pseudo } } : {}),
+    ...(m.sondage ? { sondage: m.sondage } : {}),
+  };
+}
+
+/** Une action déchiffrée redevient l'entrée qu'elle aurait été en clair : la suite la traite pareil. */
+function versEntreeAction(seq: number, e: EnveloppeChiffree, a: ContenuAction): EntreeLocale {
+  const commun = { seq, conversation: e.conversation, par: e.de, le: e.le };
+  switch (a.action) {
+    case "reaction":
+      return { ...commun, type: "reaction", message: a.message, code: a.code };
+    case "suppression":
+      return { ...commun, type: "suppression", message: a.message };
+    case "modification":
+      return { ...commun, type: "modification", message: a.message, texte: a.texte.trim() };
+    case "epingle":
+      return { ...commun, type: "epingle", message: a.message, jusqua: a.jusqua };
+    case "vote":
+      return { ...commun, type: "vote", message: a.message, choix: [...new Set(a.choix)] };
+    case "ephemere":
+      return { ...commun, type: "ephemere", duree: a.duree };
+    case "ouvert":
+      return { ...commun, type: "ouvert", message: a.message };
+  }
+}
+
 /** Les épinglées d'abord, puis la plus récente en haut. */
 function trier(conversations: ConversationLocale[]): ConversationLocale[] {
   return [...conversations].sort(
@@ -88,6 +156,9 @@ export const EPINGLES_MAX = 3;
  */
 export class Messagerie {
   private db!: Stockage;
+  private chiffreur!: Chiffreur;
+  /** Envois chiffrés en attente de réponse : rechiffrés si la liste d'appareils a changé. */
+  private readonly envoisChiffres = new Map<string, { tentatives: number; relancer: () => Promise<void> }>();
   private ws: WebSocket | null = null;
   private seq: number | null = null;
   private tentative = 0;
@@ -149,6 +220,7 @@ export class Messagerie {
 
   async demarrer(): Promise<void> {
     this.db = await ouvrirStockage(this.moi);
+    this.chiffreur = new Chiffreur(this.db, this.moi);
     this.seq = ((await this.db.get("reglages", "seq")) as number | undefined) ?? null;
     const [conversations, personnes, groupes] = await Promise.all([
       this.db.getAll("conversations"),
@@ -285,7 +357,7 @@ export class Messagerie {
   private async recevoir(m: MessageServeur): Promise<void> {
     switch (m.t) {
       case "lot":
-        await this.appliquer(m.entrees);
+        await this.appliquer(await this.ouvrirEnveloppes(m.entrees));
         if (!m.fin) {
           this.brut({ t: "bonjour", depuis: this.seq });
           return;
@@ -296,17 +368,29 @@ export class Messagerie {
         if (this.ouverte && !estGroupe(this.ouverte)) this.demanderPresence(autreParticipant(this.ouverte, this.moi));
         return;
       case "entree":
-        await this.appliquer([m.entree]);
+        await this.appliquer(await this.ouvrirEnveloppes([m.entree]));
         return;
       case "accepte":
+        this.envoisChiffres.delete(m.id);
         await this.modifierMessage(m.id, (msg) => {
           const accepte = { ...msg, le: m.le, attendus: m.destinataires, erreur: undefined };
           return { ...accepte, etat: plusAvance(msg.etat === "echec" ? "attente" : msg.etat, this.etatDeMonMessage(accepte)) };
         });
         return;
-      case "refuse":
+      case "refuse": {
+        // Appareils de la discussion changés depuis la dernière liste : on rechiffre pour les bons.
+        const envoi = m.id ? this.envoisChiffres.get(m.id) : undefined;
+        if (envoi && m.code === "appareils" && envoi.tentatives < 2) {
+          envoi.tentatives += 1;
+          this.chiffreur.oublier(Object.keys(m.appareils ?? {}));
+          void envoi.relancer();
+          return;
+        }
+        if (m.id) this.envoisChiffres.delete(m.id);
+        if (m.code === "non_relie") void this.preparerCles();
         if (m.id) await this.modifierMessage(m.id, (msg) => ({ ...msg, etat: "echec", erreur: m.message }));
         return;
+      }
       case "ecrit":
         this.publier({ ecrit: { ...this.etat.ecrit, [m.conversation]: { de: m.de, fin: Date.now() + DUREE_ECRIT } } });
         setTimeout(() => {
@@ -334,7 +418,57 @@ export class Messagerie {
     return "envoye";
   }
 
-  private async appliquer(entrees: Entree[]): Promise<void> {
+  /**
+   * Ouvre les enveloppes chiffrées d'un lot. Un message déjà lu sur cet
+   * appareil (journal rejoué, autre onglet) n'est pas déchiffré deux fois :
+   * sa clé de message n'existe plus.
+   */
+  private async ouvrirEnveloppes(entrees: Entree[]): Promise<EntreeLocale[]> {
+    const enveloppes = entrees.flatMap((e) => (e.type === "chiffre" ? [e.enveloppe] : []));
+    if (enveloppes.length === 0) return entrees as EntreeLocale[];
+    const dejaLus = new Set<string>();
+    for (const e of enveloppes) {
+      if (e.genre !== "message") continue;
+      const existant = await this.db.get("messages", e.id);
+      if (existant && !existant.indechiffrable) dejaLus.add(e.id);
+    }
+    const resultats = await this.chiffreur.dechiffrerLot(enveloppes.filter((e) => !dejaLus.has(e.id)));
+    return entrees.map((e): EntreeLocale => {
+      if (e.type !== "chiffre") return e;
+      const env = e.enveloppe;
+      const r = dejaLus.has(env.id) ? undefined : resultats.get(env.id);
+      if (!r || r.type === "ignore") return { seq: e.seq, type: "ignore" };
+      if (r.type === "illisible") {
+        return env.genre === "message"
+          ? { seq: e.seq, type: "illisible", message: { id: env.id, conversation: env.conversation, de: env.de, a: env.a, le: env.le } }
+          : { seq: e.seq, type: "ignore" };
+      }
+      if (r.type === "action") return versEntreeAction(e.seq, env, r.contenu);
+      const c = r.contenu;
+      return {
+        seq: e.seq,
+        type: "message",
+        message: {
+          id: env.id,
+          conversation: env.conversation,
+          de: env.de,
+          a: env.a,
+          texte: c.texte.trim(),
+          le: env.le,
+          ...(c.media ? { media: c.media } : {}),
+          ...(c.reponseA ? { reponseA: c.reponseA } : {}),
+          ...(c.transfere ? { transfere: c.transfere } : {}),
+          ...(c.lien ? { lien: c.lien } : {}),
+          ...(c.ephemere ? { ephemere: c.ephemere } : {}),
+          ...(c.position ? { position: c.position } : {}),
+          ...(c.contact ? { contact: c.contact } : {}),
+          ...(c.sondage ? { sondage: c.sondage } : {}),
+        },
+      };
+    });
+  }
+
+  private async appliquer(entrees: EntreeLocale[]): Promise<void> {
     if (entrees.length === 0) return;
     const tx = this.db.transaction(["messages", "conversations"], "readwrite");
     const messages = tx.objectStore("messages");
@@ -346,6 +480,7 @@ export class Messagerie {
     const blocages: { personne: string; bloque: boolean }[] = [];
 
     for (const e of entrees) {
+      if (e.type === "ignore") continue;
       if (e.type === "message") {
         const m = e.message;
         // Un message arrivé après la suppression de la discussion la fait revenir.
@@ -466,6 +601,17 @@ export class Messagerie {
         supprimes.push(...effaces);
         if (retiree) retirees.add(e.conversation);
         touchees.add(e.conversation);
+      } else if (e.type === "illisible") {
+        // Pas de clé pour cet appareil (relié après l'envoi) : la place du message reste marquée.
+        const m = e.message;
+        retirees.delete(m.conversation);
+        if (!(await messages.get(m.id))) {
+          const mien = m.de === this.moi;
+          const local: MessageLocal = { ...m, texte: "", type: "texte", indechiffrable: true, lu: mien, ...(mien ? { etat: "envoye" as const } : {}) };
+          await messages.put(local);
+          if (!mien) nouveaux.push(local);
+        }
+        touchees.add(m.conversation);
       } else {
         const ev = e.evenement;
         if (!(await messages.get(ev.id))) {
@@ -564,6 +710,33 @@ export class Messagerie {
   private envoyerMessage(m: MessageLocal): void {
     // Un fichier encore en route : le message partira à la fin de l'envoi.
     if (m.media && !m.media.id) return;
+    void this.expedier(m);
+  }
+
+  /**
+   * Discussion à deux : chiffré, si le destinataire a des clés. Une erreur
+   * de chiffrement ne fait jamais partir le message en clair ; il reste à
+   * renvoyer.
+   */
+  private async expedier(m: MessageLocal): Promise<void> {
+    if (!estGroupe(m.conversation)) {
+      if (!this.connecte) return;
+      try {
+        const enveloppe = await this.chiffreur.chiffrer(m.a, m.id, m.conversation, "message", contenuMessage(m));
+        if (enveloppe) {
+          this.envoisChiffres.set(m.id, { tentatives: this.envoisChiffres.get(m.id)?.tentatives ?? 0, relancer: () => this.expedier(m) });
+          this.brut(enveloppe);
+          return;
+        }
+      } catch {
+        if (this.connecte) await this.modifierMessage(m.id, (x) => ({ ...x, etat: "echec", erreur: "Envoi impossible pour le moment. Réessayez." }));
+        return;
+      }
+    }
+    this.envoyerEnClair(m);
+  }
+
+  private envoyerEnClair(m: MessageLocal): void {
     const groupe = estGroupe(m.conversation);
     const media = m.media
       ? {
@@ -625,9 +798,37 @@ export class Messagerie {
     this.envoyerMessage(message);
   }
 
+  /**
+   * Action sur une discussion (réaction, modification, suppression, épingle,
+   * vote, éphémères, vue unique ouverte) : chiffrée dans une discussion à
+   * deux, en clair dans un groupe (lot 4). Faux si la connexion manque.
+   */
+  private async agir(conversation: string, contenu: ContenuAction, enClair: MessageClient): Promise<boolean> {
+    if (!this.connecte) return false;
+    if (estGroupe(conversation)) return this.brut(enClair);
+    const a = autreParticipant(conversation, this.moi);
+    const id = crypto.randomUUID();
+    const envoyer = async (): Promise<boolean> => {
+      const enveloppe = await this.chiffreur.chiffrer(a, id, conversation, "action", contenu);
+      if (!enveloppe) return this.brut(enClair);
+      this.envoisChiffres.set(id, {
+        tentatives: this.envoisChiffres.get(id)?.tentatives ?? 0,
+        relancer: async () => {
+          await envoyer().catch(() => false);
+        },
+      });
+      return this.brut(enveloppe);
+    };
+    try {
+      return await envoyer();
+    } catch {
+      return false;
+    }
+  }
+
   /** Messages éphémères : pour tous les participants, à partir des prochains messages. */
-  reglerEphemere(conversation: string, duree: number | null): boolean {
-    return this.brut({ t: "ephemere", conversation, duree });
+  reglerEphemere(conversation: string, duree: number | null): Promise<boolean> {
+    return this.agir(conversation, { v: 1, action: "ephemere", duree }, { t: "ephemere", conversation, duree });
   }
 
   /** Voter (ou retirer son vote avec une liste vide). Affiché tout de suite, annulé si le réseau manque. */
@@ -638,7 +839,14 @@ export class Messagerie {
     if (choix.length) votes[this.moi] = choix;
     else delete votes[this.moi];
     await this.modifierMessage(message.id, (m) => ({ ...m, votes }));
-    if (!this.brut({ t: "voter", conversation: message.conversation, message: message.id, choix })) {
+    const choixUniques = [...new Set(choix)];
+    if (
+      !(await this.agir(
+        message.conversation,
+        { v: 1, action: "vote", message: message.id, choix: choixUniques },
+        { t: "voter", conversation: message.conversation, message: message.id, choix },
+      ))
+    ) {
       await this.modifierMessage(message.id, (m) => ({ ...m, votes: avant }));
       return false;
     }
@@ -649,7 +857,11 @@ export class Messagerie {
   async fermerVueUnique(message: MessageLocal): Promise<void> {
     await this.db.delete("fichiers", message.id);
     await this.modifierMessage(message.id, (m) => ({ ...m, vueOuverte: true }));
-    this.brut({ t: "ouvert", conversation: message.conversation, message: message.id, auteur: message.de });
+    await this.agir(
+      message.conversation,
+      { v: 1, action: "ouvert", message: message.id },
+      { t: "ouvert", conversation: message.conversation, message: message.id, auteur: message.de },
+    );
   }
 
   /** Messages éphémères arrivés à échéance : effacés de l'appareil (sauf ceux marqués importants). */
@@ -675,7 +887,8 @@ export class Messagerie {
   async modifier(message: MessageLocal, texte: string): Promise<boolean> {
     const propre = texte.trim();
     if (!propre || message.de !== this.moi || message.supprime || Date.now() - message.le > DELAI_MODIFICATION) return false;
-    if (!this.brut({ t: "modifier", conversation: message.conversation, message: message.id, texte: propre })) return false;
+    const contenu: ContenuAction = { v: 1, action: "modification", message: message.id, texte: propre };
+    if (!(await this.agir(message.conversation, contenu, { t: "modifier", conversation: message.conversation, message: message.id, texte: propre }))) return false;
     await this.modifierMessage(message.id, (m) => ({ ...m, texte: propre, modifieLe: Date.now() }));
     return true;
   }
@@ -683,7 +896,15 @@ export class Messagerie {
   /** Épingler pour tous (ou désépingler avec null). Trois épingles au plus : la plus ancienne cède la place. */
   async epingler(message: MessageLocal, duree: number | null): Promise<boolean> {
     const jusqua = duree === null ? null : Date.now() + duree;
-    if (!this.brut({ t: "epingler", conversation: message.conversation, message: message.id, jusqua })) return false;
+    if (
+      !(await this.agir(
+        message.conversation,
+        { v: 1, action: "epingle", message: message.id, jusqua },
+        { t: "epingler", conversation: message.conversation, message: message.id, jusqua },
+      ))
+    ) {
+      return false;
+    }
     const tx = this.db.transaction(["messages", "conversations"], "readwrite");
     await this.appliquerEpingle(tx, message.conversation, { message: message.id, par: this.moi, jusqua, le: Date.now() });
     await tx.done;
@@ -1012,7 +1233,13 @@ export class Messagerie {
     if (code) reactions[this.moi] = code;
     else delete reactions[this.moi];
     await this.modifierMessage(message.id, (m) => ({ ...m, reactions }));
-    if (!this.brut({ t: "reagir", conversation: message.conversation, message: message.id, code })) {
+    if (
+      !(await this.agir(
+        message.conversation,
+        { v: 1, action: "reaction", message: message.id, code },
+        { t: "reagir", conversation: message.conversation, message: message.id, code },
+      ))
+    ) {
       await this.modifierMessage(message.id, (m) => ({ ...m, reactions: avant }));
       return false;
     }
@@ -1022,7 +1249,15 @@ export class Messagerie {
   /** Supprimer pour tout le monde : réservé à l'auteur, et seulement en ligne (les autres doivent être prévenus). */
   async supprimerPourTous(message: MessageLocal): Promise<boolean> {
     if (message.de !== this.moi || !this.connecte) return false;
-    if (!this.brut({ t: "supprimer", conversation: message.conversation, message: message.id })) return false;
+    if (
+      !(await this.agir(
+        message.conversation,
+        { v: 1, action: "suppression", message: message.id },
+        { t: "supprimer", conversation: message.conversation, message: message.id },
+      ))
+    ) {
+      return false;
+    }
     // Le fichier cesse d'être servi tout de suite, et disparaît d'ici aussi.
     if (message.media?.id) void retirerMedia(message.media.id);
     await this.db.delete("fichiers", message.id);
@@ -1183,6 +1418,7 @@ export class Messagerie {
             deMoi: dernier.de === this.moi,
             etat: dernier.etat,
             supprime: dernier.supprime,
+            ...(dernier.indechiffrable ? { indechiffrable: true } : {}),
             evenement: dernier.evenement,
             ...(dernier.media
               ? { media: { type: dernier.media.type, nom: dernier.media.nom, duree: dernier.media.duree, vocal: dernier.media.vocal, vueUnique: dernier.media.vueUnique } }

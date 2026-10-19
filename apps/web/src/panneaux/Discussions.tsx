@@ -360,6 +360,7 @@ function apercu(c: ConversationLocale, nom: (id: string) => string): Apercu {
   if (!d) return { texte: "", italique: false };
   if (d.evenement) return { texte: texteEvenement(d.evenement, nom), italique: false };
   if (d.supprime) return { texte: d.deMoi ? "Vous avez supprimé ce message" : "Ce message a été supprimé", italique: true };
+  if (d.indechiffrable) return { texte: "Message illisible sur cet appareil", italique: true };
   const prefixe = estGroupe(c.id) && !d.deMoi ? `${nom(d.de)} : ` : "";
   if (d.special) return { texte: d.texte, italique: false, prefixe, icone: ICONES_SPECIAUX[d.special] };
   if (d.media) {

@@ -23,6 +23,8 @@ export interface MessageLocal {
   reactions?: Record<string, Reaction>;
   /** Supprimé pour tout le monde par son auteur. */
   supprime?: boolean;
+  /** Message chiffré dont cet appareil n'a pas la clé (relié après l'envoi) : seule sa place est connue. */
+  indechiffrable?: boolean;
   /** Pour mes messages : où en est la remise. */
   etat?: EtatMessage;
   erreur?: string;
@@ -74,6 +76,7 @@ export interface ConversationLocale {
     deMoi: boolean;
     etat?: EtatMessage;
     supprime?: boolean;
+    indechiffrable?: boolean;
     evenement?: EvenementGroupe;
     media?: { type: MediaMessage["type"]; nom: string; duree?: number; vocal?: boolean; vueUnique?: boolean };
     special?: "position" | "contact" | "sondage";

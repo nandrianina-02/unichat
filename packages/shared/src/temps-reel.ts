@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { schemaMediaEnvoye, type MediaMessage } from "./medias";
+import { LIMITES_MEDIA, formatMedia, schemaMediaEnvoye, type MediaMessage } from "./medias";
 
 /**
  * Protocole temps réel entre les applications et le serveur (WebSocket,
@@ -173,9 +173,31 @@ export const schemaPreference = z
   .refine((p) => Object.keys(p).length > 0, "Réglage vide.");
 export type Preference = z.infer<typeof schemaPreference>;
 
+/**
+ * Message ou action chiffrés de bout en bout (étape 3). Le serveur ne voit
+ * que l'enveloppe : qui, à qui, quand. Le contenu est scellé sous une clé
+ * aléatoire, et cette clé part vers chaque appareil par sa session Double
+ * Ratchet. Chaque boîte ne reçoit que les clés de ses propres appareils.
+ */
+export interface EnveloppeChiffree {
+  id: string;
+  conversation: string;
+  de: string;
+  /** Appareil de l'expéditeur : celui dont la session déchiffre la clé. */
+  deAppareil: number;
+  a: string;
+  genre: "message" | "action";
+  /** Contenu scellé (AES-256-GCM), en base64. */
+  corps: string;
+  /** Numéro d'appareil → clé du contenu, chiffrée pour lui (message Signal, base64). */
+  cles: Record<string, string>;
+  le: number;
+}
+
 /** Élément du journal d'un utilisateur, numéroté : chaque appareil accuse réception jusqu'à un numéro. */
 export type Entree =
   | { seq: number; type: "message"; message: Message }
+  | { seq: number; type: "chiffre"; enveloppe: EnveloppeChiffree }
   | { seq: number; type: "accuse"; conversation: string; ids: string[]; etat: EtatRemise; par: string; le: number }
   /** Messages lus sur un autre de mes appareils : les compteurs se mettent à jour partout. */
   | { seq: number; type: "lu"; conversation: string; ids: string[]; le: number }
@@ -202,6 +224,34 @@ export type Entree =
 
 const uuid = z.string().uuid();
 const conversation = z.string().regex(motifConversation, "Discussion invalide.");
+const texteMessage = z.string().max(LIMITE_TEXTE, `${LIMITE_TEXTE} caractères au maximum.`);
+const citation = z.object({ id: uuid, de: uuid, extrait: z.string().max(LIMITE_EXTRAIT) });
+const transfere = z.number().int().min(1).max(10_000);
+const dureeEphemere = z
+  .number()
+  .int()
+  .refine((d) => DUREES_EPHEMERES.some((e) => e.duree === d), "Durée invalide.");
+const position = z
+  .object({
+    lat: z.number().min(-90).max(90),
+    lon: z.number().min(-180).max(180),
+    precision: z.number().min(0).max(100_000).optional(),
+  })
+  .strict();
+const sondage = z
+  .object({
+    question: z.string().trim().min(1, "Posez une question.").max(SONDAGE.question),
+    options: z
+      .array(z.string().trim().min(1, "Option vide.").max(SONDAGE.option))
+      .min(SONDAGE.optionsMin, `${SONDAGE.optionsMin} options au moins.`)
+      .max(SONDAGE.optionsMax, `${SONDAGE.optionsMax} options au plus.`),
+    multiple: z.boolean(),
+  })
+  .strict();
+const choixVote = z.array(z.number().int().min(0).max(SONDAGE.optionsMax - 1)).max(SONDAGE.optionsMax);
+const base64 = (maximum: number) => z.string().regex(/^[A-Za-z0-9_-]+$/, "Données invalides.").max(maximum);
+/** Appareils d'un même compte qu'une enveloppe peut viser. */
+export const APPAREILS_PAR_COMPTE = 25;
 
 export const schemaClient = z.discriminatedUnion("t", [
   /** Ouverture : l'appareil indique le dernier numéro reçu (null : appareil neuf). */
@@ -213,37 +263,16 @@ export const schemaClient = z.discriminatedUnion("t", [
       id: uuid,
       a: uuid.optional(),
       groupe: uuid.optional(),
-      texte: z.string().max(LIMITE_TEXTE, `${LIMITE_TEXTE} caractères au maximum.`),
+      texte: texteMessage,
       media: schemaMediaEnvoye.optional(),
-      reponseA: z.object({ id: uuid, de: uuid, extrait: z.string().max(LIMITE_EXTRAIT) }).optional(),
-      transfere: z.number().int().min(1).max(10_000).optional(),
+      reponseA: citation.optional(),
+      transfere: transfere.optional(),
       lien: schemaApercuLien.optional(),
       mentions: z.array(uuid).max(MENTIONS_MAX).optional(),
-      ephemere: z
-        .number()
-        .int()
-        .refine((d) => DUREES_EPHEMERES.some((e) => e.duree === d), "Durée invalide.")
-        .optional(),
-      position: z
-        .object({
-          lat: z.number().min(-90).max(90),
-          lon: z.number().min(-180).max(180),
-          precision: z.number().min(0).max(100_000).optional(),
-        })
-        .strict()
-        .optional(),
+      ephemere: dureeEphemere.optional(),
+      position: position.optional(),
       contact: z.object({ id: uuid }).optional(),
-      sondage: z
-        .object({
-          question: z.string().trim().min(1, "Posez une question.").max(SONDAGE.question),
-          options: z
-            .array(z.string().trim().min(1, "Option vide.").max(SONDAGE.option))
-            .min(SONDAGE.optionsMin, `${SONDAGE.optionsMin} options au moins.`)
-            .max(SONDAGE.optionsMax, `${SONDAGE.optionsMax} options au plus.`),
-          multiple: z.boolean(),
-        })
-        .strict()
-        .optional(),
+      sondage: sondage.optional(),
     })
     .refine((m) => Boolean(m.a) !== Boolean(m.groupe), "Destinataire manquant.")
     .refine((m) => m.texte.trim().length > 0 || m.media || m.position || m.contact || m.sondage, "Message vide."),
@@ -273,9 +302,66 @@ export const schemaClient = z.discriminatedUnion("t", [
   }),
   /** Vue unique ouverte : seul l'auteur en est averti (avec mes autres appareils). */
   z.object({ t: z.literal("ouvert"), conversation, message: uuid, auteur: uuid }),
-  z.object({ t: z.literal("voter"), conversation, message: uuid, choix: z.array(z.number().int().min(0).max(SONDAGE.optionsMax - 1)).max(SONDAGE.optionsMax) }),
+  z.object({ t: z.literal("voter"), conversation, message: uuid, choix: choixVote }),
+  /** Discussion à deux chiffrée : la clé du contenu pour chaque appareil, par compte. */
+  z
+    .object({
+      t: z.literal("chiffre"),
+      id: uuid,
+      a: uuid,
+      genre: z.enum(["message", "action"]),
+      corps: base64(120_000),
+      cles: z.record(uuid, z.record(z.string().regex(/^[1-9][0-9]{0,8}$/), base64(4000))),
+    })
+    .refine((m) => Object.keys(m.cles).length <= 2, "Trop de destinataires.")
+    .refine((m) => Object.values(m.cles).every((c) => Object.keys(c).length <= APPAREILS_PAR_COMPTE), "Trop d'appareils."),
 ]);
 export type MessageClient = z.infer<typeof schemaClient>;
+
+// --- Contenu chiffré ------------------------------------------------------------------
+
+/** Fichier joint : ses caractéristiques voyagent dans le contenu chiffré ; le type doit correspondre au format. */
+export const schemaMediaChiffre = z
+  .object({
+    ...schemaMediaEnvoye.shape,
+    type: z.enum(["image", "video", "audio", "document"]),
+    mime: z.string().max(100),
+    nom: z.string().trim().min(1).max(180),
+    taille: z.number().int().positive(),
+  })
+  .strict()
+  .refine((m) => formatMedia(m.mime)?.type === m.type && m.taille <= LIMITES_MEDIA[m.type], "Fichier invalide.");
+
+export const schemaContenuMessage = z
+  .object({
+    v: z.literal(1),
+    texte: texteMessage,
+    media: schemaMediaChiffre.optional(),
+    reponseA: citation.strict().optional(),
+    transfere: transfere.optional(),
+    lien: schemaApercuLien.optional(),
+    ephemere: dureeEphemere.optional(),
+    position: position.optional(),
+    contact: z.object({ id: uuid, nom: z.string().max(100), pseudo: z.string().max(40).nullable() }).strict().optional(),
+    sondage: sondage.optional(),
+  })
+  .strict()
+  .refine((m) => m.texte.trim().length > 0 || m.media || m.position || m.contact || m.sondage, "Message vide.");
+export type ContenuMessage = z.infer<typeof schemaContenuMessage>;
+
+export const schemaContenuAction = z.discriminatedUnion("action", [
+  z.object({ v: z.literal(1), action: z.literal("reaction"), message: uuid, code: z.enum(REACTIONS).nullable() }).strict(),
+  z.object({ v: z.literal(1), action: z.literal("suppression"), message: uuid }).strict(),
+  z.object({ v: z.literal(1), action: z.literal("modification"), message: uuid, texte: texteMessage.min(1) }).strict(),
+  z.object({ v: z.literal(1), action: z.literal("epingle"), message: uuid, jusqua: z.number().int().positive().nullable() }).strict(),
+  z.object({ v: z.literal(1), action: z.literal("vote"), message: uuid, choix: choixVote }).strict(),
+  z.object({ v: z.literal(1), action: z.literal("ephemere"), duree: dureeEphemere.nullable() }).strict(),
+  z.object({ v: z.literal(1), action: z.literal("ouvert"), message: uuid }).strict(),
+]);
+export type ContenuAction = z.infer<typeof schemaContenuAction>;
+
+/** Données associées du contenu scellé : il ne peut pas être déplacé vers un autre message, une autre discussion, un autre auteur. */
+export const associeContenu = (id: string, conversation: string, de: string) => `UniChat-contenu-v1|${id}|${conversation}|${de}`;
 
 // --- Messages du serveur ------------------------------------------------------------
 
@@ -284,7 +370,11 @@ export type MessageServeur =
   | { t: "entree"; entree: Entree }
   /** `destinataires` : nombre de personnes qui doivent recevoir le message (groupe). */
   | { t: "accepte"; id: string; le: number; destinataires: number }
-  | { t: "refuse"; id?: string; message: string }
+  /**
+   * `code: "appareils"` : l'enveloppe ne vise pas les appareils inscrits ;
+   * `appareils` donne la bonne liste (sans l'appareil qui envoie).
+   */
+  | { t: "refuse"; id?: string; message: string; code?: "appareils" | "non_relie"; appareils?: Record<string, number[]> }
   | { t: "ecrit"; de: string; conversation: string }
   | { t: "presence"; de: string; enLigne: boolean; vuLe: number | null };
 

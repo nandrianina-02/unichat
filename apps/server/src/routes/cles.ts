@@ -7,10 +7,12 @@ import {
   schemaClesUniques,
   schemaDemandePaquets,
   schemaInscriptionCles,
+  schemaListeAppareils,
   schemaNouvelleCleSignee,
   schemaNouvelleLiaison,
   schemaRepriseCles,
   schemaReponseLiaison,
+  type AppareilsCompte,
   type CleUniqueTransport,
   type EtatCles,
   type EtatLiaison,
@@ -200,6 +202,29 @@ cles.put("/signee", async (c) => {
     .run();
   if (resultat.meta.changes === 0) throw new Refus(404, "appareil_inconnu", "Cet appareil n'a pas encore ses clés.");
   return c.json(await etat(c.env.DB, session));
+});
+
+/**
+ * Appareils inscrits de quelques comptes : l'application sait pour qui
+ * chiffrer, sans consommer de clé unique pour les sessions déjà ouvertes.
+ * Un compte sans clés n'apparaît pas.
+ */
+cles.post("/appareils", async (c) => {
+  const { comptes } = await corpsJson(c, schemaListeAppareils);
+  await limiter(c, `appareils:${c.get("session").utilisateur_id}`, 600, 60 * MINUTE);
+  const { results } = await c.env.DB.prepare(
+    `SELECT i.utilisateur_id AS id, i.cle_signature, i.cle_echange, i.preuve, i.version,
+       (SELECT json_group_array(a.numero) FROM appareils_cles a WHERE a.utilisateur_id = i.utilisateur_id) AS numeros
+     FROM identites i WHERE i.utilisateur_id IN (SELECT value FROM json_each(?1))`,
+  )
+    .bind(JSON.stringify(comptes))
+    .all<LigneIdentite & { id: string; numeros: string }>();
+  const liste: AppareilsCompte[] = results.map((r) => ({
+    id: r.id,
+    identite: versIdentite(r),
+    appareils: (JSON.parse(r.numeros) as number[]).sort((x, y) => x - y),
+  }));
+  return c.json({ comptes: liste });
 });
 
 /**

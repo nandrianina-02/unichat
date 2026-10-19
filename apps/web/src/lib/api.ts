@@ -1,6 +1,7 @@
 import type {
   ActionAdmin,
   ApercuInvitation,
+  AppareilsCompte,
   ApercuLien,
   AppareilConnecte,
   CarteProfil,
@@ -125,6 +126,7 @@ export const api = {
   ajouterClesUniques: (cles: CleUniqueTransport[]) => appel<EtatCles>("/cles/uniques", json("POST", { cles })),
   publierCleSignee: (cleSignee: CleSigneeTransport) => appel<EtatCles>("/cles/signee", json("PUT", { cleSignee })),
   paquets: (comptes: { id: string; appareils?: number[] }[]) => appel<{ comptes: PaquetsCompte[] }>("/cles/paquets", json("POST", { comptes })),
+  appareilsCles: (comptes: string[]) => appel<{ comptes: AppareilsCompte[] }>("/cles/appareils", json("POST", { comptes })),
   creerLiaison: (role: "donneur" | "receveur") => appel<{ canal: string; expireLe: number }>("/cles/liaisons", json("POST", { role })),
   liaison: (canal: string) => appel<EtatLiaison>(`/cles/liaisons/${encodeURIComponent(canal)}`),
   repondreLiaison: (canal: string, reponse: { cle: string; preuve: string; cles?: string }) =>

@@ -77,6 +77,15 @@ export const schemaDemandePaquets = z
   })
   .strict();
 
+/** Appareils inscrits de quelques comptes, sans consommer de clé unique. */
+export const schemaListeAppareils = z.object({ comptes: z.array(z.string().uuid()).min(1).max(PAQUETS_MAX) }).strict();
+
+export interface AppareilsCompte {
+  id: string;
+  identite: IdentiteCles & { version: number };
+  appareils: number[];
+}
+
 export type IdentiteCles = z.infer<typeof schemaIdentiteCles>;
 export type CleSigneeTransport = z.infer<typeof schemaCleSignee>;
 export type CleUniqueTransport = z.infer<typeof schemaCleUnique>;

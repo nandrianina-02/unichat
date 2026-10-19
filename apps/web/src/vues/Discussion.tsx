@@ -23,6 +23,7 @@ import {
   Copy,
   Flag,
   EllipsisVertical,
+  EyeOff,
   FileText,
   Forward,
   Images,
@@ -484,10 +485,9 @@ export function Discussion({ conversation, cible, onInfos, onRechercher, onFerme
             actuelle={discussion?.ephemere}
             onFermer={() => setSpecial(null)}
             onChoisir={(duree) => {
-              if ((duree ?? undefined) !== discussion?.ephemere && !messagerie.reglerEphemere(conversation, duree)) {
-                setAvis("Hors connexion : réessayez une fois reconnecté.");
-              }
               setSpecial(null);
+              if ((duree ?? undefined) === discussion?.ephemere) return;
+              void messagerie.reglerEphemere(conversation, duree).then((ok) => !ok && setAvis("Hors connexion : réessayez une fois reconnecté."));
             }}
           />
         )}
@@ -934,7 +934,7 @@ function Bulle({
   // Parti et connu du serveur : on peut l'épingler, le transférer ou le modifier.
   const parti = !mien || (m.etat !== "attente" && m.etat !== "echec");
   const modifiable = mien && parti && !m.supprime && Boolean(m.texte) && Date.now() - m.le < DELAI_MODIFICATION;
-  const elements: ElementMenu[] = m.supprime
+  const elements: ElementMenu[] = m.supprime || m.indechiffrable
     ? []
     : [
         { icone: Reply, libelle: "Répondre", action: () => onRepondre(m) },
@@ -1019,7 +1019,7 @@ function Bulle({
         <div
           {...appui.gestionnaires}
           onTouchStart={(e) => {
-            if (selectionActive || m.supprime) return;
+            if (selectionActive || m.supprime || m.indechiffrable) return;
             const t = e.touches[0]!;
             toucher.current = { x: t.clientX, y: t.clientY, horizontal: null, dx: 0 };
           }}
@@ -1112,6 +1112,10 @@ function Bulle({
                 <span className="inline-flex items-center gap-1.5 italic text-texte-2">
                   <Ban size={14} /> {mien ? "Vous avez supprimé ce message" : "Ce message a été supprimé"}
                 </span>
+              ) : m.indechiffrable ? (
+                <span className="inline-flex items-center gap-1.5 italic text-texte-2" title="Envoyé avant que cet appareil soit relié, ou session interrompue.">
+                  <EyeOff size={14} /> Message illisible sur cet appareil
+                </span>
               ) : (
                 m.texte && (
                   <span className="whitespace-pre-wrap [overflow-wrap:anywhere]">
@@ -1140,7 +1144,7 @@ function Bulle({
           </button>
         </div>
         {/* Actions rapides au survol, à côté de la bulle : réagir, transférer. */}
-        {!m.supprime && !selectionActive && (
+        {!m.supprime && !m.indechiffrable && !selectionActive && (
           <div
             className={clsx(
               "absolute top-1/2 flex -translate-y-1/2 items-center gap-0.5 opacity-0 transition-opacity group-hover:opacity-100 focus-within:opacity-100 tactile:hidden",
@@ -1185,7 +1189,7 @@ function Bulle({
             <Menu
               className={clsx(mien ? "right-0" : "left-0", menu === "haut" ? "bottom-full mb-1" : "top-full mt-1")}
               entete={
-                m.supprime ? undefined : <ChoixReaction actuelle={maReaction} onChoisir={(code) => (setMenu(null), onReagir(m, code))} />
+                m.supprime || m.indechiffrable ? undefined : <ChoixReaction actuelle={maReaction} onChoisir={(code) => (setMenu(null), onReagir(m, code))} />
               }
               elements={[...elements, "separateur", { icone: Trash2, libelle: "Supprimer", action: () => onSupprimer(m), danger: true }]}
               onChoix={() => setMenu(null)}
