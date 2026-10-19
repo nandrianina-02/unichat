@@ -9,7 +9,7 @@ import {
   type MessageClient,
   type PaquetsCompte,
 } from "@unichat/shared";
-import type { CleSignee, CleUnique, Correspondant, IdentitePrivee, IdentitePublique, Paquet } from "@unichat/chiffrement";
+import type { CleSignee, CleUnique, CodeSecurite, Correspondant, IdentitePrivee, IdentitePublique, Paquet } from "@unichat/chiffrement";
 import { api } from "./api";
 import { sousVerrou } from "./cles";
 import type { Stockage } from "./stockage";
@@ -64,6 +64,28 @@ export interface Destination {
 }
 
 const cleCorrespondant = (compte: string, numero: number) => `correspondant:${compte}:${numero}`;
+/** Identité retenue d'un correspondant : ses deux clés publiques, en base64, séparées par un point. */
+const cleIdentite = (compte: string) => `identite:${compte}`;
+/** Code vérifié : les deux identités telles qu'elles étaient au moment de la vérification. */
+const cleVerification = (compte: string) => `verifie:${compte}`;
+const empreinteDe = (signature: string, echange: string) => `${signature}.${echange}`;
+
+/** Les clés d'un correspondant ont changé (lot 7) : la messagerie l'écrit dans les discussions concernées. */
+export interface ChangementIdentite {
+  compte: string;
+  empreinte: string;
+  /** Son code était vérifié : la vérification tombe, il faut la refaire. */
+  verifie: boolean;
+  /** Place de la ligne dans la discussion : juste avant le message qui a révélé le changement. */
+  le: number;
+}
+
+export type EtatCode =
+  /** Cet appareil n'a pas (encore) ses clés : pas de code à montrer. */
+  | { etat: "non-relie" }
+  /** La personne n'a encore aucune clé publiée. */
+  | { etat: "sans-cles" }
+  | { etat: "pret"; code: CodeSecurite; verifie: boolean };
 
 export class Chiffreur {
   private readonly annuaire = new Map<string, Fiche>();
@@ -71,6 +93,7 @@ export class Chiffreur {
   constructor(
     private readonly db: Stockage,
     private readonly moi: string,
+    private readonly onChangement?: (changement: ChangementIdentite) => void,
   ) {}
 
   /** Le serveur a refusé une liste d'appareils : on la relira avant de rechiffrer. */
@@ -93,9 +116,15 @@ export class Chiffreur {
     const aLire = comptes.filter((id) => (this.annuaire.get(id)?.le ?? 0) < maintenant - FRAICHEUR);
     if (aLire.length) {
       const { comptes: lus } = await api.appareilsCles(aLire);
+      const c = await bibliotheque();
       for (const id of aLire) {
-        const c = lus.find((x) => x.id === id);
-        this.annuaire.set(id, { identite: c?.identite ?? null, appareils: c?.appareils ?? [], le: maintenant });
+        const lu = lus.find((x) => x.id === id);
+        this.annuaire.set(id, { identite: lu?.identite ?? null, appareils: lu?.appareils ?? [], le: maintenant });
+        // Un changement se voit dès que l'annuaire le montre, sans attendre le prochain message.
+        if (lu?.identite && id !== this.moi) {
+          const identite = { signature: c.depuisBase64(lu.identite.signature), echange: c.depuisBase64(lu.identite.echange), preuve: c.depuisBase64(lu.identite.preuve) };
+          if (c.verifierIdentite(identite)) await this.epingler(id, identite);
+        }
       }
     }
     return new Map(comptes.map((id) => [id, this.annuaire.get(id)!]));
@@ -103,16 +132,63 @@ export class Chiffreur {
 
   /**
    * Identité d'un correspondant, épinglée au premier contact. Si elle change
-   * (clés refaites), la nouvelle est retenue et le changement noté : le
-   * lot 7 l'affichera dans la discussion.
+   * (clés refaites, ou quelqu'un qui se fait passer pour lui), la nouvelle est
+   * retenue, une vérification éventuelle tombe, et la messagerie l'écrit
+   * dans les discussions (lot 7).
    */
-  private async epingler(compte: string, identite: IdentitePublique): Promise<void> {
+  private async epingler(compte: string, identite: IdentitePublique, le = Date.now()): Promise<void> {
     const { versBase64 } = await bibliotheque();
-    const empreinte = `${versBase64(identite.signature)}.${versBase64(identite.echange)}`;
-    const connue = (await this.db.get("cles", `identite:${compte}`)) as string | undefined;
+    const empreinte = empreinteDe(versBase64(identite.signature), versBase64(identite.echange));
+    const connue = (await this.db.get("cles", cleIdentite(compte))) as string | undefined;
     if (connue === empreinte) return;
-    await this.db.put("cles", empreinte, `identite:${compte}`);
-    if (connue) await this.db.put("cles", Date.now(), `changement:${compte}`);
+    await this.db.put("cles", empreinte, cleIdentite(compte));
+    if (!connue) return;
+    const verifie = Boolean(await this.db.get("cles", cleVerification(compte)));
+    await this.db.delete("cles", cleVerification(compte));
+    await this.db.put("cles", Date.now(), `changement:${compte}`);
+    this.onChangement?.({ compte, empreinte, verifie, le });
+  }
+
+  /**
+   * Code de sécurité avec une personne : calculé sur mon identité et sur la
+   * sienne telle que cet appareil l'a retenue, celle-là même qui sert à
+   * chiffrer. Sans identité retenue, l'annuaire la fournit (et elle l'est).
+   */
+  async code(compte: string): Promise<EtatCode> {
+    const local = await this.local();
+    if (!local) return { etat: "non-relie" };
+    if (!(await this.db.get("cles", cleIdentite(compte)))) {
+      this.annuaire.delete(compte);
+      await this.fiches([compte]);
+    }
+    const retenue = (await this.db.get("cles", cleIdentite(compte))) as string | undefined;
+    if (!retenue) return { etat: "sans-cles" };
+    const c = await bibliotheque();
+    const [signature, echange] = retenue.split(".") as [string, string];
+    const mienne = c.identitePublique(local.identite);
+    const code = c.codeSecurite(
+      { compte: this.moi, identite: mienne },
+      { compte, identite: { signature: c.depuisBase64(signature), echange: c.depuisBase64(echange), preuve: new Uint8Array(0) } },
+    );
+    const paire = `${empreinteDe(c.versBase64(mienne.signature), c.versBase64(mienne.echange))}|${retenue}`;
+    return { etat: "pret", code, verifie: (await this.db.get("cles", cleVerification(compte))) === paire };
+  }
+
+  /**
+   * Marque le code comme vérifié, ou retire la marque. La paire d'identités
+   * est gardée telle quelle : si l'une change, la marque ne vaut plus.
+   */
+  async marquerVerifie(compte: string, verifie: boolean): Promise<void> {
+    if (!verifie) {
+      await this.db.delete("cles", cleVerification(compte));
+      return;
+    }
+    const local = await this.local();
+    const retenue = (await this.db.get("cles", cleIdentite(compte))) as string | undefined;
+    if (!local || !retenue) return;
+    const c = await bibliotheque();
+    const mienne = c.identitePublique(local.identite);
+    await this.db.put("cles", `${empreinteDe(c.versBase64(mienne.signature), c.versBase64(mienne.echange))}|${retenue}`, cleVerification(compte));
   }
 
   /**
@@ -248,7 +324,7 @@ export class Chiffreur {
     // La session a avancé : on la range, quoi qu'il advienne du contenu.
     await this.db.put("cles", resultat.correspondant, cle);
     if (resultat.cleUniqueUtilisee) await this.db.delete("cles", `unique:${resultat.cleUniqueUtilisee}`);
-    if (resultat.nouvelleSession) await this.epingler(e.de, resultat.identite);
+    if (resultat.nouvelleSession) await this.epingler(e.de, resultat.identite, e.le - 1);
 
     if (resultat.clair.length < 33 || c.octetsVersTexte(resultat.clair.slice(32)) !== e.id) return { type: "illisible" };
     try {

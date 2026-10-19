@@ -469,9 +469,25 @@ sans appareil photo), et le code peut se copier-coller.
   une clé de fichier ne part jamais en clair ; dans le doute (réseau),
   l'application chiffre le fichier.
 
-### Suite
+### Code de sécurité (lot 7)
 
-- **Code de sécurité** (lot 7) à comparer de vive voix ou par QR code.
+- **60 chiffres et un QR code**, identiques sur les deux appareils
+  (`packages/chiffrement/src/code.ts`), sur le modèle du numéro de sécurité
+  de Signal : une empreinte par personne (5 200 tours de SHA-512 sur son
+  identité et son compte), la plus petite d'abord. Le QR code porte les deux
+  empreintes ; scanné sur l'écran de l'autre, il marque le code vérifié.
+- **Calculé sur l'identité retenue** par l'appareil, celle-là même qui sert à
+  chiffrer, et non sur ce que l'annuaire annonce à l'instant.
+- **Vérifié** : marque propre à l'appareil (ni mes autres appareils ni le
+  serveur ne la connaissent), qui garde la paire d'identités : si l'une des
+  deux change, elle ne vaut plus.
+- **Changement d'identité**, constaté dans l'annuaire, un paquet de clés ou
+  une session reçue : une ligne le dit dans la discussion à deux et dans les
+  groupes partagés, juste avant le message qui l'a révélé, sans faire
+  remonter la discussion dans la liste ; en rouge si le code était vérifié.
+  L'envoi n'est pas bloqué : l'avertissement et le code suffisent à décider.
+- **Accès** : Infos du contact, « Code de sécurité » ; ou « Voir le code » sur
+  la ligne d'avertissement.
 
 ### Lots
 
@@ -482,7 +498,7 @@ sans appareil photo), et le code peut se copier-coller.
 4. Groupes (fait).
 5. Fichiers (fait).
 6. Notifications déchiffrées sur l'appareil (fait).
-7. Code de sécurité et avertissement de changement d'identité.
+7. Code de sécurité et avertissement de changement d'identité (fait).
 8. Historique transmis à un appareil relié ; fin des messages non chiffrés.
 
 La mention « chiffré de bout en bout » n'apparaît dans l'application qu'à

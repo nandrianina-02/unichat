@@ -5,6 +5,8 @@ import {
   LIMITE_EXTRAIT,
   MESSAGES_SIGNALES,
   autreParticipant,
+  conversationDirecte,
+  conversationGroupe,
   estGroupe,
   idGroupe,
   type CarteProfil,
@@ -23,7 +25,7 @@ import {
   type Reaction,
 } from "@unichat/shared";
 import { ErreurApi, api } from "./api";
-import { Chiffreur, type Destination } from "./chiffrement";
+import { Chiffreur, type ChangementIdentite, type Destination, type EtatCode } from "./chiffrement";
 import { identiteLocale, preparerCles, reinitialiserCles, relierCles, type EtatChiffrement } from "./cles";
 import type { IdentitePrivee } from "@unichat/chiffrement";
 import { retirerMedia, telechargerMedia, transfererMedia } from "./api-medias";
@@ -62,6 +64,8 @@ export interface Instantane {
   envois: Record<string, number>;
   /** Clés de chiffrement de cet appareil. */
   chiffrement: EtatChiffrement;
+  /** Compte → heure du dernier changement de ses clés vu ici : ce qui affiche son code se relit. */
+  identites: Record<string, number>;
 }
 
 const RANG: Record<EtatMessage, number> = { echec: -1, attente: 0, envoye: 1, remis: 2, lu: 3 };
@@ -191,6 +195,7 @@ export class Messagerie {
     versions: {},
     envois: {},
     chiffrement: "preparation",
+    identites: {},
   };
 
   constructor(
@@ -222,7 +227,7 @@ export class Messagerie {
 
   async demarrer(): Promise<void> {
     this.db = await ouvrirStockage(this.moi);
-    this.chiffreur = new Chiffreur(this.db, this.moi);
+    this.chiffreur = new Chiffreur(this.db, this.moi, (changement) => void this.noterChangementIdentite(changement));
     this.seq = ((await this.db.get("reglages", "seq")) as number | undefined) ?? null;
     const [conversations, personnes, groupes] = await Promise.all([
       this.db.getAll("conversations"),
@@ -273,6 +278,50 @@ export class Messagerie {
   /** Nouvelles clés pour le compte : les autres appareils devront être reliés à celui-ci. */
   async reinitialiserCles(): Promise<void> {
     this.publier({ chiffrement: await reinitialiserCles(this.db, this.moi) });
+  }
+
+  /** Code de sécurité avec une personne (lot 7). */
+  codeSecurite(compte: string): Promise<EtatCode> {
+    return this.chiffreur.code(compte);
+  }
+
+  marquerCodeVerifie(compte: string, verifie: boolean): Promise<void> {
+    return this.chiffreur.marquerVerifie(compte, verifie);
+  }
+
+  /**
+   * Les clés d'une personne ont changé : une ligne le dit dans notre
+   * discussion et dans les groupes que nous partageons, là où l'historique
+   * existe déjà. Elle ne remonte pas la discussion dans la liste : ce n'est
+   * pas un message.
+   */
+  private async noterChangementIdentite({ compte, empreinte, verifie, le }: ChangementIdentite): Promise<void> {
+    const groupes = (await this.db.getAll("groupes")).filter((g) => g.membres.some((m) => m.id === compte));
+    const candidates = [conversationDirecte(this.moi, compte), ...groupes.map((g) => conversationGroupe(g.id))];
+    const tx = this.db.transaction(["messages", "conversations"], "readwrite");
+    const touchees = new Set<string>();
+    for (const conversation of candidates) {
+      if (!(await tx.objectStore("conversations").get(conversation))) continue;
+      // Une ligne par changement : deux onglets qui le constatent ensemble n'en écrivent qu'une.
+      const id = `identite:${compte}:${empreinte.slice(0, 22)}:${conversation}`;
+      if (await tx.objectStore("messages").get(id)) continue;
+      await tx.objectStore("messages").put({
+        id,
+        conversation,
+        de: compte,
+        a: "",
+        texte: "",
+        le,
+        type: "systeme",
+        systeme: { action: "identite", verifie },
+        lu: true,
+      });
+      await this.recalculer(tx, conversation);
+      touchees.add(conversation);
+    }
+    await tx.done;
+    this.publier({ identites: { ...this.etat.identites, [compte]: le } });
+    if (touchees.size) await this.publierConversations(touchees);
   }
 
   arreter(): void {
@@ -1255,7 +1304,7 @@ export class Messagerie {
     const groupe = estGroupe(conversation);
     const cible = groupe ? idGroupe(conversation) : autreParticipant(conversation, this.moi);
     const recus = (await this.messages(conversation))
-      .filter((m) => m.type !== "evenement" && !m.supprime && m.de !== this.moi && (groupe || m.de === cible))
+      .filter((m) => m.type !== "evenement" && m.type !== "systeme" && !m.supprime && m.de !== this.moi && (groupe || m.de === cible))
       .slice(-MESSAGES_SIGNALES)
       .map((m) => ({
         id: m.id,
@@ -1467,7 +1516,8 @@ export class Messagerie {
 
   private async recalculer(tx: TransactionMessages, conversation: string): Promise<void> {
     const tous = await tx.objectStore("messages").index("conversation").getAll(plageConversation(conversation));
-    const dernier = tous[tous.length - 1];
+    // Une ligne de code de sécurité ne devient pas l'aperçu de la discussion, ni ne la fait remonter.
+    const dernier = tous.findLast((m) => m.systeme?.action !== "identite");
     const existante = await tx.objectStore("conversations").get(conversation);
     const resume: ConversationLocale = {
       ...(existante?.reglages ? { reglages: existante.reglages } : {}),

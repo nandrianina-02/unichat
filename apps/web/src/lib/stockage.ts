@@ -12,9 +12,10 @@ export interface MessageLocal {
   texte: string;
   le: number;
   /** « evenement » : ligne système d'un groupe (création, ajout, départ…). */
-  /** « systeme » : ligne propre à la discussion (messages éphémères). */
+  /** « systeme » : ligne propre à la discussion (messages éphémères, code de sécurité changé). */
   type?: "texte" | "evenement" | "systeme";
-  systeme?: { action: "ephemere"; duree: number | null };
+  /** « identite » : les clés de la personne (de) ont changé ; « verifie » si son code l'était. */
+  systeme?: { action: "ephemere"; duree: number | null } | { action: "identite"; verifie: boolean };
   evenement?: EvenementGroupe;
   reponseA?: Citation;
   /** Fichier joint. Son identifiant reste vide tant que l'envoi n'est pas terminé. */

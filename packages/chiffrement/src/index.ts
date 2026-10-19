@@ -6,3 +6,4 @@ export * from "./session";
 export type { OuvertureX3DH } from "./x3dh";
 export * from "./liaison";
 export * from "./fichier";
+export * from "./code";

@@ -1,9 +1,10 @@
 import { conversationDirecte, type CarteProfil } from "@unichat/shared";
-import { Ban, Flag, LoaderCircle, MessageSquareText, UserMinus, UserPlus, X } from "lucide-react";
+import { Ban, ChevronRight, Flag, LoaderCircle, MessageSquareText, Shield, ShieldCheck, UserMinus, UserPlus, X } from "lucide-react";
 import { useEffect, useState } from "react";
 import { useActionsDiscussion } from "../composants/ActionsDiscussion";
 import { ApercuGalerie } from "./Galerie";
 import { Avatar } from "../composants/Avatar";
+import { DialogueCode } from "../composants/CodeSecurite";
 import { Dialogue } from "../composants/Dialogue";
 import { Apparition } from "../composants/Apparition";
 import { contactsModifies } from "../composants/Lignes";
@@ -34,6 +35,22 @@ export function FicheContact({
   const [erreur, setErreur] = useState<string | null>(null);
   const [enCours, setEnCours] = useState(false);
   const [retrait, setRetrait] = useState(false);
+  const [code, setCode] = useState(false);
+  /** Code vérifié sur cet appareil : relu à la fermeture de la fenêtre du code, et quand ses clés changent. */
+  const [verifie, setVerifie] = useState(false);
+  const changement = etat.identites[id];
+
+  useEffect(() => {
+    if (code) return;
+    let actif = true;
+    messagerie.codeSecurite(id).then(
+      (e) => actif && setVerifie(e.etat === "pret" && e.verifie),
+      () => undefined,
+    );
+    return () => {
+      actif = false;
+    };
+  }, [id, code, changement, messagerie]);
 
   useEffect(() => {
     setCarte(null);
@@ -121,6 +138,22 @@ export function FicheContact({
               <div className="animate-rise stagger-2 mt-2.5 bg-panneau">
                 <button
                   type="button"
+                  onClick={() => setCode(true)}
+                  className="flex w-full items-center gap-6 px-8 py-4 text-left transition-colors hover:bg-survol"
+                >
+                  {verifie ? <ShieldCheck size={22} className="shrink-0 text-primaire-texte" /> : <Shield size={22} className="shrink-0 text-texte-2" />}
+                  <span className="min-w-0 flex-1">
+                    <span className="block text-[16px] text-texte">Code de sécurité</span>
+                    <span className="block text-sm text-texte-2">{verifie ? "Vérifié" : `À comparer avec celui de ${carte.nom}`}</span>
+                  </span>
+                  <ChevronRight size={20} className="shrink-0 text-texte-3" />
+                </button>
+              </div>
+            )}
+            {!carte.estSoi && (
+              <div className="animate-rise stagger-3 mt-2.5 bg-panneau">
+                <button
+                  type="button"
                   disabled={enCours}
                   onClick={() => (carte.estContact ? setRetrait(true) : void basculer())}
                   className={`flex w-full items-center gap-6 px-8 py-4 text-left text-[16px] transition-colors hover:bg-survol disabled:opacity-60 ${carte.estContact ? "text-danger" : "text-primaire"}`}
@@ -131,7 +164,7 @@ export function FicheContact({
               </div>
             )}
             {!carte.estSoi && (
-              <div className="animate-rise stagger-3 mt-2.5 mb-6 bg-panneau">
+              <div className="animate-rise stagger-4 mt-2.5 mb-6 bg-panneau">
                 {/* L'état suit la messagerie : un blocage fait ailleurs se voit ici aussitôt. */}
                 {(etat.personnes[carte.id]?.bloque ?? carte.bloque) ? (
                   <button
@@ -165,6 +198,7 @@ export function FicheContact({
       </div>
       {actions.dialogue}
 
+      <Apparition>{code && carte && <DialogueCode compte={carte.id} nom={carte.nom} onFermer={() => setCode(false)} />}</Apparition>
       <Apparition>
         {retrait && carte && (
           <Dialogue

@@ -37,6 +37,7 @@ import {
   Reply,
   RotateCw,
   Search,
+  ShieldAlert,
   SendHorizontal,
   SmilePlus,
   SquareCheck,
@@ -68,6 +69,7 @@ import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "re
 import { Avatar, AvatarGroupe } from "../composants/Avatar";
 import { BoutonIcone } from "../composants/BoutonIcone";
 import { Coches } from "../composants/Coches";
+import { DialogueCode } from "../composants/CodeSecurite";
 import { Enregistrement } from "../composants/Enregistrement";
 import { ACCEPTE_DOCUMENTS, ACCEPTE_VISUELS, EnvoiFichiers } from "../composants/EnvoiFichiers";
 import { contactsModifies } from "../composants/Lignes";
@@ -700,6 +702,8 @@ function ListeMessages({
   const zone = useRef<HTMLDivElement>(null);
   const separateur = useRef<HTMLDivElement>(null);
   const enBas = useRef(true);
+  /** Code de sécurité ouvert depuis une ligne « a changé » : le compte concerné. */
+  const [code, setCode] = useState<string | null>(null);
   const initialise = useRef(false);
   const [boutonBas, setBoutonBas] = useState(false);
   // Le premier message non lu est relevé à l'ouverture : le repère reste en
@@ -775,7 +779,32 @@ function ListeMessages({
       );
       precedent = null;
     }
-    if (m.type === "systeme" && m.systeme) {
+    if (m.type === "systeme" && m.systeme?.action === "identite") {
+      const verifie = m.systeme.verifie;
+      elements.push(
+        <div key={m.id} className={clsx("my-2 flex justify-center px-6", nouveau(m.id) && "animate-fade")}>
+          <span
+            className={clsx(
+              "flex max-w-md items-start gap-2 rounded-lg bg-panneau/90 px-3 py-1.5 text-left text-[12.5px] shadow-sm",
+              verifie ? "text-danger" : "text-texte-2",
+            )}
+          >
+            <ShieldAlert size={14} className="mt-px shrink-0" />
+            <span>
+              {verifie
+                ? `Le code de sécurité de ${nom(m.de)} a changé alors que vous l'aviez vérifié. Vérifiez-le à nouveau avant d'échanger quoi que ce soit de sensible.`
+                : `Le code de sécurité de ${nom(m.de)} a changé : il a sans doute réinstallé UniChat ou réinitialisé ses clés.`}{" "}
+              <button type="button" onClick={() => setCode(m.de)} className="font-medium text-primaire-texte hover:underline">
+                Voir le code
+              </button>
+            </span>
+          </span>
+        </div>,
+      );
+      precedent = null;
+      continue;
+    }
+    if (m.type === "systeme" && m.systeme?.action === "ephemere") {
       elements.push(
         <div key={m.id} className={clsx("my-2 flex justify-center px-6", nouveau(m.id) && "animate-fade")}>
           <span className="flex max-w-md items-start gap-2 rounded-lg bg-panneau/90 px-3 py-1.5 text-center text-[12.5px] text-texte-2 shadow-sm">
@@ -848,6 +877,7 @@ function ListeMessages({
           <ChevronDown size={22} />
         </button>
       )}
+      <Apparition>{code && <DialogueCode compte={code} nom={nom(code)} onFermer={() => setCode(null)} />}</Apparition>
     </div>
   );
 }
