@@ -3,7 +3,7 @@ import clsx from "clsx";
 import { CircleCheck, ClipboardPaste, Copy, LoaderCircle, QrCode, ScanLine, TriangleAlert } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { estTactile } from "../lib/appui";
-import { afficherCode, estAnnulation, lireCode, messageLiaison } from "../lib/liaison";
+import { afficherCode, estAnnulation, lireCode, messageLiaison, type FinLiaison } from "../lib/liaison";
 import { useMessagerie } from "../lib/messagerie-react";
 import { reconnecter, reconnexionRequise } from "../lib/reconnexion";
 import { CodeQr } from "./CodeQr";
@@ -29,20 +29,20 @@ export function Liaison({ role, onFermer, onReinitialiser }: { role: RoleLiaison
   const [mode, setMode] = useState<Mode>(role === "receveur" ? "afficher" : "lire");
   const [essai, setEssai] = useState(0);
   const [etape, setEtape] = useState<string | null>(null);
-  const [fin, setFin] = useState<{ autre?: string } | null>(null);
+  const [fin, setFin] = useState<FinLiaison | null>(null);
   const [erreur, setErreur] = useState<string | null>(null);
   const annulation = useRef<AbortController | null>(null);
 
   useEffect(() => () => annulation.current?.abort(), []);
 
   /** Lance une étape de la liaison ; une seule à la fois, abandonnée à la fermeture. */
-  async function mener(tache: (signal: AbortSignal) => Promise<string | undefined>) {
+  async function mener(tache: (signal: AbortSignal) => Promise<FinLiaison>) {
     annulation.current?.abort();
     const controleur = new AbortController();
     annulation.current = controleur;
     try {
-      const autre = await tache(controleur.signal);
-      if (!controleur.signal.aborted) setFin({ autre });
+      const resultat = await tache(controleur.signal);
+      if (!controleur.signal.aborted) setFin(resultat);
     } catch (e) {
       if (!estAnnulation(e) && !controleur.signal.aborted) setErreur(messageLiaison(e));
     }
@@ -68,11 +68,15 @@ export function Liaison({ role, onFermer, onReinitialiser }: { role: RoleLiaison
         <div className="animate-rise flex flex-col items-center py-4 text-center">
           <CircleCheck size={44} className="text-primaire" />
           <p className="mt-4 text-[17px] text-texte">{role === "receveur" ? "Cet appareil est relié" : "Appareil relié"}</p>
-          <p className="mt-1.5 text-sm text-texte-2">
-            {role === "receveur"
-              ? "Il a reçu les clés de votre compte."
-              : `${fin.autre ?? "L'autre appareil"} a reçu les clés de votre compte.`}
+          <p className="mt-1.5 text-sm leading-relaxed text-texte-2">
+            {role === "receveur" ? "Il a reçu les clés de votre compte" : `${fin.autre ?? "L'autre appareil"} a reçu les clés de votre compte`}
+            {fin.historique ? ` et l'historique de vos discussions (${fin.historique.toLocaleString("fr-FR")} messages).` : "."}
           </p>
+          {fin.historique === null && (
+            <p className="animate-fade mt-3 text-sm leading-relaxed text-texte-2">
+              L'historique n'a pas pu être transmis : les nouveaux messages arriveront bien sur {role === "receveur" ? "cet appareil" : "l'autre appareil"}.
+            </p>
+          )}
           <button type="button" onClick={onFermer} className="mt-6 rounded-full bg-primaire px-6 py-2 text-sm font-medium text-sur-primaire transition-colors hover:bg-primaire-fort">
             Terminé
           </button>

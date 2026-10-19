@@ -38,7 +38,9 @@ import {
   type ConversationLocale,
   type Epingle,
   type EtatMessage,
+  type GroupeLocal,
   type MessageLocal,
+  type PersonneLocale,
   type Stockage,
   type TransactionMessages,
 } from "./stockage";
@@ -67,6 +69,23 @@ export interface Instantane {
   /** Compte → heure du dernier changement de ses clés vu ici : ce qui affiche son code se relit. */
   identites: Record<string, number>;
 }
+
+/**
+ * Historique transmis à un appareil relié (lot 8) : ce que l'appareil
+ * donneur sait des discussions, sans les fichiers (ils restent sur le
+ * serveur 30 jours, la clé des fichiers chiffrés est dans leur message).
+ */
+export interface ArchiveHistorique {
+  v: 1;
+  messages: MessageLocal[];
+  conversations: ConversationLocale[];
+  personnes: PersonneLocale[];
+  groupes: GroupeLocal[];
+}
+
+/** Messages transmis au plus : au-delà, les plus anciens restent sur l'appareil qui les a. */
+const HISTORIQUE_MESSAGES_MAX = 50_000;
+const LOT_IMPORT = 500;
 
 const RANG: Record<EtatMessage, number> = { echec: -1, attente: 0, envoye: 1, remis: 2, lu: 3 };
 const plusAvance = (a: EtatMessage | undefined, b: EtatMessage): EtatMessage =>
@@ -273,6 +292,73 @@ export class Messagerie {
   /** Identité reçue d'un appareil relié : cet appareil s'inscrit avec elle. */
   async relier(canal: string, identite: IdentitePrivee): Promise<void> {
     this.publier({ chiffrement: await relierCles(this.db, this.moi, canal, identite) });
+  }
+
+  /**
+   * Archive de l'historique pour un appareil qu'on relie, du plus ancien au
+   * plus récent. Ni les messages illisibles ici (rien à transmettre), ni mes
+   * envois pas encore partis (l'autre appareil les renverrait). Une vue
+   * unique reçue arrive déjà ouverte : elle ne se regarde qu'une fois.
+   */
+  async exporterHistorique(): Promise<ArchiveHistorique> {
+    const [messages, conversations, personnes, groupes] = await Promise.all([
+      this.db.getAll("messages"),
+      this.db.getAll("conversations"),
+      this.db.getAll("personnes"),
+      this.db.getAll("groupes"),
+    ]);
+    const transmis = messages
+      .filter((m) => !m.indechiffrable && !(m.de === this.moi && (m.etat === "attente" || m.etat === "echec")))
+      .map((m) => (m.media?.vueUnique && m.de !== this.moi ? { ...m, vueOuverte: true } : m))
+      .sort((a, b) => a.le - b.le)
+      .slice(-HISTORIQUE_MESSAGES_MAX);
+    return { v: 1, messages: transmis, conversations, personnes, groupes };
+  }
+
+  /**
+   * Range l'historique reçu de l'appareil donneur. Un message déjà lisible
+   * ici (déchiffré depuis la liaison) est gardé tel quel ; une place
+   * « illisible » est remplacée par le message lui-même.
+   */
+  async importerHistorique(archive: ArchiveHistorique): Promise<number> {
+    let ranges = 0;
+    const touchees = new Set<string>();
+    for (let i = 0; i < archive.messages.length; i += LOT_IMPORT) {
+      const tx = this.db.transaction(["messages", "conversations"], "readwrite");
+      for (const m of archive.messages.slice(i, i + LOT_IMPORT)) {
+        const local = await tx.objectStore("messages").get(m.id);
+        if (local && !local.indechiffrable) continue;
+        await tx.objectStore("messages").put(m);
+        touchees.add(m.conversation);
+        ranges += 1;
+      }
+      await tx.done;
+    }
+    const tx = this.db.transaction(["messages", "conversations"], "readwrite");
+    for (const c of archive.conversations) {
+      const locale = await tx.objectStore("conversations").get(c.id);
+      // Ce que cet appareil sait déjà (réglages synchronisés) l'emporte ; l'archive complète le reste.
+      await tx.objectStore("conversations").put(locale ? { ...c, ...locale } : c);
+      touchees.add(c.id);
+    }
+    for (const id of touchees) await this.recalculer(tx, id);
+    await tx.done;
+
+    const personnes = { ...this.etat.personnes };
+    const groupes = { ...this.etat.groupes };
+    for (const p of archive.personnes) {
+      if (personnes[p.id] || (await this.db.get("personnes", p.id))) continue;
+      await this.db.put("personnes", p);
+      personnes[p.id] = p;
+    }
+    for (const g of archive.groupes) {
+      if (groupes[g.id] || (await this.db.get("groupes", g.id))) continue;
+      await this.db.put("groupes", g);
+      groupes[g.id] = g;
+    }
+    this.publier({ personnes, groupes });
+    await this.publierConversations(touchees);
+    return ranges;
   }
 
   /** Nouvelles clés pour le compte : les autres appareils devront être reliés à celui-ci. */

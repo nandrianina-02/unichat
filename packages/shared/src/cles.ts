@@ -57,6 +57,33 @@ export const schemaAppareilRelie = z
   .object({ canal, appareil: z.object({ cleSignee: schemaCleSignee, clesUniques, jeton: cle }).strict() })
   .strict();
 
+/**
+ * Historique transmis à l'appareil relié (lot 8) : une archive chiffrée sur
+ * le donneur, déposée en morceaux de 512 Kio (en base64, ce qu'une requête
+ * traite en quelques millisecondes), et gardée moins d'une heure.
+ */
+export const HISTORIQUE = { morceau: 512 * 1024, morceauxMax: 32, duree: 50 * 60 * 1000 } as const;
+/** Un morceau en base64 « URL » : la taille du morceau, un tiers en plus. */
+export const schemaMorceauHistorique = z
+  .string()
+  .min(1)
+  .max(Math.ceil((HISTORIQUE.morceau * 4) / 3), "Morceau d'historique trop gros.")
+  .regex(/^[A-Za-z0-9_-]+$/, "Morceau d'historique mal formé.");
+export const schemaFinHistorique = z
+  .object({ morceaux: z.number().int().min(0).max(HISTORIQUE.morceauxMax), cle: scelle.optional() })
+  .strict()
+  .refine((h) => h.morceaux === 0 || h.cle, "La clé de l'historique manque.");
+
+export interface EtatHistorique {
+  /** attente : le donneur dépose encore (ou n'a pas commencé) ; pret : tout est là. */
+  etat: "attente" | "pret";
+  /** Morceaux déjà déposés : l'appareil qui attend voit que l'envoi avance. */
+  deposes: number;
+  morceaux?: number;
+  /** Clé de l'archive, scellée sous la clé de la liaison. */
+  cle?: string;
+}
+
 export interface EtatLiaison {
   /** attente : code affiché ; repondu : l'autre appareil a lu ; cles : identité déposée ; termine : appareil inscrit. */
   etat: "attente" | "repondu" | "cles" | "termine";

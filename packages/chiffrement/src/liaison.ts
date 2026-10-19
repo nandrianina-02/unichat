@@ -81,6 +81,22 @@ export function scellerIdentite(cle: Uint8Array, canal: string, i: IdentitePrive
   return sceller(cle, texteVersOctets(contenu), associe(canal));
 }
 
+const associeHistorique = (canal: string) => texteVersOctets(`UniChat-historique:${canal}`);
+
+/**
+ * Clé de l'archive d'historique (lot 8), scellée sous la clé de la liaison :
+ * le serveur garde l'archive, mais seul l'appareil relié peut l'ouvrir.
+ */
+export function scellerCleHistorique(cle: Uint8Array, canal: string, cleArchive: Uint8Array): Uint8Array {
+  return sceller(cle, cleArchive, associeHistorique(canal));
+}
+
+export function ouvrirCleHistorique(cle: Uint8Array, canal: string, scelle: Uint8Array): Uint8Array {
+  const cleArchive = ouvrir(cle, scelle, associeHistorique(canal));
+  if (cleArchive.length !== TAILLE_CLE) throw new Error("Clé d'historique invalide.");
+  return cleArchive;
+}
+
 /**
  * Identité reçue : clés publiques recalculées depuis les secrètes, et preuve
  * vérifiée. Une identité incohérente est refusée plutôt que rangée.

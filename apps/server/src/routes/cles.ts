@@ -1,13 +1,16 @@
 import { Hono, type Context } from "hono";
 import {
   CLES_UNIQUES,
+  HISTORIQUE,
   LIAISON,
   schemaAppareilRelie,
   schemaClesLiaison,
   schemaClesUniques,
   schemaDemandePaquets,
+  schemaFinHistorique,
   schemaInscriptionCles,
   schemaListeAppareils,
+  schemaMorceauHistorique,
   schemaNouvelleCleSignee,
   schemaNouvelleLiaison,
   schemaRepriseCles,
@@ -15,9 +18,11 @@ import {
   type AppareilsCompte,
   type CleUniqueTransport,
   type EtatCles,
+  type EtatHistorique,
   type EtatLiaison,
   type PaquetsCompte,
 } from "@unichat/shared";
+import { lireCorpsBorne } from "../lib/corps";
 import { aleatoire, empreinte } from "../lib/crypto";
 import { journaliser } from "../lib/evenements";
 import { Refus, refus } from "../lib/erreurs";
@@ -288,6 +293,8 @@ interface LigneLiaison {
   cles: string | null;
   utilise_le: number | null;
   expire_le: number;
+  historique_cle: string | null;
+  historique_morceaux: number | null;
 }
 
 const roleOppose = (r: "donneur" | "receveur") => (r === "donneur" ? "receveur" : "donneur");
@@ -421,6 +428,92 @@ cles.post("/appareil", async (c) => {
   return c.json(await etat(c.env.DB, session), 201);
 });
 
+// --- Historique transmis à l'appareil relié (lot 8) ---------------------------------
+
+const donneurDe = (l: LigneLiaison) => (l.createur_role === "donneur" ? l.createur_session : l.reponse_session);
+const receveurDe = (l: LigneLiaison) => (l.createur_role === "receveur" ? l.createur_session : l.reponse_session);
+
+/**
+ * Liaison terminée dont cette session est le donneur (dépôt) ou le receveur
+ * (reprise). L'historique reste moins d'une heure : le nettoyage efface la
+ * liaison, et ses morceaux avec elle.
+ */
+async function liaisonHistorique(c: Context<AppEnv>, role: "donneur" | "receveur"): Promise<LigneLiaison> {
+  const l = await liaisonDuCompte(c, c.req.param("canal") ?? "", HISTORIQUE.duree);
+  if (!l.utilise_le) throw refus.conflit("La liaison n'est pas terminée.");
+  if (c.get("session").id !== (role === "donneur" ? donneurDe(l) : receveurDe(l))) {
+    throw refus.interdit(role === "donneur" ? "Seul l'appareil qui a transmis les clés dépose l'historique." : "Cet historique est destiné à un autre appareil.");
+  }
+  return l;
+}
+
+function indiceMorceau(c: Context<AppEnv>): number {
+  const indice = Number(c.req.param("indice"));
+  if (!Number.isInteger(indice) || indice < 0 || indice >= HISTORIQUE.morceauxMax) throw refus.requete("Morceau d'historique inconnu.");
+  return indice;
+}
+
+/** Un morceau de l'archive, en base64 : le serveur ne fait que le ranger, il ne peut pas le lire. */
+cles.put("/liaisons/:canal/historique/:indice", async (c) => {
+  const l = await liaisonHistorique(c, "donneur");
+  const indice = indiceMorceau(c);
+  if (l.historique_morceaux !== null) throw refus.conflit("L'historique a déjà été déposé.");
+  await limiter(c, `historique:${l.utilisateur_id}`, 4 * HISTORIQUE.morceauxMax, 60 * MINUTE);
+  const corps = await lireCorpsBorne(c.req.raw, Math.ceil((HISTORIQUE.morceau * 4) / 3));
+  if (!corps) throw new Refus(413, "trop_gros", "Morceau d'historique trop gros.");
+  const lu = schemaMorceauHistorique.safeParse(new TextDecoder().decode(corps));
+  if (!lu.success) throw refus.requete(lu.error.issues[0]?.message ?? "Morceau d'historique invalide.");
+  await c.env.DB.prepare("INSERT OR REPLACE INTO morceaux_historique (canal, indice, donnees) VALUES (?1, ?2, ?3)").bind(l.canal, indice, lu.data).run();
+  return c.body(null, 204);
+});
+
+/** Fin du dépôt : la clé scellée, et le nombre de morceaux (0 : rien à transmettre). */
+cles.post("/liaisons/:canal/historique", async (c) => {
+  const { morceaux, cle } = await corpsJson(c, schemaFinHistorique);
+  const l = await liaisonHistorique(c, "donneur");
+  if (l.historique_morceaux !== null) throw refus.conflit("L'historique a déjà été déposé.");
+  const presents = await c.env.DB.prepare("SELECT COUNT(*) AS n FROM morceaux_historique WHERE canal = ?1 AND indice < ?2")
+    .bind(l.canal, morceaux)
+    .first<{ n: number }>();
+  if ((presents?.n ?? 0) !== morceaux) throw refus.conflit("Des morceaux de l'historique manquent. Recommencez l'envoi.");
+  await c.env.DB.prepare("UPDATE liaisons SET historique_morceaux = ?1, historique_cle = ?2 WHERE canal = ?3")
+    .bind(morceaux, cle ?? null, l.canal)
+    .run();
+  return c.body(null, 204);
+});
+
+cles.get("/liaisons/:canal/historique", async (c) => {
+  const l = await liaisonHistorique(c, "receveur");
+  const deposes = await c.env.DB.prepare("SELECT COUNT(*) AS n FROM morceaux_historique WHERE canal = ?1").bind(l.canal).first<{ n: number }>();
+  const etat: EtatHistorique = {
+    etat: l.historique_morceaux === null ? "attente" : "pret",
+    deposes: deposes?.n ?? 0,
+    ...(l.historique_morceaux !== null ? { morceaux: l.historique_morceaux } : {}),
+    ...(l.historique_cle ? { cle: l.historique_cle } : {}),
+  };
+  return c.json(etat);
+});
+
+cles.get("/liaisons/:canal/historique/:indice", async (c) => {
+  const l = await liaisonHistorique(c, "receveur");
+  const indice = indiceMorceau(c);
+  const morceau = await c.env.DB.prepare("SELECT donnees FROM morceaux_historique WHERE canal = ?1 AND indice = ?2")
+    .bind(l.canal, indice)
+    .first<{ donnees: string }>();
+  if (!morceau) throw new Refus(404, "morceau_inconnu", "Ce morceau de l'historique n'existe pas ou plus.");
+  return c.text(morceau.donnees);
+});
+
+/** Historique repris : il quitte le serveur aussitôt. */
+cles.delete("/liaisons/:canal/historique", async (c) => {
+  const l = await liaisonHistorique(c, "receveur");
+  await c.env.DB.batch([
+    c.env.DB.prepare("DELETE FROM morceaux_historique WHERE canal = ?1").bind(l.canal),
+    c.env.DB.prepare("UPDATE liaisons SET historique_cle = NULL WHERE canal = ?1").bind(l.canal),
+  ]);
+  return c.body(null, 204);
+});
+
 /**
  * Plus aucun appareil pour transmettre l'identité (perdu, effacé) : on en
  * crée une nouvelle. Les autres appareils devront être reliés à celui-ci.
@@ -433,6 +526,7 @@ cles.post("/reinitialisation", async (c) => {
   await limiter(c, `cles:${moi}`, 20, 60 * MINUTE);
   const maintenant = c.get("deps").maintenant();
   await c.env.DB.batch([
+    c.env.DB.prepare("DELETE FROM morceaux_historique WHERE canal IN (SELECT canal FROM liaisons WHERE utilisateur_id = ?1)").bind(moi),
     c.env.DB.prepare("DELETE FROM liaisons WHERE utilisateur_id = ?1").bind(moi),
     c.env.DB.prepare("DELETE FROM appareils_cles WHERE utilisateur_id = ?1").bind(moi),
     c.env.DB.prepare(

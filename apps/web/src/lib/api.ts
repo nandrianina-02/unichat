@@ -10,6 +10,7 @@ import type {
   Decision,
   ErreurApiCorps,
   EtatCles,
+  EtatHistorique,
   EtatLiaison,
   FicheAdmin,
   InscriptionCles,
@@ -132,6 +133,17 @@ export const api = {
   repondreLiaison: (canal: string, reponse: { cle: string; preuve: string; cles?: string }) =>
     appel<EtatLiaison>(`/cles/liaisons/${encodeURIComponent(canal)}/reponse`, json("POST", reponse)),
   deposerCles: (canal: string, cles: string) => appel<EtatLiaison>(`/cles/liaisons/${encodeURIComponent(canal)}/cles`, json("POST", { cles })),
+  // Historique pour l'appareil relié (lot 8) : des morceaux en base64, envoyés tels quels (pas en JSON).
+  deposerMorceauHistorique: (canal: string, indice: number, texte: string) =>
+    appel<void>(`/cles/liaisons/${encodeURIComponent(canal)}/historique/${indice}`, { method: "PUT", body: new Blob([texte], { type: "text/plain" }) }),
+  finirHistorique: (canal: string, fin: { morceaux: number; cle?: string }) => appel<void>(`/cles/liaisons/${encodeURIComponent(canal)}/historique`, json("POST", fin)),
+  etatHistorique: (canal: string) => appel<EtatHistorique>(`/cles/liaisons/${encodeURIComponent(canal)}/historique`),
+  morceauHistorique: async (canal: string, indice: number): Promise<string> => {
+    const reponse = await fetch(`/api/cles/liaisons/${encodeURIComponent(canal)}/historique/${indice}`, { credentials: "same-origin" });
+    if (!reponse.ok) throw new ErreurApi("historique", "L'historique n'a pas pu être téléchargé.", reponse.status);
+    return reponse.text();
+  },
+  supprimerHistorique: (canal: string) => appel<void>(`/cles/liaisons/${encodeURIComponent(canal)}/historique`, { method: "DELETE" }),
   relierAppareil: (canal: string, appareil: InscriptionCles["appareil"]) => appel<EtatCles>("/cles/appareil", json("POST", { canal, appareil })),
   reinitialiserCles: (inscription: InscriptionCles) => appel<EtatCles>("/cles/reinitialisation", json("POST", inscription)),
 

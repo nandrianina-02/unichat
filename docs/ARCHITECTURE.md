@@ -489,6 +489,26 @@ sans appareil photo), et le code peut se copier-coller.
 - **Accès** : Infos du contact, « Code de sécurité » ; ou « Voir le code » sur
   la ligne d'avertissement.
 
+### Historique pour un appareil relié (lot 8)
+
+- **Juste après la liaison**, l'appareil donneur transmet ses discussions :
+  messages (50 000 au plus, les plus récents), discussions, personnes et
+  groupes connus. Pas les fichiers : ils restent sur le serveur 30 jours,
+  et la clé d'un fichier chiffré voyage dans son message.
+- **Chiffré sur le donneur** (gzip, puis AES-256-GCM sous une clé tirée pour
+  l'occasion) et déposé en morceaux de 512 Kio (`/api/cles/liaisons/:canal/
+  historique`, table `morceaux_historique`). La clé de l'archive n'est
+  déposée que scellée sous la clé de la liaison, que le serveur n'a jamais
+  eue. Seul le receveur peut lire les morceaux ; il les efface après
+  reprise, et le nettoyage le fait au plus tard une heure après.
+- **Rangement** : une place « illisible » est remplacée par le message ; un
+  message déjà lisible (arrivé après la liaison) est gardé. Une vue unique
+  reçue arrive déjà ouverte. Ni les messages illisibles du donneur, ni ses
+  envois pas encore partis.
+- **Trop lourde** (16 Mio chiffrée), l'archive perd ses plus anciens
+  messages jusqu'à tenir. Un échec de l'historique ne défait pas la
+  liaison : les nouveaux messages arrivent de toute façon.
+
 ### Lots
 
 1. Socle cryptographique, annuaire des clés, inscription du premier appareil (fait).
@@ -499,7 +519,7 @@ sans appareil photo), et le code peut se copier-coller.
 5. Fichiers (fait).
 6. Notifications déchiffrées sur l'appareil (fait).
 7. Code de sécurité et avertissement de changement d'identité (fait).
-8. Historique transmis à un appareil relié ; fin des messages non chiffrés.
+8. Historique transmis à un appareil relié (fait) ; fin des messages non chiffrés.
 
 La mention « chiffré de bout en bout » n'apparaît dans l'application qu'à
 la fin de l'étape.

@@ -21,7 +21,9 @@ export async function nettoyer(env: Bindings, maintenant: number, recuperer: typ
     db.prepare("DELETE FROM signalements WHERE cree_le < ?1").bind(maintenant - 180 * JOUR),
     // Groupe sans plus aucun membre (tous partis, comptes supprimés) : effacé, photo comprise.
     db.prepare("DELETE FROM groupes WHERE NOT EXISTS (SELECT 1 FROM membres m WHERE m.groupe_id = groupes.id)"),
-    // Codes de liaison périmés (cinq minutes, plus le temps de s'inscrire).
+    // Codes de liaison périmés (cinq minutes, plus le temps de s'inscrire),
+    // et l'historique déposé pour l'appareil relié (moins d'une heure).
+    db.prepare("DELETE FROM morceaux_historique WHERE canal IN (SELECT canal FROM liaisons WHERE expire_le < ?1)").bind(maintenant - HEURE),
     db.prepare("DELETE FROM liaisons WHERE expire_le < ?1").bind(maintenant - HEURE),
     // Journal de l'administration : un an.
     db.prepare("DELETE FROM actions_admin WHERE cree_le < ?1").bind(maintenant - 365 * JOUR),
