@@ -2,6 +2,7 @@ import { Hono } from "hono";
 import { secureHeaders } from "hono/secure-headers";
 import { Refus } from "./lib/erreurs";
 import { contacts, personnes, recherche } from "./routes/annuaire";
+import { admin } from "./routes/admin";
 import { apercu } from "./routes/apercu";
 import { appareils } from "./routes/appareils";
 import { auth } from "./routes/auth";
@@ -51,6 +52,7 @@ export function creerApp(remplacements: Partial<Dependances> = {}) {
   app.route("/api/invitations", invitations);
   app.route("/api/push", push);
   app.route("/api/cles", cles);
+  app.route("/api/admin", admin);
 
   // Lien entre le site et l'application Android : sans lui, elle s'ouvrirait
   // avec une barre d'adresse, comme un simple onglet.

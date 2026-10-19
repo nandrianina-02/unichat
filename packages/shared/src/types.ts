@@ -22,6 +22,8 @@ export interface Moi {
   confirmationsLecture: boolean;
   ajoutGroupes: AjoutGroupes;
   sessionId: string;
+  /** Compte d'administration (secret ADMINS du serveur) : l'espace Administration lui est ouvert. */
+  admin: boolean;
 }
 
 /** Une autre personne, réduite à ce que ses réglages de confidentialité laissent voir. */
@@ -48,7 +50,14 @@ export interface AppareilConnecte {
   actuel: boolean;
 }
 
-export type TypeEvenement = "connexion" | "deconnexion" | "session_revoquee" | "reutilisation_jeton" | "pseudo_modifie";
+export type TypeEvenement =
+  | "connexion"
+  | "deconnexion"
+  | "session_revoquee"
+  | "reutilisation_jeton"
+  | "pseudo_modifie"
+  | "compte_suspendu"
+  | "suspension_levee";
 
 export interface EvenementSecurite {
   id: string;

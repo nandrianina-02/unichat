@@ -1,5 +1,6 @@
 import { Hono, type Context } from "hono";
 import { schemaMajProfil, schemaPseudo, schemaSuppressionCompte, type MajProfil } from "@unichat/shared";
+import { estAdmin } from "../lib/admin";
 import { lireUtilisateur } from "../lib/comptes";
 import { refus } from "../lib/erreurs";
 import { journaliser } from "../lib/evenements";
@@ -17,7 +18,7 @@ async function moiActuel(c: Context<AppEnv>) {
   const session = c.get("session");
   const u = await lireUtilisateur(c.env.DB, session.utilisateur_id);
   if (!u) throw refus.nonConnecte();
-  return versMoi(u, session.id);
+  return versMoi(u, session.id, estAdmin(c.env, u.id));
 }
 
 moi.get("/", async (c) => c.json(await moiActuel(c)));
@@ -57,7 +58,7 @@ moi.patch("/", async (c) => {
   if (!avant) throw refus.nonConnecte();
 
   const cles = (Object.keys(changements) as (keyof MajProfil)[]).filter((k) => changements[k] !== undefined);
-  if (cles.length === 0) return c.json(versMoi(avant, session.id));
+  if (cles.length === 0) return c.json(versMoi(avant, session.id, estAdmin(c.env, avant.id)));
 
   const valeurs = cles.map((k) => (typeof changements[k] === "boolean" ? (changements[k] ? 1 : 0) : changements[k]));
   const affectations = cles.map((k, i) => `${COLONNES[k]} = ?${i + 1}`).join(", ");
@@ -90,7 +91,7 @@ moi.patch("/", async (c) => {
     throw erreur;
   }
   const apres = await lireUtilisateur(c.env.DB, avant.id);
-  return c.json(versMoi(apres!, session.id));
+  return c.json(versMoi(apres!, session.id, estAdmin(c.env, apres!.id)));
 });
 
 moi.get("/pseudo-disponible", async (c) => {

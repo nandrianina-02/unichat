@@ -1,3 +1,4 @@
+export * from "./admin";
 export * from "./cles";
 export * from "./groupes";
 export * from "./medias";

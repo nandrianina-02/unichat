@@ -169,6 +169,28 @@ de WhatsApp.
   mes appareils ; personne d'autre n'en sait rien. Hors connexion, ils
   partent au retour du réseau.
 
+### Administration
+
+- **Droit d'administration** : identifiants UniChat dans le secret `ADMINS`,
+  vérifié à chaque requête de `/api/admin`. Rien dans la base ne le donne :
+  ni une fuite ni une injection SQL ne suffit à créer un administrateur.
+  Pour un compte ordinaire, `/api/admin` répond comme une adresse inconnue.
+- **Suspension** (`utilisateurs.suspendu_le`, motif) : sessions fermées et
+  connexions coupées, connexion Google refusée, recherche et nouveaux
+  messages bloqués, ajout aux groupes impossible. Les clés de chiffrement des
+  appareils restent : levée la suspension, ils reprennent leur place.
+- **Signalements** : décision (`classe`, `suspendu`, `groupe_ferme`) appliquée
+  à tous les signalements ouverts sur la même cible. Fermer un groupe
+  dépose l'événement `fermeture` chez chaque membre, puis l'efface avec ses
+  fichiers.
+- **Garde-fous** : supprimer un compte ou fermer un groupe exige une session
+  ouverte avec Google depuis moins de 24 heures ; un administrateur n'agit ni
+  sur lui-même ni sur un autre ; chaque action va au journal
+  (`actions_admin`, un an), sans clé étrangère pour survivre aux comptes.
+- **Ce que l'administration voit** : profil, adresse, appareils, groupes,
+  signalements. Ni photo, ni contacts un par un, ni messages, que le serveur
+  ne garde pas ; seuls les messages joints à un signalement sont lisibles.
+
 ### Modifier, épingler, transférer, important
 
 - **Modifier** (15 minutes) et **épingler** (24 h, 7 ou 30 jours, trois par

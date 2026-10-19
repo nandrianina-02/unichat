@@ -27,6 +27,7 @@ import { Profil } from "../panneaux/Profil";
 import { SupprimerCompte } from "../panneaux/SupprimerCompte";
 import type { Vue } from "../panneaux/vues";
 import { Accueil } from "../vues/Accueil";
+import { Administration } from "../vues/Administration";
 import { Discussion } from "../vues/Discussion";
 import { FicheContact } from "../vues/FicheContact";
 import { InfosGroupe } from "../vues/InfosGroupe";
@@ -45,7 +46,9 @@ type Principal =
       cote: "infos" | "recherche" | "galerie" | null;
       /** Message à montrer en ouvrant la discussion. */
       cible?: string;
-    };
+    }
+  /** Espace d'administration (comptes désignés par le serveur). */
+  | { type: "admin" };
 
 const ACCUEIL: Principal = { type: "accueil" };
 
@@ -96,11 +99,11 @@ export function Application() {
     if (conversation && /^(d|g):[0-9a-f:-]+$/i.test(conversation)) ouvrirDiscussion(conversation);
   }, [ouvrirDiscussion]);
 
-  // Le plein écran du téléphone tient jusqu'à ce que la discussion ait fini de partir.
-  const discussionVisible = useEncoreVisible(principal.type === "discussion");
+  // Le plein écran du téléphone tient jusqu'à ce que la vue ait fini de partir.
+  const pleinEcran = useEncoreVisible(principal.type !== "accueil");
 
-  // Retour (Android, navigateur) : referme le panneau d'à côté, puis la discussion.
-  useRetourSysteme(principal.type === "discussion", () => setPrincipal(ACCUEIL));
+  // Retour (Android, navigateur) : referme le panneau d'à côté, puis la discussion (ou l'administration).
+  useRetourSysteme(principal.type !== "accueil", () => setPrincipal(ACCUEIL));
   useRetourSysteme(principal.type === "discussion" && principal.cote !== null, () =>
     setPrincipal((p) => (p.type === "discussion" ? { ...p, cote: null } : p)),
   );
@@ -159,6 +162,7 @@ export function Application() {
             onTheme={() => setTheme(true)}
             onFond={() => setFond(true)}
             onDeconnexion={() => setDeconnexion(true)}
+            onAdministration={moi.admin ? () => setPrincipal({ type: "admin" }) : undefined}
           />
         );
       case "profil":
@@ -233,7 +237,7 @@ export function Application() {
       <main
         className={clsx(
           "min-w-0",
-          !discussionVisible
+          !pleinEcran
             ? "relative hidden flex-1 md:flex"
             : // Un seul positionnement par taille d'écran : « relative » et « fixed »
               // ensemble s'annulent selon l'ordre des règles CSS.
@@ -250,7 +254,7 @@ export function Application() {
         )}
         <Apparition>
           {principal.type === "discussion" && (
-            <VueDiscussion key={principal.conversation}>
+            <VuePrincipale key={principal.conversation}>
               <Discussion
                 key={`${principal.conversation}|${principal.cible ?? ""}`}
                 conversation={principal.conversation}
@@ -294,7 +298,14 @@ export function Application() {
                   </PanneauCote>
                 )}
               </Apparition>
-            </VueDiscussion>
+            </VuePrincipale>
+          )}
+        </Apparition>
+        <Apparition>
+          {principal.type === "admin" && moi.admin && (
+            <VuePrincipale key="admin">
+              <Administration onFermer={() => setPrincipal(ACCUEIL)} />
+            </VuePrincipale>
           )}
         </Apparition>
       </main>
@@ -336,11 +347,12 @@ export function Application() {
 }
 
 /**
- * La discussion arrive de la droite sur téléphone, comme un écran qu'on
- * empile, et en fondu sur ordinateur où sa place est déjà là. En partant,
- * elle se pose au-dessus de l'accueil le temps de s'effacer.
+ * Discussion ou administration : elle arrive de la droite sur téléphone,
+ * comme un écran qu'on empile, et en fondu sur ordinateur où sa place est
+ * déjà là. En partant, elle se pose au-dessus de l'accueil le temps de
+ * s'effacer.
  */
-function VueDiscussion({ children }: { children: ReactNode }) {
+function VuePrincipale({ children }: { children: ReactNode }) {
   const sortie = useSortie();
   return (
     <div className={clsx("flex min-w-0 flex-1", sortie ? "discussion-sortie pointer-events-none absolute inset-0 z-10" : "discussion-entree relative")}>

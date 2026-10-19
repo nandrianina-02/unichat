@@ -107,14 +107,36 @@ plein écran, sans barre d'adresse.
 Publication sur le Play Store : facultative (inscription de 25 $, une seule
 fois) ; elle utilise `UniChat.aab`.
 
-## Modération
+## Administration
 
-Les signalements arrivent dans la table `signalements` (six mois au plus),
-avec les cinq derniers messages joints par l'application. Pour les lire :
+Espace réservé, ouvert depuis Paramètres, Administration :
+
+- **Tableau de bord** : comptes, activité sur 24 heures et 7 jours, inscriptions
+  des 14 derniers jours, groupes, fichiers stockés, place occupée dans la base
+  (offre gratuite de D1 : 500 Mo).
+- **Comptes** : recherche par nom, nom d'utilisateur ou adresse ; fiche avec
+  appareils connectés, groupes et signalements reçus. Actions : déconnecter
+  ses appareils, suspendre (motif obligatoire) ou lever la suspension,
+  supprimer le compte.
+- **Signalements** : file des signalements avec les messages joints par la
+  personne qui signale. Classer sans suite, suspendre le compte, ou fermer le
+  groupe ; les autres signalements ouverts sur la même cible suivent.
+- **Journal** : chaque action, son auteur et son motif, gardés un an.
+
+Un compte suspendu ne peut plus se connecter, ses appareils sont déconnectés
+et on ne peut plus lui écrire ; il disparaît de la recherche. Supprimer un
+compte ou fermer un groupe demande une connexion Google de moins de 24 heures.
+Un administrateur n'agit ni sur lui-même ni sur un autre administrateur. Le
+contenu des messages n'est jamais visible, sauf les messages joints à un
+signalement.
+
+**Désigner les administrateurs** : identifiants UniChat (pas les adresses
+e-mail, qui peuvent changer de titulaire), séparés par des virgules, dans le
+secret `ADMINS` du Worker :
 
 ```bash
 cd apps/server
-npx wrangler d1 execute unichat --remote --command "SELECT s.id, datetime(s.cree_le / 1000, 'unixepoch') AS le, s.type, s.cible_id, u.nom AS auteur, s.messages FROM signalements s JOIN utilisateurs u ON u.id = s.auteur_id WHERE s.traite_le IS NULL ORDER BY s.cree_le"
+npx wrangler secret put ADMINS
 ```
 
-Une fois examiné : `UPDATE signalements SET traite_le = <horodatage en ms> WHERE id = '<id>'`.
+Rien dans la base ne donne ce droit : le serveur le vérifie à chaque requête.

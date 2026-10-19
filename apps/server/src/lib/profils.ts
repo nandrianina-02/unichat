@@ -16,9 +16,11 @@ export interface LigneUtilisateur {
   confirmations_lecture: number;
   ajout_groupes: AjoutGroupes;
   cree_le: number;
+  suspendu_le: number | null;
+  motif_suspension: string | null;
 }
 
-export function versMoi(u: LigneUtilisateur, sessionId: string): Moi {
+export function versMoi(u: LigneUtilisateur, sessionId: string, admin: boolean): Moi {
   return {
     id: u.id,
     email: u.email,
@@ -34,6 +36,7 @@ export function versMoi(u: LigneUtilisateur, sessionId: string): Moi {
     confirmationsLecture: u.confirmations_lecture === 1,
     ajoutGroupes: u.ajout_groupes,
     sessionId,
+    admin,
   };
 }
 
@@ -102,7 +105,7 @@ export async function rechercher(
   lecteurId: string,
 ): Promise<CarteProfil[]> {
   // Correspondance exacte uniquement : on ne laisse pas parcourir l'annuaire.
-  const condition = critere.type === "email" ? "u.email = ?2 AND u.trouvable_email = 1" : "u.pseudo = ?2";
+  const condition = `${critere.type === "email" ? "u.email = ?2 AND u.trouvable_email = 1" : "u.pseudo = ?2"} AND u.suspendu_le IS NULL`;
   const l = await db
     .prepare(`SELECT ${SELECTION_CARTE} FROM utilisateurs u WHERE ${condition} AND u.pseudo IS NOT NULL LIMIT 1`)
     .bind(lecteurId, critere.valeur)

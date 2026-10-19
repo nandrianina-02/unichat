@@ -9,6 +9,7 @@ declare global {
       TEST_MIGRATIONS: D1Migration[];
       KARAKS_STORAGE_URL?: string;
       VAPID_PRIVEE?: string;
+      ADMINS?: string;
     }
   }
 }

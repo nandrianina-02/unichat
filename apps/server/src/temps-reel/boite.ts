@@ -683,7 +683,7 @@ export class Boite extends DurableObject<Bindings> {
 
   private async destinataireExiste(id: string): Promise<boolean> {
     if (this.destinatairesConnus.has(id)) return true;
-    const ligne = await this.env.DB.prepare("SELECT 1 AS ok FROM utilisateurs WHERE id = ?1 AND pseudo IS NOT NULL").bind(id).first();
+    const ligne = await this.env.DB.prepare("SELECT 1 AS ok FROM utilisateurs WHERE id = ?1 AND pseudo IS NOT NULL AND suspendu_le IS NULL").bind(id).first();
     if (ligne) this.destinatairesConnus.add(id);
     return Boolean(ligne);
   }

@@ -100,6 +100,8 @@ auth.get("/google/rappel", async (c) => {
   }
 
   const utilisateurId = await trouverOuCreerCompte(c.env.DB, recuperer, identite, maintenant);
+  const suspension = await c.env.DB.prepare("SELECT suspendu_le FROM utilisateurs WHERE id = ?1").bind(utilisateurId).first<{ suspendu_le: number | null }>();
+  if (suspension?.suspendu_le) return echec("compte_suspendu");
   const { jeton } = await creerSession(
     c.env.DB,
     { utilisateurId, plateforme: "web", appareil: nomAppareil(c.req.header("User-Agent")), ...lieu(c) },

@@ -103,6 +103,8 @@ export function texteEvenement(
       return `${qui} ${qui === "Vous" ? "avez" : "a"} modifié la description du groupe`;
     case "photo":
       return `${qui} ${qui === "Vous" ? "avez" : "a"} changé la photo du groupe`;
+    case "fermeture":
+      return "Ce groupe a été fermé par la modération d'UniChat";
     case "lien":
       return `${qui} ${qui === "Vous" ? "avez" : "a"} rejoint le groupe avec le lien d'invitation`;
     default:

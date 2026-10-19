@@ -22,7 +22,7 @@ async function verifierContacts(db: D1Database, proprietaire: string, ids: strin
   const ligne = await db
     .prepare(
       `SELECT COUNT(*) AS n FROM contacts k JOIN utilisateurs u ON u.id = k.contact_id
-       WHERE k.proprietaire_id = ?1 AND u.pseudo IS NOT NULL AND k.contact_id IN (SELECT value FROM json_each(?2))`,
+       WHERE k.proprietaire_id = ?1 AND u.pseudo IS NOT NULL AND u.suspendu_le IS NULL AND k.contact_id IN (SELECT value FROM json_each(?2))`,
     )
     .bind(proprietaire, JSON.stringify(ids))
     .first<{ n: number }>();

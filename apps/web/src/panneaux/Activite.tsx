@@ -1,6 +1,6 @@
 import type { EvenementSecurite, TypeEvenement } from "@unichat/shared";
 import clsx from "clsx";
-import { AtSign, LoaderCircle, LogIn, LogOut, ShieldAlert, ShieldX, type LucideIcon } from "lucide-react";
+import { AtSign, Ban, LoaderCircle, LogIn, LogOut, ShieldAlert, ShieldCheck, ShieldX, type LucideIcon } from "lucide-react";
 import { useEffect, useState } from "react";
 import { EnTetePanneau } from "../composants/Panneau";
 import { api } from "../lib/api";
@@ -13,6 +13,8 @@ const DESCRIPTIONS: Record<TypeEvenement, { icone: LucideIcon; titre: string; al
   session_revoquee: { icone: ShieldX, titre: "Appareil déconnecté à distance" },
   reutilisation_jeton: { icone: ShieldAlert, titre: "Session fermée par sécurité", alerte: true },
   pseudo_modifie: { icone: AtSign, titre: "Nom d'utilisateur modifié" },
+  compte_suspendu: { icone: Ban, titre: "Compte suspendu par la modération", alerte: true },
+  suspension_levee: { icone: ShieldCheck, titre: "Suspension levée" },
 };
 
 export function Activite({ onRetour }: { onRetour: () => void }) {

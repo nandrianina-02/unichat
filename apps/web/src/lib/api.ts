@@ -1,14 +1,20 @@
 import type {
+  ActionAdmin,
   ApercuInvitation,
   ApercuLien,
   AppareilConnecte,
   CarteProfil,
   CleSigneeTransport,
   CleUniqueTransport,
+  Decision,
   ErreurApiCorps,
   EtatCles,
+  FicheAdmin,
   InscriptionCles,
   PaquetsCompte,
+  SignalementAdmin,
+  TableauAdmin,
+  UtilisateurAdmin,
   EvenementSecurite,
   Groupe,
   MajProfil,
@@ -118,6 +124,24 @@ export const api = {
   ajouterClesUniques: (cles: CleUniqueTransport[]) => appel<EtatCles>("/cles/uniques", json("POST", { cles })),
   publierCleSignee: (cleSignee: CleSigneeTransport) => appel<EtatCles>("/cles/signee", json("PUT", { cleSignee })),
   paquets: (comptes: { id: string; appareils?: number[] }[]) => appel<{ comptes: PaquetsCompte[] }>("/cles/paquets", json("POST", { comptes })),
+
+  admin: {
+    tableau: () => appel<TableauAdmin>("/admin/tableau"),
+    utilisateurs: (q: string, filtre: "tous" | "signales" | "suspendus", avant?: number) =>
+      appel<{ utilisateurs: UtilisateurAdmin[]; suite: number | null }>(
+        `/admin/utilisateurs?${new URLSearchParams({ q, ...(filtre !== "tous" ? { filtre } : {}), ...(avant ? { avant: String(avant) } : {}) })}`,
+      ),
+    fiche: (id: string) => appel<FicheAdmin>(`/admin/utilisateurs/${encodeURIComponent(id)}`),
+    suspendre: (id: string, motif: string) => appel<FicheAdmin>(`/admin/utilisateurs/${encodeURIComponent(id)}/suspension`, json("POST", { motif })),
+    leverSuspension: (id: string) => appel<FicheAdmin>(`/admin/utilisateurs/${encodeURIComponent(id)}/suspension`, { method: "DELETE" }),
+    deconnecter: (id: string) => appel<FicheAdmin>(`/admin/utilisateurs/${encodeURIComponent(id)}/deconnexion`, { method: "POST" }),
+    supprimer: (id: string, confirmation: string) => appel<void>(`/admin/utilisateurs/${encodeURIComponent(id)}`, json("DELETE", { confirmation })),
+    signalements: (etat: "ouverts" | "traites") => appel<{ signalements: SignalementAdmin[] }>(`/admin/signalements?etat=${etat}`),
+    decider: (id: string, decision: Decision, motif?: string) =>
+      appel<void>(`/admin/signalements/${encodeURIComponent(id)}/decision`, json("POST", { decision, ...(motif ? { motif } : {}) })),
+    fermerGroupe: (id: string, motif: string) => appel<void>(`/admin/groupes/${encodeURIComponent(id)}/fermeture`, json("POST", { motif })),
+    journal: (avant?: number) => appel<{ actions: ActionAdmin[]; suite: number | null }>(`/admin/journal${avant ? `?avant=${avant}` : ""}`),
+  },
 };
 
 export function urlPhoto(id: string, version: string, taille: "petite" | "grande"): string {

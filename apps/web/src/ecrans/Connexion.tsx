@@ -17,6 +17,7 @@ const MESSAGES: Record<string, string> = {
   session_fermee: "Votre session a été fermée depuis un autre appareil, ou a expiré. Reconnectez-vous.",
   reseau: "Le serveur ne répond pas. Vérifiez votre connexion, puis rechargez la page.",
   compte_supprime: "Votre compte a été supprimé, ainsi que les messages gardés dans ce navigateur.",
+  compte_suspendu: "Ce compte est suspendu pour non-respect des conditions d'utilisation d'UniChat. Les conditions indiquent comment contester la décision.",
 };
 
 const ETAPES = [
