@@ -4,12 +4,13 @@ import { ErreurApi } from "./api";
 export async function identifiantsEnvoi(
   conversation: string,
   f: { nom: string; mime: string; blob: Blob },
+  chiffre = false,
 ): Promise<{ id: string; tailleMorceau: number }> {
   const reponse = await fetch("/api/medias", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     credentials: "same-origin",
-    body: JSON.stringify({ conversation, nom: f.nom, mime: f.mime, taille: f.blob.size }),
+    body: JSON.stringify({ conversation, nom: f.nom, mime: f.mime, taille: f.blob.size, ...(chiffre ? { chiffre: true } : {}) }),
   }).catch(() => {
     throw new ErreurApi("reseau", "Connexion impossible. Vérifiez votre réseau.", 0);
   });

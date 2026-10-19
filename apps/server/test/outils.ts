@@ -112,6 +112,9 @@ export function creerKaraksFaux(base: string) {
   const fichiers = new Map<string, Uint8Array>();
   const liens = new Map<string, string>();
   const effaces: string[] = [];
+  const noms: string[] = [];
+  /** Clé sans le droit aux fichiers chiffrés : un « .bin » est refusé, comme le fait le vrai service. */
+  const options = { refuserChiffres: false };
 
   const recuperer = async (url: string, init: RequestInit = {}): Promise<Response | null> => {
     if (!url.startsWith(base)) return null;
@@ -126,7 +129,11 @@ export function creerKaraksFaux(base: string) {
       return Response.json({ success: false, error: { message: "Clé invalide." } }, { status: 401 });
     }
     if (chemin === "/api/v1/uploads" && methode === "POST") {
-      const corps = JSON.parse(String(init.body)) as { size: number };
+      const corps = JSON.parse(String(init.body)) as { size: number; name: string };
+      noms.push(corps.name);
+      if (options.refuserChiffres && corps.name.endsWith(".bin")) {
+        return Response.json({ success: false, error: { message: "Fichier chiffré : cette clé n’a pas le droit d’en téléverser." } }, { status: 415 });
+      }
       const id = `upl_${crypto.randomUUID().slice(0, 8)}`;
       envois.set(id, { taille: corps.size, morceaux: [], recu: 0 });
       return Response.json({ success: true, upload: { id, received: 0 } }, { status: 201 });
@@ -164,7 +171,7 @@ export function creerKaraksFaux(base: string) {
     if (/^\/api\/v1\/files\/[^/]+$/.test(chemin) && methode === "DELETE") return Response.json({ success: true });
     return Response.json({ success: false, error: { message: "inconnu" } }, { status: 404 });
   };
-  return { recuperer, fichiers, effaces };
+  return { recuperer, fichiers, effaces, noms, options };
 }
 
 /** Une application de test, son faux Google et une horloge que le test fait avancer. */

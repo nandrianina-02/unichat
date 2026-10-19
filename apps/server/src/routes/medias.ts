@@ -73,19 +73,21 @@ medias.post("/", async (c) => {
     throw refus.interdit("Vous ne faites pas partie de cette discussion.");
   }
   const config = configuration(c.env);
-  const format = formatMedia(demande.mime)!;
+  // Chiffré sur l'appareil : ni nom, ni type ; Karaks Storage le garde tel quel (type « bin »).
+  const format = demande.chiffre ? { type: "document", extension: "bin" } : formatMedia(demande.mime)!;
+  const mime = demande.chiffre ? "application/octet-stream" : mimeSimple(demande.mime);
   const id = crypto.randomUUID();
   const maintenant = c.get("deps").maintenant();
   let envoiId: string;
   try {
     // Chez Karaks Storage, le fichier porte un nom neutre : le vrai nom ne
     // quitte pas UniChat.
-    envoiId = await ouvrirEnvoi(c.get("deps").recuperer, config, {
-      nom: `${id}.${format.extension}`,
-      mime: mimeSimple(demande.mime),
-      taille: demande.taille,
-    });
+    envoiId = await ouvrirEnvoi(c.get("deps").recuperer, config, { nom: `${id}.${format.extension}`, mime, taille: demande.taille });
   } catch (erreur) {
+    // Clé de stockage sans le droit aux fichiers chiffrés : l'application enverra le fichier comme avant.
+    if (demande.chiffre && erreur instanceof ErreurKaraks && (erreur.statut === 403 || erreur.statut === 415)) {
+      throw new Refus(409, "chiffrement_fichiers_indisponible", "Le stockage n'accepte pas encore les fichiers chiffrés.");
+    }
     traduire(erreur);
   }
   await c.env.DB.prepare(
@@ -97,8 +99,8 @@ medias.post("/", async (c) => {
       demande.conversation,
       moi,
       format.type,
-      mimeSimple(demande.mime),
-      nomPropre(demande.nom),
+      mime,
+      demande.chiffre ? "fichier chiffré" : nomPropre(demande.nom),
       demande.taille,
       envoiId,
       maintenant,

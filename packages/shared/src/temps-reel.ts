@@ -343,6 +343,7 @@ export const schemaMediaChiffre = z
     mime: z.string().max(100),
     nom: z.string().trim().min(1).max(180),
     taille: z.number().int().positive(),
+    cle: z.string().regex(/^[A-Za-z0-9_-]{43}$/, "Clé de fichier invalide.").optional(),
   })
   .strict()
   .refine((m) => formatMedia(m.mime)?.type === m.type && m.taille <= LIMITES_MEDIA[m.type], "Fichier invalide.");

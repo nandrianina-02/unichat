@@ -206,3 +206,58 @@ describe("fichiers joints", () => {
     expect(await r.json()).toMatchObject({ erreur: "stockage_indisponible" });
   });
 });
+
+describe("fichiers chiffrés sur l'appareil", () => {
+  const scelle = new Uint8Array(Array.from({ length: 40 }, (_, i) => (i * 37 + 11) % 256));
+
+  it("le serveur ne garde ni le nom ni le type, et le relaie tel quel", async () => {
+    const t = await preparer();
+    const ana = await personne(t, "ana");
+    const bob = await personne(t, "bob");
+    const conversation = conversationDirecte(ana.id, bob.id);
+    const r = await ana.appareil.appel("/api/medias", {
+      method: "POST",
+      json: { conversation, nom: "vacances.jpg", mime: "image/jpeg", taille: scelle.length, chiffre: true },
+    });
+    expect(r.status).toBe(201);
+    const { id } = (await r.json()) as { id: string };
+    expect(t.karaks.noms.at(-1)).toBe(`${id}.bin`);
+    const ligne = await env.DB.prepare("SELECT type, mime, nom FROM medias WHERE id = ?1").bind(id).first();
+    expect(ligne).toEqual({ type: "document", mime: "application/octet-stream", nom: "fichier chiffré" });
+
+    const envoi = await ana.appareil.appel(`/api/medias/${id}`, {
+      method: "PUT",
+      headers: { "Content-Range": `bytes 0-${scelle.length - 1}/${scelle.length}` },
+      body: scelle,
+    });
+    expect(await envoi.json()).toEqual({ recu: scelle.length, termine: true });
+    const lu = await bob.appareil.appel(`/api/medias/${id}`);
+    expect(lu.status).toBe(200);
+    expect(lu.headers.get("Content-Type")).toContain("application/octet-stream");
+    expect([...new Uint8Array(await lu.arrayBuffer())]).toEqual([...scelle]);
+  });
+
+  it("stockage sans le droit aux fichiers chiffrés : un code dédié, pour que l'application envoie comme avant", async () => {
+    const t = await preparer();
+    t.karaks.options.refuserChiffres = true;
+    const ana = await personne(t, "ana");
+    const bob = await personne(t, "bob");
+    const r = await ana.appareil.appel("/api/medias", {
+      method: "POST",
+      json: { conversation: conversationDirecte(ana.id, bob.id), nom: "x", mime: "application/octet-stream", taille: 40, chiffre: true },
+    });
+    expect(r.status).toBe(409);
+    expect(((await r.json()) as { erreur: string }).erreur).toBe("chiffrement_fichiers_indisponible");
+  });
+
+  it("taille bornée au plus gros format, surcoût du chiffrement compris", async () => {
+    const t = await preparer();
+    const ana = await personne(t, "ana");
+    const bob = await personne(t, "bob");
+    const r = await ana.appareil.appel("/api/medias", {
+      method: "POST",
+      json: { conversation: conversationDirecte(ana.id, bob.id), nom: "x", mime: "x", taille: 65 * 1024 * 1024, chiffre: true },
+    });
+    expect(r.status).toBe(400);
+  });
+});

@@ -126,21 +126,56 @@ export function dureeAudio(blob: Blob): Promise<number | undefined> {
   });
 }
 
+const bibliotheque = () => import("@unichat/chiffrement");
+
+/** Fichier chiffré sur l'appareil avant l'envoi : voir packages/chiffrement/src/fichier.ts. */
+export async function chiffrerFichier(blob: Blob): Promise<{ blob: Blob; cle: string }> {
+  const c = await bibliotheque();
+  const { scelle, cle } = await c.chiffrerOctets(new Uint8Array(await blob.arrayBuffer()));
+  return { blob: new Blob([scelle as Uint8Array<ArrayBuffer>], { type: "application/octet-stream" }), cle: c.versBase64(cle) };
+}
+
+/** Le type rendu est celui du message, déjà vérifié parmi les formats acceptés : jamais de HTML ni de script. */
+export async function dechiffrerFichier(blob: Blob, cle: string, mime: string): Promise<Blob> {
+  const c = await bibliotheque();
+  const clair = await c.dechiffrerOctets(new Uint8Array(await blob.arrayBuffer()), c.depuisBase64(cle));
+  return new Blob([clair as Uint8Array<ArrayBuffer>], { type: mime });
+}
+
+/**
+ * Envoi d'un fichier, chiffré si la discussion l'est. Le stockage qui
+ * n'accepte pas encore les fichiers chiffrés le dit : le fichier part alors
+ * comme avant, le temps que sa clé reçoive le droit.
+ */
+export async function envoyerFichierPrepare(
+  conversation: string,
+  f: FichierPrepare,
+  chiffrer: boolean,
+  progression: (part: number) => void,
+): Promise<{ id: string; cle?: string }> {
+  if (chiffrer) {
+    const scelle = await chiffrerFichier(f.blob);
+    try {
+      const { id } = await identifiantsEnvoi(conversation, { nom: "fichier.bin", mime: "application/octet-stream", blob: scelle.blob }, true);
+      return { id: await envoyerParMorceaux(id, scelle.blob, progression), cle: scelle.cle };
+    } catch (erreur) {
+      if (!(erreur instanceof ErreurApi && erreur.code === "chiffrement_fichiers_indisponible")) throw erreur;
+    }
+  }
+  const { id } = await identifiantsEnvoi(conversation, f);
+  return { id: await envoyerParMorceaux(id, f.blob, progression) };
+}
+
 /**
  * Envoi par morceaux de 4 Mo, avec reprise : un morceau qui échoue est
  * retenté trois fois avant d'abandonner.
  */
-export async function envoyerParMorceaux(
-  conversation: string,
-  f: FichierPrepare,
-  progression: (part: number) => void,
-): Promise<string> {
-  const { id } = await identifiantsEnvoi(conversation, f);
-  const taille = f.blob.size;
+async function envoyerParMorceaux(id: string, blob: Blob, progression: (part: number) => void): Promise<string> {
+  const taille = blob.size;
   let debut = 0;
   while (debut < taille) {
     const fin = Math.min(debut + TAILLE_MORCEAU, taille) - 1;
-    const morceau = f.blob.slice(debut, fin + 1);
+    const morceau = blob.slice(debut, fin + 1);
     let essai = 0;
     for (;;) {
       try {

@@ -444,11 +444,33 @@ sans appareil photo), et le code peut se copier-coller.
   centaines d'octets chacune) ; 40 membres au plus restent bien sous la
   taille d'un message WebSocket.
 
+### Fichiers chiffrés (lot 5)
+
+- **Chiffré sur l'appareil avant l'envoi** (`packages/chiffrement/src/fichier.ts`) :
+  une clé par fichier, AES-256-GCM par WebCrypto (rapide même pour 64 Mo),
+  le nonce devant. La clé voyage dans le contenu chiffré du message, avec le
+  nom, le type, la vignette, les dimensions et la taille réelle.
+- **Ce que voit le stockage** : un fichier `<id>.bin` de type
+  `application/octet-stream`, 28 octets plus lourd que l'original. La base
+  d'UniChat ne garde que « fichier chiffré », la taille et la discussion.
+  Karaks Storage vérifie la signature de chaque fichier ; un fichier
+  chiffré n'en a pas, son type `bin` n'est donc accepté que pour une clé qui
+  a le droit « Téléverser des fichiers chiffrés » (`files:upload-encrypted`).
+- **Lecture** : l'appareil télécharge les octets par `/api/medias/:id` comme
+  avant, les déchiffre et range la copie lisible dans IndexedDB. Un fichier
+  altéré ou tronqué est refusé (étiquette GCM). « Ouvrir » un document
+  ouvre cette copie de l'appareil, plus l'adresse du serveur.
+- **Transfert** : vers une discussion chiffrée elle aussi, même fichier et
+  même clé, sans nouvel envoi. Si l'une est chiffrée et l'autre pas encore,
+  le fichier repart de l'appareil dans l'état de la destination.
+- **Transition** : clé de stockage sans le droit, l'envoi répond
+  `409 chiffrement_fichiers_indisponible` et l'application envoie le
+  fichier comme avant (le message, lui, reste chiffré). Un message qui porte
+  une clé de fichier ne part jamais en clair ; dans le doute (réseau),
+  l'application chiffre le fichier.
+
 ### Suite
 
-- **Fichiers** (lot 5) : chiffrés sur l'appareil avant l'envoi ; nom, type et
-  vignette voyagent déjà dans le contenu chiffré, Karaks Storage ne verra
-  plus que des octets.
 - **Code de sécurité** (lot 7) à comparer de vive voix ou par QR code.
 
 ### Lots
@@ -458,7 +480,7 @@ sans appareil photo), et le code peut se copier-coller.
 3. Discussions à deux chiffrées : messages, réactions, modifications,
    suppressions, votes (fait).
 4. Groupes (fait).
-5. Fichiers.
+5. Fichiers (fait).
 6. Notifications déchiffrées sur l'appareil (fait).
 7. Code de sécurité et avertissement de changement d'identité.
 8. Historique transmis à un appareil relié ; fin des messages non chiffrés.
@@ -499,13 +521,13 @@ Les photos de profil, petites (640 px et 128 px), restent dans D1.
   15 fichiers par passage pour rester sous les 50 sous-requêtes). Une
   suppression pour tout le monde ou du compte rend les fichiers
   inaccessibles aussitôt (`expire_le = 0`) ; l'effacement suit.
-- **Clé** : préréglage « Application cliente » de Karaks Storage, plus le
-  droit « Mettre à la corbeille et supprimer ». Secret `KARAKS_STORAGE_CLE` ;
-  sans lui, l'envoi répond `503 stockage_indisponible`.
-
-Le chiffrement de bout en bout (étape 3) chiffrera les fichiers sur
-l'appareil avant l'envoi ; Karaks Storage ne verra alors que des octets
-opaques.
+- **Clé** : préréglage « Application cliente » de Karaks Storage, plus les
+  droits « Mettre à la corbeille et supprimer » et « Téléverser des
+  fichiers chiffrés ». Secret `KARAKS_STORAGE_CLE` ; sans lui, l'envoi
+  répond `503 stockage_indisponible`.
+- **Fichiers chiffrés** : dans une discussion chiffrée, le fichier l'est sur
+  l'appareil avant l'envoi ; Karaks Storage ne reçoit que des octets
+  opaques (voir « Fichiers chiffrés (lot 5) »).
 
 ## API d'intégration (étape 5)
 

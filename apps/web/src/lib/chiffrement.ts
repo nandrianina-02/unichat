@@ -184,6 +184,17 @@ export class Chiffreur {
     });
   }
 
+  /**
+   * La discussion part-elle chiffrée ? Sert à chiffrer un fichier avant son
+   * envoi, avant même que le message existe : même règle que chiffrer().
+   */
+  async peutChiffrer(d: Destination): Promise<boolean> {
+    if (!(await this.local())) return false;
+    const comptes = [...new Set([...d.comptes.filter((x) => x !== this.moi), this.moi])];
+    const fiches = await this.fiches(comptes);
+    return comptes.every((x) => x === this.moi || Boolean(fiches.get(x)?.identite));
+  }
+
   /** Déchiffre un lot d'enveloppes, dans l'ordre du journal ; le résultat est indexé par identifiant. */
   dechiffrerLot(enveloppes: EnveloppeChiffree[]): Promise<Map<string, Dechiffrement>> {
     return sousVerrou(this.moi, async () => {

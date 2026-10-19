@@ -370,6 +370,7 @@ function MessageAudio({ message, progression }: { message: MessageAvecMedia; pro
 
 function DocumentJoint({ message, progression }: { message: MessageAvecMedia; progression: number | undefined }) {
   const m = message.media;
+  const { messagerie } = useMessagerie();
   const { etat, telecharger } = useFichier(message, false);
   // Après un clic sur « Télécharger », le fichier est enregistré dès qu'il est arrivé.
   const aEnregistrer = useRef(false);
@@ -398,7 +399,23 @@ function DocumentJoint({ message, progression }: { message: MessageAvecMedia; pr
 
   // « Ouvrir » passe par UniChat, qui garde le fichier 30 jours ; ensuite, seul l'enregistrement reste possible.
   const ouvrable = Boolean(m.id) && progression === undefined && Date.now() - message.le < CONSERVATION_MEDIA;
-  const ouvrir = () => window.open(urlOuvertureMedia(m.id), "_blank", "noopener");
+  // Chiffré : le serveur n'a que des octets illisibles, l'appareil déchiffre et ouvre sa propre copie.
+  const ouvrir = () => {
+    if (!m.cle) {
+      window.open(urlOuvertureMedia(m.id), "_blank", "noopener");
+      return;
+    }
+    // Fenêtre ouverte tout de suite (sinon bloquée), remplie une fois le fichier déchiffré.
+    const fenetre = window.open("", "_blank");
+    void messagerie.recupererFichier(message.id, m.id).then(
+      (blob) => {
+        if (!fenetre) return;
+        fenetre.opener = null;
+        fenetre.location.href = URL.createObjectURL(blob);
+      },
+      () => fenetre?.close(),
+    );
+  };
   const bouton = "flex-1 py-2 text-center text-[13.5px] font-medium text-primaire-texte transition-colors hover:bg-texte/5";
 
   return (

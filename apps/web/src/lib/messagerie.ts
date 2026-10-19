@@ -29,7 +29,7 @@ import type { IdentitePrivee } from "@unichat/chiffrement";
 import { retirerMedia, telechargerMedia, transfererMedia } from "./api-medias";
 import { heureCourte, resumeMessage } from "./format";
 import { activerPush, montrerNotification, pushActif } from "./notifications";
-import { envoyerParMorceaux, type FichierPrepare } from "./medias";
+import { dechiffrerFichier, envoyerFichierPrepare, type FichierPrepare } from "./medias";
 import {
   ouvrirStockage,
   plageConversation,
@@ -101,6 +101,7 @@ function contenuMessage(m: MessageLocal): ContenuMessage {
             ...(f.apercu ? { apercu: f.apercu } : {}),
             ...(f.vocal ? { vocal: true } : {}),
             ...(f.vueUnique ? { vueUnique: true } : {}),
+            ...(f.cle ? { cle: f.cle } : {}),
           },
         }
       : {}),
@@ -764,6 +765,11 @@ export class Messagerie {
   }
 
   private envoyerEnClair(m: MessageLocal): void {
+    // Un fichier chiffré n'a de sens qu'avec sa clé, qui ne voyage que chiffrée.
+    if (m.media?.cle) {
+      void this.modifierMessage(m.id, (x) => ({ ...x, etat: "echec", erreur: "Ce fichier chiffré ne peut pas partir en clair. Réessayez." }));
+      return;
+    }
     const groupe = estGroupe(m.conversation);
     const media = m.media
       ? {
@@ -977,16 +983,32 @@ export class Messagerie {
         // Ni ligne système, ni vue unique, ni sondage (ses votes n'auraient pas de sens ailleurs).
         if (source.supprime || source.type === "evenement" || source.type === "systeme" || source.media?.vueUnique || source.sondage) continue;
         let media = source.media;
+        let blob: Blob | undefined;
+        let aRenvoyer = false;
         if (media) {
           if (!media.id) {
             echecs += 1;
             continue;
           }
-          try {
-            media = { ...media, id: await transfererMedia(media.id, conversation) };
-          } catch {
-            echecs += 1;
-            continue;
+          blob = await this.fichierLocal(source.id);
+          if (Boolean(media.cle) === (await this.peutChiffrer(conversation))) {
+            // Même état (chiffré, ou en clair) : le serveur fait pointer vers le même fichier, sans le renvoyer.
+            try {
+              media = { ...media, id: await transfererMedia(media.id, conversation) };
+            } catch {
+              echecs += 1;
+              continue;
+            }
+          } else {
+            // L'état change (une discussion chiffrée, l'autre pas encore) : le fichier repart de l'appareil.
+            blob ??= await this.recupererFichier(source.id, media.id).catch(() => undefined);
+            if (!blob) {
+              echecs += 1;
+              continue;
+            }
+            const { cle: _, ...sansCle } = media;
+            media = { ...sansCle, id: "" };
+            aRenvoyer = true;
           }
         }
         const message: MessageLocal = {
@@ -1004,13 +1026,13 @@ export class Messagerie {
           ...(source.contact ? { contact: source.contact } : {}),
           ...this.ephemereDe(conversation),
         };
-        const blob = media ? await this.fichierLocal(source.id) : undefined;
         if (blob) await this.db.put("fichiers", { id: message.id, blob });
         const tx = this.db.transaction(["messages", "conversations"], "readwrite");
         await tx.objectStore("messages").put(message);
         await this.recalculer(tx, conversation);
         await tx.done;
-        this.envoyerMessage(message);
+        if (aRenvoyer && blob && media) void this.televerser(message, { ...media, blob });
+        else this.envoyerMessage(message);
       }
     }
     await this.publierConversations(new Set(destinations));
@@ -1066,10 +1088,15 @@ export class Messagerie {
   private async televerser(message: MessageLocal, f: FichierPrepare): Promise<void> {
     this.publier({ envois: { ...this.etat.envois, [message.id]: 0 } });
     try {
-      const mediaId = await envoyerParMorceaux(message.conversation, f, (part) =>
+      // Chiffré sur l'appareil si la discussion l'est : le stockage ne voit alors que des octets.
+      const chiffrer = await this.peutChiffrer(message.conversation);
+      const { id: mediaId, cle } = await envoyerFichierPrepare(message.conversation, f, chiffrer, (part) =>
         this.publier({ envois: { ...this.etat.envois, [message.id]: part } }),
       );
-      await this.modifierMessage(message.id, (m) => ({ ...m, media: { ...m.media!, id: mediaId } }));
+      await this.modifierMessage(message.id, (m) => {
+        const { cle: _, ...media } = m.media!;
+        return { ...m, media: { ...media, id: mediaId, ...(cle ? { cle } : {}) } };
+      });
       const pret = await this.db.get("messages", message.id);
       if (pret) this.envoyerMessage(pret);
     } catch (erreur) {
@@ -1100,9 +1127,21 @@ export class Messagerie {
   async recupererFichier(messageId: string, mediaId: string): Promise<Blob> {
     const local = await this.fichierLocal(messageId);
     if (local) return local;
-    const blob = await telechargerMedia(mediaId);
+    let blob = await telechargerMedia(mediaId);
+    // Chiffré sur l'appareil de l'expéditeur : sa clé est dans le message.
+    const media = (await this.db.get("messages", messageId))?.media;
+    if (media?.cle) blob = await dechiffrerFichier(blob, media.cle, media.mime);
     await this.db.put("fichiers", { id: messageId, blob });
     return blob;
+  }
+
+  /** La discussion part-elle chiffrée ? Dans le doute (réseau), oui : un fichier chiffré ne partira jamais en clair. */
+  private async peutChiffrer(conversation: string): Promise<boolean> {
+    try {
+      return await this.chiffreur.peutChiffrer(await this.destination(conversation));
+    } catch {
+      return true;
+    }
   }
 
   async renvoyer(id: string): Promise<void> {
