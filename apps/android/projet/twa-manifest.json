@@ -1,0 +1,53 @@
+{
+  "packageId": "io.github.nandrianina02.unichat",
+  "host": "unichat.unichat-server.workers.dev",
+  "name": "UniChat",
+  "launcherName": "UniChat",
+  "display": "standalone",
+  "themeColor": "#F0F2F5",
+  "themeColorDark": "#1B1C25",
+  "navigationColor": "#FFFFFF",
+  "navigationColorDark": "#12131A",
+  "navigationDividerColor": "#E6E8EF",
+  "navigationDividerColorDark": "#262733",
+  "backgroundColor": "#EFF1F5",
+  "enableNotifications": true,
+  "startUrl": "/?source=application",
+  "iconUrl": "https://unichat.unichat-server.workers.dev/icones/icone-512.png",
+  "maskableIconUrl": "https://unichat.unichat-server.workers.dev/icones/icone-masquable-512.png",
+  "monochromeIconUrl": "https://unichat.unichat-server.workers.dev/icones/icone-badge.png",
+  "splashScreenFadeOutDuration": 300,
+  "signingKey": {
+    "path": "C:\\Users\\Number One\\.unichat-android\\unichat.keystore",
+    "alias": "unichat"
+  },
+  "appVersionName": "1.0.0",
+  "appVersionCode": 1,
+  "shortcuts": [],
+  "generatorApp": "unichat-construire",
+  "webManifestUrl": "https://unichat.unichat-server.workers.dev/manifest.webmanifest",
+  "fallbackType": "customtabs",
+  "features": {},
+  "alphaDependencies": {
+    "enabled": false
+  },
+  "enableSiteSettingsShortcut": false,
+  "isChromeOSOnly": false,
+  "isMetaQuest": false,
+  "fullScopeUrl": "https://unichat.unichat-server.workers.dev/",
+  "minSdkVersion": 24,
+  "orientation": "default",
+  "fingerprints": [
+    {
+      "name": "unichat",
+      "value": "4D:E7:9D:63:2A:A4:B7:55:8A:95:DC:A3:A0:2F:29:99:2D:7F:9A:3A:DC:07:C0:4E:7F:E3:AC:36:20:F2:A8:D4"
+    }
+  ],
+  "additionalTrustedOrigins": [],
+  "retainedBundles": [],
+  "protocolHandlers": [],
+  "fileHandlers": [],
+  "launchHandlerClientMode": "",
+  "displayOverride": [],
+  "appVersion": "1.0.0"
+}

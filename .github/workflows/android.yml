@@ -1,0 +1,44 @@
+# Construit l'APK de l'appli Android (Trusted Web Activity) hors du poste de
+# développement, signé avec la clé déchiffrée pour la durée de la tâche.
+name: Android - APK
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - "apps/android/projet/**"
+      - "apps/android/cle/**"
+      - ".github/workflows/android.yml"
+
+jobs:
+  apk:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: "8.11.1"
+      - name: Déchiffrer la clé
+        env:
+          UNICHAT_CLE: ${{ secrets.UNICHAT_CLE }}
+        run: |
+          set -euo pipefail
+          openssl enc -d -aes-256-cbc -pbkdf2 -iter 200000 -in apps/android/cle/unichat.p12.enc -out "$RUNNER_TEMP/unichat.p12" -pass env:UNICHAT_CLE
+      - name: Construire
+        env:
+          UNICHAT_MAGASIN: ${{ runner.temp }}/unichat.p12
+          UNICHAT_SECRET: ${{ secrets.UNICHAT_CLE }}
+          UNICHAT_ALIAS: unichat
+        run: gradle -p apps/android/projet assembleRelease --no-daemon
+      - name: Effacer la clé
+        if: always()
+        run: rm -f "$RUNNER_TEMP/unichat.p12"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: unichat-apk
+          path: apps/android/projet/app/build/outputs/apk/release/*.apk

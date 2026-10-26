@@ -11,8 +11,15 @@ dist/
 coverage/
 .DS_Store
 
-# Application Android : outils, projet généré et fichiers construits (la clé
-# de signature vit hors du dépôt, dans ~/.unichat-android).
+# Application Android : outils et fichiers construits. Le projet est versionné
+# et construit par GitHub Actions ; la clé de signature n'y est que chiffrée
+# (apps/android/cle/), avec la phrase secrète UNICHAT_CLE des secrets du dépôt.
 apps/android/node_modules/
-apps/android/projet/
 apps/android/sortie/
+apps/android/projet/.gradle/
+apps/android/projet/build/
+apps/android/projet/app/build/
+apps/android/projet/local.properties
+apps/android/projet/gradle/wrapper/gradle-wrapper.jar
+apps/android/projet/gradlew
+apps/android/projet/gradlew.bat

@@ -1,0 +1,46 @@
+# Crée, une seule fois, la clé de signature de l'appli Android, sur les
+# serveurs de GitHub : elle n'existe jamais en clair ailleurs que pendant
+# cette tâche. Seule sa version chiffrée (phrase secrète UNICHAT_CLE) est
+# rangée dans le dépôt ; l'empreinte publique s'affiche dans le résumé, pour
+# assetlinks.json.
+name: Android - clé de signature
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  cle:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+      - name: Créer et chiffrer la clé
+        env:
+          UNICHAT_CLE: ${{ secrets.UNICHAT_CLE }}
+        run: |
+          set -euo pipefail
+          if [ -z "$UNICHAT_CLE" ]; then echo "Secret UNICHAT_CLE absent." >&2; exit 1; fi
+          mkdir -p apps/android/cle
+          if [ -f apps/android/cle/unichat.p12.enc ]; then echo "La clé existe déjà : on ne la remplace jamais (les mises à jour ne s'installeraient plus)." >&2; exit 1; fi
+          keytool -genkeypair -storetype PKCS12 -keystore /tmp/unichat.p12 -alias unichat \
+            -keyalg RSA -keysize 4096 -validity 10000 \
+            -dname "CN=UniChat, O=UniChat, C=MG" \
+            -storepass "$UNICHAT_CLE" -keypass "$UNICHAT_CLE"
+          openssl enc -aes-256-cbc -pbkdf2 -iter 200000 -salt -in /tmp/unichat.p12 -out apps/android/cle/unichat.p12.enc -pass env:UNICHAT_CLE
+          EMPREINTE=$(keytool -list -v -keystore /tmp/unichat.p12 -storepass "$UNICHAT_CLE" -alias unichat | grep "SHA256:" | sed 's/.*SHA256: //')
+          echo "$EMPREINTE" > apps/android/cle/empreinte-sha256.txt
+          rm -f /tmp/unichat.p12
+          echo "Empreinte SHA-256 : $EMPREINTE" >> "$GITHUB_STEP_SUMMARY"
+      - name: Ranger la clé chiffrée
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add apps/android/cle/unichat.p12.enc apps/android/cle/empreinte-sha256.txt
+          git commit -m "Clé de signature Android, chiffrée"
+          git push
