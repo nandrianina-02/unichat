@@ -57,8 +57,8 @@ android {
         applicationId "io.github.nandrianina02.unichat"
         minSdkVersion 24
         targetSdkVersion 36
-        versionCode 3
-        versionName "1.1.1"
+        versionCode 4
+        versionName "1.1.2"
 
         // The name for the application
         resValue "string", "appName", twaManifest.name
@@ -162,7 +162,9 @@ android {
     buildTypes {
         release {
             signingConfig signingConfigs.release
-            minifyEnabled true
+            // Pas de réduction : R8 renommait une classe que android-browser-helper active par son nom
+            // (setComponentEnabledSetting), et l'appli s'arrêtait au lancement. Le code est minuscule.
+            minifyEnabled false
         }
     }
     compileOptions {
