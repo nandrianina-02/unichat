@@ -146,6 +146,16 @@
 
         <activity android:name="com.google.androidbrowserhelper.trusted.FocusActivity" />
 
+        <!-- Exigée par android-browser-helper, qui l'active ou la désactive au lancement (raccourci
+             « Gérer les données ») : absente, l'appli s'arrête dès l'ouverture. -->
+        <activity
+            android:name="com.google.androidbrowserhelper.trusted.ManageDataLauncherActivity"
+            android:exported="false">
+            <meta-data
+                android:name="android.support.customtabs.trusted.MANAGE_SPACE_URL"
+                android:value="@string/launchUrl" />
+        </activity>
+
         <!-- Écran d'erreur, dans un processus à part pour survivre au plantage qu'il montre. -->
         <activity
             android:name=".DiagnosticActivity"
