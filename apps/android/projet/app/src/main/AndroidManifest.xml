@@ -146,6 +146,13 @@
 
         <activity android:name="com.google.androidbrowserhelper.trusted.FocusActivity" />
 
+        <!-- Écran d'erreur, dans un processus à part pour survivre au plantage qu'il montre. -->
+        <activity
+            android:name=".DiagnosticActivity"
+            android:process=":diagnostic"
+            android:exported="false"
+            android:theme="@android:style/Theme.Material.Light" />
+
         <activity android:name="com.google.androidbrowserhelper.trusted.WebViewFallbackActivity"
             android:configChanges="orientation|screenSize" />
 
