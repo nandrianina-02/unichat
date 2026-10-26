@@ -43,7 +43,7 @@
     // Application Android (apps/android) : identifiant et empreintes publiques de ses clés de
     // signature. Vide pour l'instant : la première clé, créée sur un poste infecté, est écartée.
     "ANDROID_PAQUET": "io.github.nandrianina02.unichat",
-    "ANDROID_EMPREINTES": "" },
+    "ANDROID_EMPREINTES": "7D:0E:69:B1:C7:2C:03:7C:46:6F:15:AF:CB:6B:EC:79:F5:09:02:F2:27:86:92:B5:80:C7:6C:37:F8:41:92:88" },
 
   // Nettoyage horaire : états de connexion, compteurs, vieilles sessions, et
   // fichiers expirés (un nombre limité à chaque passage).
