@@ -150,18 +150,17 @@ export async function dechiffrerFichier(blob: Blob, cle: string, mime: string): 
 export async function envoyerFichierPrepare(
   conversation: string,
   f: FichierPrepare,
-  chiffrer: boolean,
   progression: (part: number) => void,
 ): Promise<{ id: string; cle?: string }> {
-  if (chiffrer) {
-    const scelle = await chiffrerFichier(f.blob);
-    try {
-      const { id } = await identifiantsEnvoi(conversation, { nom: "fichier.bin", mime: "application/octet-stream", blob: scelle.blob }, true);
-      return { id: await envoyerParMorceaux(id, scelle.blob, progression), cle: scelle.cle };
-    } catch (erreur) {
-      if (!(erreur instanceof ErreurApi && erreur.code === "chiffrement_fichiers_indisponible")) throw erreur;
-    }
+  const scelle = await chiffrerFichier(f.blob);
+  try {
+    const { id } = await identifiantsEnvoi(conversation, { nom: "fichier.bin", mime: "application/octet-stream", blob: scelle.blob }, true);
+    return { id: await envoyerParMorceaux(id, scelle.blob, progression), cle: scelle.cle };
+  } catch (erreur) {
+    if (!(erreur instanceof ErreurApi && erreur.code === "chiffrement_fichiers_indisponible")) throw erreur;
   }
+  // La clé du stockage n'a pas encore le droit aux fichiers chiffrés : le fichier y est rangé tel quel,
+  // le message qui le porte reste chiffré.
   const { id } = await identifiantsEnvoi(conversation, f);
   return { id: await envoyerParMorceaux(id, f.blob, progression) };
 }

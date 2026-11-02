@@ -261,57 +261,33 @@ export const APPAREILS_PAR_COMPTE = 25;
 /** Comptes qu'une enveloppe peut viser : les membres d'un groupe (40 au plus, moi compris). */
 export const COMPTES_PAR_ENVELOPPE = 40;
 
+/**
+ * Fin des messages en clair (étape 3, lot 8). Tout contenu (message,
+ * réaction, modification, suppression, épingle, vote, éphémères, vue
+ * unique ouverte) voyage chiffré ; le serveur refuse les trames en clair.
+ * Une entrée de contenu en clair datée d'après cet instant ne vient donc
+ * d'aucun appareil : l'application l'écarte. Celles d'avant (journal pas
+ * encore relevé) restent lisibles.
+ */
+// Postérieure au déploiement du lot 8 : jusque-là, le serveur acceptait
+// encore le clair, et ces messages-là sont légitimes.
+export const FIN_DU_CLAIR = Date.UTC(2026, 10, 3, 0, 0);
+
+/** Trames en clair retirées : un appareil resté sur une ancienne version est invité à recharger. */
+export const TRAMES_RETIREES: readonly string[] = ["envoyer", "reagir", "supprimer", "modifier", "epingler", "ephemere", "voter", "ouvert"];
+
 export const schemaClient = z.discriminatedUnion("t", [
   /** Ouverture : l'appareil indique le dernier numéro reçu (null : appareil neuf). */
   z.object({ t: z.literal("bonjour"), depuis: z.number().int().nonnegative().nullable() }),
   z.object({ t: z.literal("recu"), jusqua: z.number().int().nonnegative() }),
-  z
-    .object({
-      t: z.literal("envoyer"),
-      id: uuid,
-      a: uuid.optional(),
-      groupe: uuid.optional(),
-      texte: texteMessage,
-      media: schemaMediaEnvoye.optional(),
-      reponseA: citation.optional(),
-      transfere: transfere.optional(),
-      lien: schemaApercuLien.optional(),
-      mentions: z.array(uuid).max(MENTIONS_MAX).optional(),
-      ephemere: dureeEphemere.optional(),
-      position: position.optional(),
-      contact: z.object({ id: uuid }).optional(),
-      sondage: sondage.optional(),
-    })
-    .refine((m) => Boolean(m.a) !== Boolean(m.groupe), "Destinataire manquant.")
-    .refine((m) => m.texte.trim().length > 0 || m.media || m.position || m.contact || m.sondage, "Message vide."),
   /** Messages lus, groupés par auteur : c'est lui qui verra « lu ». */
   z.object({ t: z.literal("lu"), conversation, auteur: uuid, ids: z.array(uuid).min(1).max(500) }),
   z.object({ t: z.literal("ecrit"), conversation }),
   z.object({ t: z.literal("presence"), de: uuid }),
-  z.object({ t: z.literal("reagir"), conversation, message: uuid, code: z.enum(REACTIONS).nullable() }),
-  z.object({ t: z.literal("supprimer"), conversation, message: uuid }),
+  /** Réglage et marque « important » : ils ne concernent que moi et mes appareils. */
   z.object({ t: z.literal("preference"), conversation, preference: schemaPreference }),
-  z.object({
-    t: z.literal("modifier"),
-    conversation,
-    message: uuid,
-    texte: z.string().trim().min(1, "Message vide.").max(LIMITE_TEXTE, `${LIMITE_TEXTE} caractères au maximum.`),
-  }),
-  z.object({ t: z.literal("epingler"), conversation, message: uuid, jusqua: z.number().int().positive().nullable() }),
   z.object({ t: z.literal("important"), conversation, message: uuid, important: z.boolean() }),
-  z.object({
-    t: z.literal("ephemere"),
-    conversation,
-    duree: z
-      .number()
-      .int()
-      .refine((d) => DUREES_EPHEMERES.some((e) => e.duree === d), "Durée invalide.")
-      .nullable(),
-  }),
-  /** Vue unique ouverte : seul l'auteur en est averti (avec mes autres appareils). */
-  z.object({ t: z.literal("ouvert"), conversation, message: uuid, auteur: uuid }),
-  z.object({ t: z.literal("voter"), conversation, message: uuid, choix: choixVote }),
-  /** Message ou action chiffrés : la clé du contenu pour chaque appareil, par compte. */
+  /** Message ou action, toujours chiffrés : la clé du contenu pour chaque appareil, par compte. */
   z
     .object({
       t: z.literal("chiffre"),
@@ -391,7 +367,7 @@ export type MessageServeur =
    * `code: "appareils"` : l'enveloppe ne vise pas les appareils inscrits ;
    * `appareils` donne la bonne liste (sans l'appareil qui envoie).
    */
-  | { t: "refuse"; id?: string; message: string; code?: "appareils" | "non_relie"; appareils?: Record<string, number[]> }
+  | { t: "refuse"; id?: string; message: string; code?: "appareils" | "non_relie" | "version"; appareils?: Record<string, number[]> }
   | { t: "ecrit"; de: string; conversation: string }
   | { t: "presence"; de: string; enLigne: boolean; vuLe: number | null };
 

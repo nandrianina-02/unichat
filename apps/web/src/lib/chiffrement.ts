@@ -15,7 +15,8 @@ import { sousVerrou } from "./cles";
 import type { Stockage } from "./stockage";
 
 /**
- * Chiffrement des discussions à deux (étape 3, lot 3).
+ * Chiffrement des discussions (étape 3 : à deux au lot 3, groupes au lot 4, sans plus
+ * aucun message en clair depuis le lot 8).
  *
  * Un contenu est scellé une fois sous une clé aléatoire ; cette clé (suivie
  * de l'identifiant du message, pour la lier à lui) part vers chaque appareil
@@ -48,6 +49,20 @@ export type Dechiffrement =
   | { type: "ignore" };
 
 export type EnveloppeSortante = Extract<MessageClient, { t: "chiffre" }>;
+
+/**
+ * Pourquoi un contenu ne part pas : il ne part jamais en clair (lot 8).
+ * « appareil » : cet appareil n'a pas (encore) ses clés ; « sans-cles » :
+ * la personne n'a encore aucune clé, elle ne pourrait rien lire.
+ */
+export class ErreurChiffrement extends Error {
+  constructor(
+    readonly raison: "appareil" | "sans-cles",
+    message: string,
+  ) {
+    super(message);
+  }
+}
 
 /** À qui chiffrer : l'autre personne d'une discussion à deux, ou les membres d'un groupe. */
 export interface Destination {
@@ -192,19 +207,22 @@ export class Chiffreur {
   }
 
   /**
-   * Enveloppe chiffrée, ou null si un destinataire n'a pas encore de clés
-   * (ou si cet appareil n'est pas relié) : le message part alors en clair,
-   * le temps de la transition.
+   * Enveloppe chiffrée. Sans clés sur cet appareil, ou vers une personne
+   * qui n'en a aucune, une ErreurChiffrement : rien ne part en clair. Dans
+   * un groupe, un membre sans clés ne reçoit simplement pas la clé du
+   * contenu ; les autres, si.
    */
-  chiffrer(d: Destination, id: string, genre: "message" | "action", contenu: ContenuMessage | ContenuAction): Promise<EnveloppeSortante | null> {
+  chiffrer(d: Destination, id: string, genre: "message" | "action", contenu: ContenuMessage | ContenuAction): Promise<EnveloppeSortante> {
     return sousVerrou(this.moi, async () => {
       const c = await bibliotheque();
       const local = await this.local();
-      if (!local) return null;
+      if (!local) throw new ErreurChiffrement("appareil", "Cet appareil n'a pas encore les clés de votre compte : reliez-le pour écrire.");
       const { conversation } = d;
       const comptes = [...new Set([...d.comptes.filter((x) => x !== this.moi), this.moi])];
       const fiches = await this.fiches(comptes);
-      if (comptes.some((x) => x !== this.moi && !fiches.get(x)?.identite)) return null;
+      if (!d.groupe && comptes.some((x) => x !== this.moi && !fiches.get(x)?.identite)) {
+        throw new ErreurChiffrement("sans-cles", "Cette personne n'a pas encore de clés de chiffrement.");
+      }
 
       // Appareils visés, et ceux avec qui aucune session n'est encore ouverte.
       const cibles: { compte: string; numero: number; correspondant?: Correspondant }[] = [];
@@ -258,17 +276,6 @@ export class Chiffreur {
         cles,
       };
     });
-  }
-
-  /**
-   * La discussion part-elle chiffrée ? Sert à chiffrer un fichier avant son
-   * envoi, avant même que le message existe : même règle que chiffrer().
-   */
-  async peutChiffrer(d: Destination): Promise<boolean> {
-    if (!(await this.local())) return false;
-    const comptes = [...new Set([...d.comptes.filter((x) => x !== this.moi), this.moi])];
-    const fiches = await this.fiches(comptes);
-    return comptes.every((x) => x === this.moi || Boolean(fiches.get(x)?.identite));
   }
 
   /** Déchiffre un lot d'enveloppes, dans l'ordre du journal ; le résultat est indexé par identifiant. */

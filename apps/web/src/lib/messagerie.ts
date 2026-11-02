@@ -1,6 +1,7 @@
 import {
   DELAI_MODIFICATION,
   EPINGLES_MESSAGES_MAX,
+  FIN_DU_CLAIR,
   FERMETURE_SESSION,
   LIMITE_EXTRAIT,
   MESSAGES_SIGNALES,
@@ -25,7 +26,7 @@ import {
   type Reaction,
 } from "@unichat/shared";
 import { ErreurApi, api } from "./api";
-import { Chiffreur, type ChangementIdentite, type Destination, type EtatCode } from "./chiffrement";
+import { Chiffreur, ErreurChiffrement, type ChangementIdentite, type Destination, type EtatCode } from "./chiffrement";
 import { identiteLocale, preparerCles, reinitialiserCles, relierCles, type EtatChiffrement } from "./cles";
 import type { IdentitePrivee } from "@unichat/chiffrement";
 import { retirerMedia, telechargerMedia, transfererMedia } from "./api-medias";
@@ -103,6 +104,20 @@ type EntreeLocale =
   | Exclude<Entree, { type: "chiffre" }>
   | { seq: number; type: "ignore" }
   | { seq: number; type: "illisible"; message: { id: string; conversation: string; de: string; a: string; le: number } };
+
+/** Contenu qui ne voyage plus qu'en enveloppe chiffrée (lot 8). */
+const CONTENUS_EN_CLAIR = new Set<Entree["type"]>(["message", "reaction", "suppression", "modification", "epingle", "ephemere", "vote", "ouvert"]);
+
+/**
+ * Contenu en clair daté d'après la fin du clair : aucun appareil n'a pu
+ * l'envoyer (le serveur refuse ces trames), il ne peut venir que du serveur
+ * lui-même. Il est écarté, comme une enveloppe qui ne s'ouvre pas.
+ */
+function forge(e: Entree): boolean {
+  if (!CONTENUS_EN_CLAIR.has(e.type)) return false;
+  const le = e.type === "message" ? e.message.le : "le" in e ? e.le : 0;
+  return le >= FIN_DU_CLAIR;
+}
 
 /** Ce qui part chiffré d'un message : tout sauf l'enveloppe (identifiant, auteur, heure), que voit le serveur. */
 function contenuMessage(m: MessageLocal): ContenuMessage {
@@ -278,6 +293,8 @@ export class Messagerie {
     try {
       const chiffrement = await preparerCles(this.db, this.moi);
       if (!this.arretee) this.publier({ chiffrement });
+      // Écrits pendant la préparation des clés : ils attendaient, ils partent.
+      if (chiffrement === "pret" && this.connecte) await this.renvoyerEnAttente();
     } catch (erreur) {
       // Session perdue : la connexion temps réel la signale de son côté.
       if (!(erreur instanceof ErreurApi && erreur.statut === 401) && !this.arretee) this.publier({ chiffrement: "indisponible" });
@@ -292,6 +309,7 @@ export class Messagerie {
   /** Identité reçue d'un appareil relié : cet appareil s'inscrit avec elle. */
   async relier(canal: string, identite: IdentitePrivee): Promise<void> {
     this.publier({ chiffrement: await relierCles(this.db, this.moi, canal, identite) });
+    if (this.connecte) void this.renvoyerEnAttente();
   }
 
   /**
@@ -364,6 +382,7 @@ export class Messagerie {
   /** Nouvelles clés pour le compte : les autres appareils devront être reliés à celui-ci. */
   async reinitialiserCles(): Promise<void> {
     this.publier({ chiffrement: await reinitialiserCles(this.db, this.moi) });
+    if (this.connecte) void this.renvoyerEnAttente();
   }
 
   /** Code de sécurité avec une personne (lot 7). */
@@ -563,7 +582,8 @@ export class Messagerie {
    * appareil (journal rejoué, autre onglet) n'est pas déchiffré deux fois :
    * sa clé de message n'existe plus.
    */
-  private async ouvrirEnveloppes(entrees: Entree[]): Promise<EntreeLocale[]> {
+  private async ouvrirEnveloppes(recues: Entree[]): Promise<EntreeLocale[]> {
+    const entrees = recues.map((e) => (forge(e) ? ({ seq: e.seq, type: "ignore" } as const) : e));
     const enveloppes = entrees.flatMap((e) => (e.type === "chiffre" ? [e.enveloppe] : []));
     if (enveloppes.length === 0) return entrees as EntreeLocale[];
     const dejaLus = new Set<string>();
@@ -574,7 +594,7 @@ export class Messagerie {
     }
     const resultats = await this.chiffreur.dechiffrerLot(enveloppes.filter((e) => !dejaLus.has(e.id)));
     return entrees.map((e): EntreeLocale => {
-      if (e.type !== "chiffre") return e;
+      if (e.type !== "chiffre") return e as EntreeLocale;
       const env = e.enveloppe;
       const r = dejaLus.has(env.id) ? undefined : resultats.get(env.id);
       if (!r || r.type === "ignore") return { seq: e.seq, type: "ignore" };
@@ -855,29 +875,33 @@ export class Messagerie {
   }
 
   /**
-   * Discussion à deux : chiffré, si le destinataire a des clés. Une erreur
-   * de chiffrement ne fait jamais partir le message en clair ; il reste à
-   * renvoyer.
+   * Toujours chiffré (lot 8). Clés de cet appareil encore en préparation :
+   * le message attend et part dès qu'elles sont prêtes. Sinon, l'échec dit
+   * pourquoi ; rien ne part jamais en clair.
    */
   private async expedier(m: MessageLocal, comptes?: string[]): Promise<void> {
     if (!this.connecte) return;
     try {
       const destination = await this.destination(m.conversation, comptes);
       const enveloppe = await this.chiffreur.chiffrer({ ...destination, mentions: m.mentions }, m.id, "message", contenuMessage(m));
-      if (enveloppe) {
-        this.envoisChiffres.set(m.id, {
-          tentatives: this.envoisChiffres.get(m.id)?.tentatives ?? 0,
-          relancer: (imposes) => this.expedier(m, imposes),
-        });
-        this.brut(enveloppe);
-        return;
-      }
-    } catch {
-      if (this.connecte) await this.modifierMessage(m.id, (x) => ({ ...x, etat: "echec", erreur: "Envoi impossible pour le moment. Réessayez." }));
-      return;
+      this.envoisChiffres.set(m.id, {
+        tentatives: this.envoisChiffres.get(m.id)?.tentatives ?? 0,
+        relancer: (imposes) => this.expedier(m, imposes),
+      });
+      this.brut(enveloppe);
+    } catch (e) {
+      if (!this.connecte) return;
+      if (e instanceof ErreurChiffrement && e.raison === "appareil" && this.etat.chiffrement !== "a-relier") return;
+      await this.modifierMessage(m.id, (x) => ({ ...x, etat: "echec", erreur: this.raisonEchec(e, m) }));
     }
-    // Seul cas en clair : un destinataire n'a pas encore de clés (transition).
-    this.envoyerEnClair(m);
+  }
+
+  private raisonEchec(e: unknown, m: MessageLocal): string {
+    if (e instanceof ErreurChiffrement && e.raison === "sans-cles") {
+      return `${this.etat.personnes[m.a]?.nom ?? "Cette personne"} n'a pas encore ouvert une version d'UniChat qui chiffre les messages. Réessayez quand ce sera fait.`;
+    }
+    if (e instanceof ErreurChiffrement) return e.message;
+    return "Envoi impossible pour le moment. Réessayez.";
   }
 
   /**
@@ -897,41 +921,6 @@ export class Messagerie {
     const membres = comptes ?? this.etat.groupes[groupeId]?.membres.map((x) => x.id);
     if (!membres?.length) throw new Error("Membres du groupe inconnus.");
     return { conversation, groupe: groupeId, comptes: membres };
-  }
-
-  private envoyerEnClair(m: MessageLocal): void {
-    // Un fichier chiffré n'a de sens qu'avec sa clé, qui ne voyage que chiffrée.
-    if (m.media?.cle) {
-      void this.modifierMessage(m.id, (x) => ({ ...x, etat: "echec", erreur: "Ce fichier chiffré ne peut pas partir en clair. Réessayez." }));
-      return;
-    }
-    const groupe = estGroupe(m.conversation);
-    const media = m.media
-      ? {
-          id: m.media.id,
-          ...(m.media.largeur ? { largeur: m.media.largeur } : {}),
-          ...(m.media.hauteur ? { hauteur: m.media.hauteur } : {}),
-          ...(m.media.duree !== undefined ? { duree: m.media.duree } : {}),
-          ...(m.media.apercu ? { apercu: m.media.apercu } : {}),
-          ...(m.media.vocal ? { vocal: true } : {}),
-          ...(m.media.vueUnique ? { vueUnique: true } : {}),
-        }
-      : undefined;
-    this.brut({
-      t: "envoyer",
-      id: m.id,
-      ...(groupe ? { groupe: m.a } : { a: m.a }),
-      texte: m.texte,
-      ...(media ? { media } : {}),
-      ...(m.reponseA ? { reponseA: m.reponseA } : {}),
-      ...(m.transfere ? { transfere: m.transfere } : {}),
-      ...(m.lien ? { lien: m.lien } : {}),
-      ...(m.mentions?.length ? { mentions: m.mentions } : {}),
-      ...(m.ephemere ? { ephemere: m.ephemere } : {}),
-      ...(m.position ? { position: m.position } : {}),
-      ...(m.contact ? { contact: { id: m.contact.id } } : {}),
-      ...(m.sondage ? { sondage: m.sondage } : {}),
-    });
   }
 
   /** Durée éphémère en vigueur : elle part avec chaque nouveau message. */
@@ -968,17 +957,16 @@ export class Messagerie {
 
   /**
    * Action sur une discussion (réaction, modification, suppression, épingle,
-   * vote, éphémères, vue unique ouverte) : chiffrée dans une discussion à
-   * deux, en clair dans un groupe (lot 4). Faux si la connexion manque.
+   * vote, éphémères, vue unique ouverte), toujours chiffrée. Faux si la
+   * connexion manque ou si elle ne peut pas l'être.
    */
-  private async agir(conversation: string, contenu: ContenuAction, enClair: MessageClient, pour?: string): Promise<boolean> {
+  private async agir(conversation: string, contenu: ContenuAction, pour?: string): Promise<boolean> {
     if (!this.connecte) return false;
     const id = crypto.randomUUID();
     const envoyer = async (comptes?: string[]): Promise<boolean> => {
       // Action réservée à un membre : lui seul (et mes autres appareils) la reçoit.
       const destination = await this.destination(conversation, comptes ?? (pour && estGroupe(conversation) ? [pour] : undefined));
       const enveloppe = await this.chiffreur.chiffrer({ ...destination, ...(pour && destination.groupe ? { pour } : {}) }, id, "action", contenu);
-      if (!enveloppe) return this.brut(enClair);
       this.envoisChiffres.set(id, {
         tentatives: this.envoisChiffres.get(id)?.tentatives ?? 0,
         relancer: async (imposes) => {
@@ -996,7 +984,7 @@ export class Messagerie {
 
   /** Messages éphémères : pour tous les participants, à partir des prochains messages. */
   reglerEphemere(conversation: string, duree: number | null): Promise<boolean> {
-    return this.agir(conversation, { v: 1, action: "ephemere", duree }, { t: "ephemere", conversation, duree });
+    return this.agir(conversation, { v: 1, action: "ephemere", duree });
   }
 
   /** Voter (ou retirer son vote avec une liste vide). Affiché tout de suite, annulé si le réseau manque. */
@@ -1009,11 +997,7 @@ export class Messagerie {
     await this.modifierMessage(message.id, (m) => ({ ...m, votes }));
     const choixUniques = [...new Set(choix)];
     if (
-      !(await this.agir(
-        message.conversation,
-        { v: 1, action: "vote", message: message.id, choix: choixUniques },
-        { t: "voter", conversation: message.conversation, message: message.id, choix },
-      ))
+      !(await this.agir(message.conversation, { v: 1, action: "vote", message: message.id, choix: choixUniques }))
     ) {
       await this.modifierMessage(message.id, (m) => ({ ...m, votes: avant }));
       return false;
@@ -1025,12 +1009,7 @@ export class Messagerie {
   async fermerVueUnique(message: MessageLocal): Promise<void> {
     await this.db.delete("fichiers", message.id);
     await this.modifierMessage(message.id, (m) => ({ ...m, vueOuverte: true }));
-    await this.agir(
-      message.conversation,
-      { v: 1, action: "ouvert", message: message.id },
-      { t: "ouvert", conversation: message.conversation, message: message.id, auteur: message.de },
-      message.de,
-    );
+    await this.agir(message.conversation, { v: 1, action: "ouvert", message: message.id }, message.de);
   }
 
   /** Messages éphémères arrivés à échéance : effacés de l'appareil (sauf ceux marqués importants). */
@@ -1057,7 +1036,7 @@ export class Messagerie {
     const propre = texte.trim();
     if (!propre || message.de !== this.moi || message.supprime || Date.now() - message.le > DELAI_MODIFICATION) return false;
     const contenu: ContenuAction = { v: 1, action: "modification", message: message.id, texte: propre };
-    if (!(await this.agir(message.conversation, contenu, { t: "modifier", conversation: message.conversation, message: message.id, texte: propre }))) return false;
+    if (!(await this.agir(message.conversation, contenu))) return false;
     await this.modifierMessage(message.id, (m) => ({ ...m, texte: propre, modifieLe: Date.now() }));
     return true;
   }
@@ -1066,11 +1045,7 @@ export class Messagerie {
   async epingler(message: MessageLocal, duree: number | null): Promise<boolean> {
     const jusqua = duree === null ? null : Date.now() + duree;
     if (
-      !(await this.agir(
-        message.conversation,
-        { v: 1, action: "epingle", message: message.id, jusqua },
-        { t: "epingler", conversation: message.conversation, message: message.id, jusqua },
-      ))
+      !(await this.agir(message.conversation, { v: 1, action: "epingle", message: message.id, jusqua }))
     ) {
       return false;
     }
@@ -1126,8 +1101,8 @@ export class Messagerie {
             continue;
           }
           blob = await this.fichierLocal(source.id);
-          if (Boolean(media.cle) === (await this.peutChiffrer(conversation))) {
-            // Même état (chiffré, ou en clair) : le serveur fait pointer vers le même fichier, sans le renvoyer.
+          if (media.cle) {
+            // Déjà chiffré : le serveur fait pointer vers le même fichier, la clé suit dans le message.
             try {
               media = { ...media, id: await transfererMedia(media.id, conversation) };
             } catch {
@@ -1135,7 +1110,7 @@ export class Messagerie {
               continue;
             }
           } else {
-            // L'état change (une discussion chiffrée, l'autre pas encore) : le fichier repart de l'appareil.
+            // Fichier d'avant le chiffrement des fichiers : il repart de l'appareil, chiffré cette fois.
             blob ??= await this.recupererFichier(source.id, media.id).catch(() => undefined);
             if (!blob) {
               echecs += 1;
@@ -1223,9 +1198,8 @@ export class Messagerie {
   private async televerser(message: MessageLocal, f: FichierPrepare): Promise<void> {
     this.publier({ envois: { ...this.etat.envois, [message.id]: 0 } });
     try {
-      // Chiffré sur l'appareil si la discussion l'est : le stockage ne voit alors que des octets.
-      const chiffrer = await this.peutChiffrer(message.conversation);
-      const { id: mediaId, cle } = await envoyerFichierPrepare(message.conversation, f, chiffrer, (part) =>
+      // Chiffré sur l'appareil : le stockage ne voit que des octets.
+      const { id: mediaId, cle } = await envoyerFichierPrepare(message.conversation, f, (part) =>
         this.publier({ envois: { ...this.etat.envois, [message.id]: part } }),
       );
       await this.modifierMessage(message.id, (m) => {
@@ -1268,15 +1242,6 @@ export class Messagerie {
     if (media?.cle) blob = await dechiffrerFichier(blob, media.cle, media.mime);
     await this.db.put("fichiers", { id: messageId, blob });
     return blob;
-  }
-
-  /** La discussion part-elle chiffrée ? Dans le doute (réseau), oui : un fichier chiffré ne partira jamais en clair. */
-  private async peutChiffrer(conversation: string): Promise<boolean> {
-    try {
-      return await this.chiffreur.peutChiffrer(await this.destination(conversation));
-    } catch {
-      return true;
-    }
   }
 
   async renvoyer(id: string): Promise<void> {
@@ -1436,11 +1401,7 @@ export class Messagerie {
     else delete reactions[this.moi];
     await this.modifierMessage(message.id, (m) => ({ ...m, reactions }));
     if (
-      !(await this.agir(
-        message.conversation,
-        { v: 1, action: "reaction", message: message.id, code },
-        { t: "reagir", conversation: message.conversation, message: message.id, code },
-      ))
+      !(await this.agir(message.conversation, { v: 1, action: "reaction", message: message.id, code }))
     ) {
       await this.modifierMessage(message.id, (m) => ({ ...m, reactions: avant }));
       return false;
@@ -1452,11 +1413,7 @@ export class Messagerie {
   async supprimerPourTous(message: MessageLocal): Promise<boolean> {
     if (message.de !== this.moi || !this.connecte) return false;
     if (
-      !(await this.agir(
-        message.conversation,
-        { v: 1, action: "suppression", message: message.id },
-        { t: "supprimer", conversation: message.conversation, message: message.id },
-      ))
+      !(await this.agir(message.conversation, { v: 1, action: "suppression", message: message.id }))
     ) {
       return false;
     }

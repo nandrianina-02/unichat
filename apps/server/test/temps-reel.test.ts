@@ -1,11 +1,12 @@
 import { describe, expect, it } from "vitest";
-import { conversationDirecte, type Entree, type MessageServeur, type Moi } from "@unichat/shared";
+import { TRAMES_RETIREES, conversationDirecte, type Entree, type MessageServeur, type Moi } from "@unichat/shared";
+import { inscrireCles, trameChiffree } from "./chiffre-outils";
 import { identite, preparer } from "./outils";
 
 type Contexte = Awaited<ReturnType<typeof preparer>>;
 type Appareil = Awaited<ReturnType<Contexte["connecter"]>>;
 
-/** Une personne avec son nom d'utilisateur (sans lui, on ne peut pas lui écrire). */
+/** Une personne avec son nom d'utilisateur et ses clés (sans elles, elle ne peut pas écrire). */
 async function personne(t: Contexte, prefixe: string) {
   const id = identite(prefixe);
   const appareil = await t.connecter(id);
@@ -13,6 +14,7 @@ async function personne(t: Contexte, prefixe: string) {
     method: "PATCH",
     json: { pseudo: `${prefixe}_${crypto.randomUUID().slice(0, 8)}` },
   })).json()) as Moi;
+  await inscrireCles(appareil);
   return { identite: id, appareil, id: moi.id };
 }
 
@@ -38,29 +40,31 @@ describe("temps réel", () => {
     const wsAna = await ouvrir(ana.appareil);
     const wsBob = await ouvrir(bob.appareil);
 
-    const id = crypto.randomUUID();
-    wsAna.envoyer({ t: "envoyer", id, a: bob.id, texte: "  Salut Bob  " });
+    const trame = await trameChiffree(ana.appareil, ana.id, { a: bob.id, comptes: [bob.id] });
+    wsAna.envoyer(trame);
     const accepte = await wsAna.attendre((m): m is Extract<MessageServeur, { t: "accepte" }> => m.t === "accepte");
-    expect(accepte.id).toBe(id);
+    expect(accepte.id).toBe(trame.id);
 
-    const recu = await wsBob.attendre(estEntree("message"));
-    expect(recu.entree.type === "message" && recu.entree.message).toMatchObject({
-      id,
+    // Bob ne reçoit que la clé de son propre appareil ; le contenu lui arrive tel quel.
+    const recu = await wsBob.attendre(estEntree("chiffre"));
+    expect(recu.entree.type === "chiffre" && recu.entree.enveloppe).toMatchObject({
+      id: trame.id,
       de: ana.id,
       a: bob.id,
-      texte: "Salut Bob",
+      corps: trame.corps,
+      cles: trame.cles[bob.id],
       conversation: conversationDirecte(ana.id, bob.id),
     });
 
     // L'appareil de Bob accuse réception : Ana voit « remis ».
     wsBob.envoyer({ t: "recu", jusqua: recu.entree.seq });
     const remis = await wsAna.attendre(estEntree("accuse", (e) => e.type === "accuse" && e.etat === "remis"));
-    expect(remis.entree).toMatchObject({ ids: [id], par: bob.id });
+    expect(remis.entree).toMatchObject({ ids: [trame.id], par: bob.id });
 
     // Bob ouvre la discussion : Ana voit « lu ».
-    wsBob.envoyer({ t: "lu", conversation: conversationDirecte(ana.id, bob.id), auteur: ana.id, ids: [id] });
+    wsBob.envoyer({ t: "lu", conversation: conversationDirecte(ana.id, bob.id), auteur: ana.id, ids: [trame.id] });
     const lu = await wsAna.attendre(estEntree("accuse", (e) => e.type === "accuse" && e.etat === "lu"));
-    expect(lu.entree).toMatchObject({ ids: [id], par: bob.id });
+    expect(lu.entree).toMatchObject({ ids: [trame.id], par: bob.id });
   });
 
   it("remet à la connexion les messages envoyés pendant l'absence", async () => {
@@ -68,19 +72,21 @@ describe("temps réel", () => {
     const ana = await personne(t, "ana");
     const bob = await personne(t, "bob");
     const wsAna = await ouvrir(ana.appareil);
-    const ids = [crypto.randomUUID(), crypto.randomUUID()];
-    for (const id of ids) {
-      wsAna.envoyer({ t: "envoyer", id, a: bob.id, texte: `message ${id}` });
-      await wsAna.attendre((m): m is MessageServeur => m.t === "accepte" && m.id === id);
+    const ids: string[] = [];
+    for (let i = 0; i < 2; i++) {
+      const trame = await trameChiffree(ana.appareil, ana.id, { a: bob.id, comptes: [bob.id] });
+      ids.push(trame.id);
+      wsAna.envoyer(trame);
+      await wsAna.attendre((m): m is MessageServeur => m.t === "accepte" && m.id === trame.id);
     }
 
-    // Bob se connecte plus tard, sur un appareil neuf.
+    // Bob se connecte plus tard.
     const wsBob = await bob.appareil.tempsReel();
     if (wsBob.refus !== null) throw new Error("refus");
     wsBob.envoyer({ t: "bonjour", depuis: null });
     const lot = await wsBob.attendre(estLot);
     expect(lot.fin).toBe(true);
-    expect(lot.entrees.filter((e) => e.type === "message").map((e) => e.type === "message" && e.message.id)).toEqual(ids);
+    expect(lot.entrees.filter((e) => e.type === "chiffre").map((e) => e.type === "chiffre" && e.enveloppe.id)).toEqual(ids);
   });
 
   it("efface du serveur ce que tous les appareils ont reçu", async () => {
@@ -89,8 +95,8 @@ describe("temps réel", () => {
     const bob = await personne(t, "bob");
     const wsAna = await ouvrir(ana.appareil);
     const wsBob = await ouvrir(bob.appareil);
-    wsAna.envoyer({ t: "envoyer", id: crypto.randomUUID(), a: bob.id, texte: "éphémère" });
-    const recu = await wsBob.attendre(estEntree("message"));
+    wsAna.envoyer(await trameChiffree(ana.appareil, ana.id, { a: bob.id, comptes: [bob.id] }));
+    const recu = await wsBob.attendre(estEntree("chiffre"));
     wsBob.envoyer({ t: "recu", jusqua: recu.entree.seq });
     await wsAna.attendre(estEntree("accuse"));
 
@@ -109,10 +115,10 @@ describe("temps réel", () => {
     const telephone = await t.connecter(ana.identite);
     const wsOrdi = await ouvrir(ana.appareil);
     const wsTel = await ouvrir(telephone);
-    const id = crypto.randomUUID();
-    wsOrdi.envoyer({ t: "envoyer", id, a: bob.id, texte: "depuis l'ordinateur" });
-    const copie = await wsTel.attendre(estEntree("message"));
-    expect(copie.entree.type === "message" && copie.entree.message).toMatchObject({ id, de: ana.id });
+    const trame = await trameChiffree(ana.appareil, ana.id, { a: bob.id, comptes: [bob.id] });
+    wsOrdi.envoyer(trame);
+    const copie = await wsTel.attendre(estEntree("chiffre"));
+    expect(copie.entree.type === "chiffre" && copie.entree.enveloppe).toMatchObject({ id: trame.id, de: ana.id });
   });
 
   it("ne redistribue pas un message renvoyé après une coupure", async () => {
@@ -121,13 +127,13 @@ describe("temps réel", () => {
     const bob = await personne(t, "bob");
     const wsAna = await ouvrir(ana.appareil);
     const wsBob = await ouvrir(bob.appareil);
-    const id = crypto.randomUUID();
-    wsAna.envoyer({ t: "envoyer", id, a: bob.id, texte: "une seule fois" });
-    await wsBob.attendre(estEntree("message"));
-    wsAna.envoyer({ t: "envoyer", id, a: bob.id, texte: "une seule fois" });
+    const trame = await trameChiffree(ana.appareil, ana.id, { a: bob.id, comptes: [bob.id] });
+    wsAna.envoyer(trame);
+    await wsBob.attendre(estEntree("chiffre"));
+    wsAna.envoyer(trame);
     await new Promise((r) => setTimeout(r, 300));
-    expect(wsAna.recus.filter((m) => m.t === "accepte" && m.id === id)).toHaveLength(2);
-    expect(wsBob.recus.filter((m) => m.t === "entree" && m.entree.type === "message")).toHaveLength(1);
+    expect(wsAna.recus.filter((m) => m.t === "accepte" && m.id === trame.id)).toHaveLength(2);
+    expect(wsBob.recus.filter((m) => m.t === "entree" && m.entree.type === "chiffre")).toHaveLength(1);
   });
 
   it("refuse les messages invalides avec une explication", async () => {
@@ -136,17 +142,31 @@ describe("temps réel", () => {
     const wsAna = await ouvrir(ana.appareil);
     const estRefus = (id: string) => (m: MessageServeur): m is Extract<MessageServeur, { t: "refuse" }> => m.t === "refuse" && m.id === id;
 
-    const vide = crypto.randomUUID();
-    wsAna.envoyer({ t: "envoyer", id: vide, a: crypto.randomUUID(), texte: "   " });
-    expect((await wsAna.attendre(estRefus(vide))).message).toBe("Message vide.");
+    const inconnu = await trameChiffree(ana.appareil, ana.id, { a: crypto.randomUUID(), comptes: [] });
+    wsAna.envoyer(inconnu);
+    expect((await wsAna.attendre(estRefus(inconnu.id))).message).toContain("n'existe pas");
 
-    const inconnu = crypto.randomUUID();
-    wsAna.envoyer({ t: "envoyer", id: inconnu, a: crypto.randomUUID(), texte: "Allô ?" });
-    expect((await wsAna.attendre(estRefus(inconnu))).message).toContain("n'existe pas");
+    const abime = { ...(await trameChiffree(ana.appareil, ana.id, { comptes: [] })), corps: "pas du base64 !" };
+    wsAna.envoyer(abime);
+    expect((await wsAna.attendre(estRefus(abime.id))).message).toBe("Données invalides.");
+  });
 
-    const long = crypto.randomUUID();
-    wsAna.envoyer({ t: "envoyer", id: long, a: crypto.randomUUID(), texte: "x".repeat(4097) });
-    expect((await wsAna.attendre(estRefus(long))).message).toContain("4096");
+  it("refuse les trames en clair : l'ancienne version est invitée à recharger", async () => {
+    const t = await preparer();
+    const ana = await personne(t, "ana");
+    const bob = await personne(t, "bob");
+    const wsAna = await ouvrir(ana.appareil);
+    const wsBob = await ouvrir(bob.appareil);
+    const conversation = conversationDirecte(ana.id, bob.id);
+    for (const type of TRAMES_RETIREES) {
+      const id = crypto.randomUUID();
+      // Trame d'une ancienne version : le schéma actuel ne la connaît plus.
+      wsAna.envoyer({ t: type, id, a: bob.id, texte: "en clair", conversation, message: id, code: null, duree: null, choix: [], auteur: bob.id } as never);
+      const refus = await wsAna.attendre((m): m is Extract<MessageServeur, { t: "refuse" }> => m.t === "refuse" && m.id === id);
+      expect(refus.code).toBe("version");
+    }
+    await new Promise((r) => setTimeout(r, 200));
+    expect(wsBob.recus.filter((m) => m.t === "entree")).toEqual([]);
   });
 
   it("signale « en train d'écrire » et la présence", async () => {

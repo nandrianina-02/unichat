@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { conversationDirecte, type CarteProfil, type Entree, type MessageServeur, type Moi } from "@unichat/shared";
 import { env } from "cloudflare:workers";
+import { inscrireCles, trameChiffree } from "./chiffre-outils";
 import { identite, preparer } from "./outils";
 
 type Contexte = Awaited<ReturnType<typeof preparer>>;
@@ -12,6 +13,7 @@ async function personne(t: Contexte, prefixe: string) {
     method: "PATCH",
     json: { pseudo: `${prefixe}_${crypto.randomUUID().slice(0, 8)}` },
   })).json()) as Moi;
+  await inscrireCles(appareil);
   return { appareil, id: moi.id };
 }
 
@@ -26,7 +28,7 @@ async function ouvrir(appareil: Appareil) {
 type Connexion = Awaited<ReturnType<typeof ouvrir>>;
 
 const messageRecu = (id: string) => (m: MessageServeur): m is Extract<MessageServeur, { t: "entree" }> =>
-  m.t === "entree" && m.entree.type === "message" && m.entree.message.id === id;
+  m.t === "entree" && m.entree.type === "chiffre" && m.entree.enveloppe.id === id;
 
 /** Le message n'arrive pas : on attend un peu, puis on vérifie qu'il manque. */
 async function absent(ws: Connexion, id: string): Promise<boolean> {
@@ -36,10 +38,10 @@ async function absent(ws: Connexion, id: string): Promise<boolean> {
   );
 }
 
-function ecrire(ws: Connexion, a: string, texte = "Bonjour") {
-  const id = crypto.randomUUID();
-  ws.envoyer({ t: "envoyer", id, a, texte });
-  return id;
+async function ecrire(ws: Connexion, de: { appareil: Appareil; id: string }, a: string) {
+  const trame = await trameChiffree(de.appareil, de.id, { a, comptes: [a] });
+  ws.envoyer(trame);
+  return trame.id;
 }
 
 describe("blocage", () => {
@@ -60,13 +62,13 @@ describe("blocage", () => {
     expect(annonce.entree).toMatchObject({ type: "blocage", personne: bob.id, bloque: true, conversation: conversationDirecte(ana.id, bob.id) });
 
     // Bob écrit : accepté (une coche), jamais remis.
-    const id = ecrire(wsBob, ana.id);
+    const id = await ecrire(wsBob, bob, ana.id);
     const accepte = await wsBob.attendre((m): m is Extract<MessageServeur, { t: "accepte" }> => m.t === "accepte" && m.id === id);
     expect(accepte.destinataires).toBe(1);
     expect(await absent(wsAna, id)).toBe(true);
 
     // Ana ne peut plus écrire à Bob tant qu'elle ne l'a pas débloqué.
-    const idAna = ecrire(wsAna, bob.id);
+    const idAna = await ecrire(wsAna, ana, bob.id);
     const refus = await wsAna.attendre((m): m is Extract<MessageServeur, { t: "refuse" }> => m.t === "refuse" && m.id === idAna);
     expect(refus.message).toContain("bloqué");
 
@@ -83,7 +85,7 @@ describe("blocage", () => {
     // Débloqué : effet immédiat, sans attendre les caches.
     const deblocage = await ana.appareil.appel(`/api/blocages/${bob.id}`, { method: "DELETE" });
     expect(((await deblocage.json()) as CarteProfil).bloque).toBe(false);
-    const apres = ecrire(wsBob, ana.id, "Tu me reçois ?");
+    const apres = await ecrire(wsBob, bob, ana.id);
     await wsAna.attendre(messageRecu(apres));
   });
 

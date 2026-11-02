@@ -6,6 +6,7 @@ import { estTactile } from "../lib/appui";
 import { afficherCode, estAnnulation, lireCode, messageLiaison, type FinLiaison } from "../lib/liaison";
 import { useMessagerie } from "../lib/messagerie-react";
 import { reconnecter, reconnexionRequise } from "../lib/reconnexion";
+import { Apparition } from "./Apparition";
 import { CodeQr } from "./CodeQr";
 import { Dialogue } from "./Dialogue";
 import { Fenetre } from "./Fenetre";
@@ -264,6 +265,28 @@ function Collage({ onCode }: { onCode: (texte: string) => void }) {
  * transmettre les siennes (perdu, effacé). Les autres devront être reliés à
  * celui-ci.
  */
+/** Relier cet appareil, ou, faute d'autre appareil, créer de nouvelles clés : les deux fenêtres qui s'enchaînent. */
+export function RelierCetAppareil({ ouvert, onFermer }: { ouvert: boolean; onFermer: () => void }) {
+  const [nouvellesCles, setNouvellesCles] = useState(false);
+  return (
+    <>
+      <Apparition>
+        {ouvert && (
+          <Liaison
+            role="receveur"
+            onFermer={onFermer}
+            onReinitialiser={() => {
+              onFermer();
+              setNouvellesCles(true);
+            }}
+          />
+        )}
+      </Apparition>
+      <Apparition>{nouvellesCles && <DialogueNouvellesCles aucunAppareil={false} onFermer={() => setNouvellesCles(false)} />}</Apparition>
+    </>
+  );
+}
+
 export function DialogueNouvellesCles({ aucunAppareil, onFermer }: { aucunAppareil: boolean; onFermer: () => void }) {
   const { messagerie } = useMessagerie();
   const [enCours, setEnCours] = useState(false);

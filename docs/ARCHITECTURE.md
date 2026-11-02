@@ -398,10 +398,17 @@ sans appareil photo), et le code peut se copier-coller.
 - **Message illisible** sur un appareil relié après l'envoi : sa place est
   marquée (« Message illisible sur cet appareil »). L'historique d'avant la
   liaison viendra avec le lot 8.
-- **Transition** : vers un compte qui n'a pas encore de clés, ou depuis un
-  appareil pas encore relié, le message part en clair comme avant. Une
-  erreur de chiffrement ne fait jamais partir un message en clair. Le lot 8
-  mettra fin au clair.
+- **Plus de clair** (lot 8) : tout contenu (message, réaction,
+  modification, suppression, épingle, vote, éphémères, vue unique ouverte)
+  voyage chiffré, et le serveur refuse les anciennes trames en clair (code
+  `version` : l'appareil resté sur une ancienne version est invité à
+  recharger). Un appareil pas encore relié ne peut plus écrire : la
+  discussion lui propose de le relier. Vers un compte qui n'a encore aucune
+  clé, l'envoi échoue en le disant, sans jamais partir en clair.
+- **Contenu en clair forgé** : une entrée de contenu en clair datée d'après
+  `FIN_DU_CLAIR` (packages/shared) ne vient d'aucun appareil ; l'application
+  l'écarte. Celles d'avant, envoyées pendant la transition, restent
+  lisibles.
 - **Ce que le serveur voit encore**, comme chez WhatsApp : qui écrit à qui,
   quand, la taille, les accusés, « écrit… », la présence, les réglages de
   discussion, les groupes (nom, membres, photo).
@@ -519,7 +526,7 @@ sans appareil photo), et le code peut se copier-coller.
 5. Fichiers (fait).
 6. Notifications déchiffrées sur l'appareil (fait).
 7. Code de sécurité et avertissement de changement d'identité (fait).
-8. Historique transmis à un appareil relié (fait) ; fin des messages non chiffrés.
+8. Historique transmis à un appareil relié, fin des messages non chiffrés (fait).
 
 La mention « chiffré de bout en bout » n'apparaît dans l'application qu'à
 la fin de l'étape.

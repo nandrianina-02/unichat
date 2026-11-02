@@ -36,7 +36,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { estGroupe } from "@unichat/shared";
 import { useActionsDiscussion } from "../composants/ActionsDiscussion";
 import { Anime, Apparition } from "../composants/Apparition";
-import { DialogueNouvellesCles, Liaison } from "../composants/Liaison";
+import { RelierCetAppareil } from "../composants/Liaison";
 import { Menu, useFermetureExterieure } from "../composants/Menu";
 import { Avatar, AvatarGroupe } from "../composants/Avatar";
 import { BoutonIcone } from "../composants/BoutonIcone";
@@ -548,8 +548,6 @@ function BanniereLiaison() {
   const { etat } = useMessagerie();
   const [ecartee, setEcartee] = useState(false);
   const [liaison, setLiaison] = useState(false);
-  const [nouvellesCles, setNouvellesCles] = useState(false);
-  if (etat.chiffrement !== "a-relier" && !liaison && !nouvellesCles) return null;
   return (
     <>
       {etat.chiffrement === "a-relier" && !ecartee && (
@@ -571,19 +569,7 @@ function BanniereLiaison() {
           </div>
         </div>
       )}
-      <Apparition>
-        {liaison && (
-          <Liaison
-            role="receveur"
-            onFermer={() => setLiaison(false)}
-            onReinitialiser={() => {
-              setLiaison(false);
-              setNouvellesCles(true);
-            }}
-          />
-        )}
-      </Apparition>
-      <Apparition>{nouvellesCles && <DialogueNouvellesCles aucunAppareil={false} onFermer={() => setNouvellesCles(false)} />}</Apparition>
+      <RelierCetAppareil ouvert={liaison} onFermer={() => setLiaison(false)} />
     </>
   );
 }

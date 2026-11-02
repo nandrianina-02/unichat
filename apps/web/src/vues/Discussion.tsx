@@ -28,6 +28,7 @@ import {
   Forward,
   Images,
   Info,
+  Link2,
   LoaderCircle,
   Mic,
   Paperclip,
@@ -70,6 +71,7 @@ import { Avatar, AvatarGroupe } from "../composants/Avatar";
 import { BoutonIcone } from "../composants/BoutonIcone";
 import { Coches } from "../composants/Coches";
 import { DialogueCode } from "../composants/CodeSecurite";
+import { RelierCetAppareil } from "../composants/Liaison";
 import { Enregistrement } from "../composants/Enregistrement";
 import { ACCEPTE_DOCUMENTS, ACCEPTE_VISUELS, EnvoiFichiers } from "../composants/EnvoiFichiers";
 import { contactsModifies } from "../composants/Lignes";
@@ -371,6 +373,8 @@ export function Discussion({ conversation, cible, onInfos, onRechercher, onFerme
         <footer className="shrink-0 bg-entete px-4 py-4 text-center text-sm text-texte-2">
           Vous ne pouvez plus envoyer de messages dans ce groupe.
         </footer>
+      ) : etat.chiffrement === "a-relier" ? (
+        <BarreARelier />
       ) : personne?.bloque ? (
         <footer className="animate-fade shrink-0 bg-entete px-4 py-3 text-center text-sm text-texte-2">
           Vous avez bloqué ce contact.{" "}
@@ -610,6 +614,23 @@ function EnTete({
 }
 
 /** Message d'une personne absente des contacts : on propose de l'ajouter, comme dans les messageries de référence. */
+/** Les messages ne partent que chiffrés (lot 8) : un appareil sans les clés du compte doit d'abord être relié. */
+function BarreARelier() {
+  const [liaison, setLiaison] = useState(false);
+  return (
+    <footer className="animate-fade flex shrink-0 items-center justify-center gap-3 bg-entete px-4 py-3 text-center text-sm text-texte-2">
+      <Link2 size={18} className="shrink-0" aria-hidden="true" />
+      <span>
+        Cet appareil n'a pas encore les clés de votre compte.{" "}
+        <button type="button" onClick={() => setLiaison(true)} className="font-medium text-primaire-texte hover:underline">
+          Relier cet appareil
+        </button>
+      </span>
+      <RelierCetAppareil ouvert={liaison} onFermer={() => setLiaison(false)} />
+    </footer>
+  );
+}
+
 function BanniereInconnu({
   personne,
   onBloquer,

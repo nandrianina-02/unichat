@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { conversationDirecte, type Entree, type MessageServeur, type Moi } from "@unichat/shared";
+import { conversationDirecte, type Moi } from "@unichat/shared";
 import { env } from "cloudflare:workers";
 import { nettoyerMedias } from "../src/lib/nettoyage";
 import { identite, preparer } from "./outils";
@@ -13,14 +13,6 @@ async function personne(t: Contexte, prefixe: string) {
     json: { pseudo: `${prefixe}_${crypto.randomUUID().slice(0, 8)}` },
   })).json()) as Moi;
   return { appareil, id: moi.id };
-}
-
-async function ouvrir(appareil: Awaited<ReturnType<Contexte["connecter"]>>) {
-  const ws = await appareil.tempsReel();
-  if (ws.refus !== null) throw new Error(`refus ${ws.refus}`);
-  ws.envoyer({ t: "bonjour", depuis: null });
-  await ws.attendre((m): m is Extract<MessageServeur, { t: "lot" }> => m.t === "lot");
-  return ws;
 }
 
 // Début d'un JPEG, puis du contenu : 10 octets envoyés en deux morceaux.
@@ -53,31 +45,14 @@ async function envoyerFichier(
 }
 
 describe("fichiers joints", () => {
-  it("envoie un fichier par morceaux, le joint à un message et le sert au destinataire", async () => {
+  it("envoie un fichier par morceaux et le sert au destinataire", async () => {
     const t = await preparer();
     const ana = await personne(t, "ana");
     const bob = await personne(t, "bob");
     const conversation = conversationDirecte(ana.id, bob.id);
     const mediaId = await envoyerFichier(ana.appareil, conversation, { nom: "vacances/plage.jpg" });
 
-    const [wsAna, wsBob] = await Promise.all([ouvrir(ana.appareil), ouvrir(bob.appareil)]);
-    const id = crypto.randomUUID();
-    wsAna.envoyer({ t: "envoyer", id, a: bob.id, texte: "La plage", media: { id: mediaId, largeur: 800, hauteur: 600 } });
-    const recu = await wsBob.attendre(
-      (m): m is Extract<MessageServeur, { t: "entree" }> => m.t === "entree" && m.entree.type === "message",
-    );
-    const message = (recu.entree as Extract<Entree, { type: "message" }>).message;
-    // Type, nom et taille viennent du serveur, pas de la déclaration de l'application.
-    expect(message.media).toEqual({
-      id: mediaId,
-      type: "image",
-      mime: "image/jpeg",
-      nom: "vacancesplage.jpg",
-      taille: CONTENU.length,
-      largeur: 800,
-      hauteur: 600,
-    });
-
+    // Le message qui le porte est chiffré : type et nom servis viennent de ce que le serveur a vérifié à l'envoi.
     const telechargement = await bob.appareil.appel(`/api/medias/${mediaId}`);
     expect(telechargement.status).toBe(200);
     expect(telechargement.headers.get("Content-Type")).toBe("image/jpeg");
@@ -111,26 +86,6 @@ describe("fichiers joints", () => {
       { conversation, nom: "film.mp4", mime: "video/mp4", taille: 65 * 1024 * 1024 },
     ]) {
       expect((await ana.appareil.appel("/api/medias", { method: "POST", json: corps })).status, corps.nom).toBe(400);
-    }
-  });
-
-  it("refuse de joindre le fichier d'un autre, ou un fichier incomplet", async () => {
-    const t = await preparer();
-    const ana = await personne(t, "ana");
-    const bob = await personne(t, "bob");
-    const conversation = conversationDirecte(ana.id, bob.id);
-    const fichierDeBob = await envoyerFichier(bob.appareil, conversation);
-    const incomplet = (await (await ana.appareil.appel("/api/medias", {
-      method: "POST",
-      json: { conversation, nom: "x.jpg", mime: "image/jpeg", taille: 10 },
-    })).json()) as { id: string };
-
-    const ws = await ouvrir(ana.appareil);
-    for (const mediaId of [fichierDeBob, incomplet.id]) {
-      const id = crypto.randomUUID();
-      ws.envoyer({ t: "envoyer", id, a: bob.id, texte: "", media: { id: mediaId } });
-      const refus = await ws.attendre((m): m is Extract<MessageServeur, { t: "refuse" }> => m.t === "refuse" && m.id === id);
-      expect(refus.message).toContain("fichier");
     }
   });
 

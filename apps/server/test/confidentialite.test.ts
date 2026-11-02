@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { conversationDirecte, type ApercuInvitation, type Groupe, type MessageServeur, type Moi } from "@unichat/shared";
+import { inscrireCles, trameChiffree } from "./chiffre-outils";
 import { WEBP, identite, preparer } from "./outils";
 
 type Contexte = Awaited<ReturnType<typeof preparer>>;
@@ -11,6 +12,7 @@ async function personne(t: Contexte, prefixe: string) {
     method: "PATCH",
     json: { pseudo: `${prefixe}_${crypto.randomUUID().slice(0, 8)}` },
   })).json()) as Moi;
+  await inscrireCles(appareil);
   return { appareil, id: moi.id };
 }
 
@@ -71,9 +73,10 @@ describe("confidentialité de la présence", () => {
     const [wsAna, wsBob] = await Promise.all([ouvrir(ana.appareil), ouvrir(bob.appareil)]);
     await regler(bob.appareil, { confirmationsLecture: false });
     const conversation = conversationDirecte(ana.id, bob.id);
-    const id = crypto.randomUUID();
-    wsAna.envoyer({ t: "envoyer", id, a: bob.id, texte: "Tu as lu ?" });
-    await wsBob.attendre((m): m is Extract<MessageServeur, { t: "entree" }> => m.t === "entree" && m.entree.type === "message");
+    const trame = await trameChiffree(ana.appareil, ana.id, { a: bob.id, comptes: [bob.id] });
+    const id = trame.id;
+    wsAna.envoyer(trame);
+    await wsBob.attendre((m): m is Extract<MessageServeur, { t: "entree" }> => m.t === "entree" && m.entree.type === "chiffre");
     wsBob.envoyer({ t: "lu", conversation, auteur: ana.id, ids: [id] });
     const lu = await wsAna
       .attendre(

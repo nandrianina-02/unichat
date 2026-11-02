@@ -6,18 +6,17 @@ import {
   conversationGroupe,
   estGroupe,
   idGroupe,
+  TRAMES_RETIREES,
   schemaClient,
   type ContenuNotification,
   type EnveloppeChiffree,
   type Entree,
-  type MediaMessage,
-  type Message,
   type MessageClient,
   type MessageServeur,
   type Preference,
 } from "@unichat/shared";
 import { blocageEntre } from "../lib/blocages";
-import { joindreChiffre, pousser, resumer } from "../lib/push";
+import { joindreChiffre, pousser } from "../lib/push";
 import { vapid } from "../routes/push";
 import { visibilites, type Visibilites } from "../lib/confidentialite";
 import { membresDe } from "../lib/groupes";
@@ -132,6 +131,10 @@ export class Boite extends DurableObject<Bindings> {
     const lecture = schemaClient.safeParse(brut);
     if (!lecture.success) {
       const id = typeof (brut as { id?: unknown })?.id === "string" ? (brut as { id: string }).id : undefined;
+      if (TRAMES_RETIREES.includes(String((brut as { t?: unknown })?.t))) {
+        this.envoyer(ws, { t: "refuse", id, code: "version", message: "Cette version d'UniChat n'est plus à jour : rechargez la page pour envoyer des messages." });
+        return;
+      }
       this.envoyer(ws, { t: "refuse", id, message: lecture.error.issues[0]?.message ?? "Message invalide." });
       return;
     }
@@ -158,8 +161,6 @@ export class Boite extends DurableObject<Bindings> {
         return this.bonjour(ws, attache, m.depuis);
       case "recu":
         return this.recu(attache, m.jusqua);
-      case "envoyer":
-        return this.envoyerMessage(ws, attache, m);
       case "chiffre":
         return this.envoyerChiffre(ws, attache, m);
       case "lu": {
@@ -208,67 +209,8 @@ export class Boite extends DurableObject<Bindings> {
         this.envoyer(ws, { t: "presence", de: m.de, enLigne: permis.enLigne && etat.enLigne, vuLe: permis.vu ? etat.vuLe : null });
         return;
       }
-      case "reagir":
-        return this.partager(ws, moi, m.conversation, {
-          type: "reaction",
-          conversation: m.conversation,
-          message: m.message,
-          par: moi,
-          code: m.code,
-          le: Date.now(),
-        });
-      case "supprimer":
-        return this.partager(ws, moi, m.conversation, {
-          type: "suppression",
-          conversation: m.conversation,
-          message: m.message,
-          par: moi,
-          le: Date.now(),
-        });
       case "preference":
         return this.preference(ws, moi, m.conversation, m.preference);
-      case "modifier":
-        return this.partager(ws, moi, m.conversation, {
-          type: "modification",
-          conversation: m.conversation,
-          message: m.message,
-          par: moi,
-          texte: m.texte,
-          le: Date.now(),
-        });
-      case "epingler":
-        return this.partager(ws, moi, m.conversation, {
-          type: "epingle",
-          conversation: m.conversation,
-          message: m.message,
-          par: moi,
-          jusqua: m.jusqua,
-          le: Date.now(),
-        });
-      case "ephemere":
-        return this.partager(ws, moi, m.conversation, {
-          type: "ephemere",
-          conversation: m.conversation,
-          par: moi,
-          duree: m.duree,
-          le: Date.now(),
-        });
-      case "voter":
-        return this.partager(ws, moi, m.conversation, {
-          type: "vote",
-          conversation: m.conversation,
-          message: m.message,
-          par: moi,
-          choix: [...new Set(m.choix)],
-          le: Date.now(),
-        });
-      case "ouvert": {
-        if ((await this.participants(m.conversation, moi)) === null) return;
-        const entree: NouvelleEntree = { type: "ouvert", conversation: m.conversation, message: m.message, par: moi, le: Date.now() };
-        if (m.auteur !== moi) await this.distribuer([m.auteur], entree);
-        this.ajouter(entree);
-        return;
-      }
       case "important": {
         // Comme les réglages : une affaire entre moi et mes appareils.
         if ((await this.participants(m.conversation, moi)) === null && !estGroupe(m.conversation)) {
@@ -359,115 +301,6 @@ export class Boite extends DurableObject<Bindings> {
     // Mes propres messages n'appellent pas d'accusé.
     this.sql.exec("UPDATE journal SET remis_envoye = 1 WHERE seq <= ? AND type IN ('message', 'chiffre') AND expediteur = ?", jusqua, attache.utilisateurId);
     this.nettoyer(maintenant);
-  }
-
-  private async envoyerMessage(
-    ws: WebSocket,
-    attache: Attache,
-    m: Extract<MessageClient, { t: "envoyer" }>,
-  ): Promise<void> {
-    const maintenant = Date.now();
-    const moi = attache.utilisateurId;
-    if (!this.autoriserEnvoi(attache.sessionId, maintenant)) {
-      this.envoyer(ws, { t: "refuse", id: m.id, message: "Vous envoyez trop de messages. Patientez quelques secondes." });
-      return;
-    }
-
-    let conversation: string;
-    let destinataires: string[];
-    if (m.groupe) {
-      conversation = conversationGroupe(m.groupe);
-      const autres = await this.participants(conversation, moi);
-      if (!autres) {
-        this.envoyer(ws, { t: "refuse", id: m.id, message: "Vous ne faites pas partie de ce groupe." });
-        return;
-      }
-      destinataires = autres;
-    } else {
-      const a = m.a!;
-      conversation = conversationDirecte(moi, a);
-      if (a !== moi && !(await this.destinataireExiste(a))) {
-        this.envoyer(ws, { t: "refuse", id: m.id, message: "Cette personne n'existe pas ou plus sur UniChat." });
-        return;
-      }
-      destinataires = a === moi ? [] : [a];
-      if (a !== moi) {
-        const relation = await this.blocage(moi, a);
-        if (relation.jeBloque) {
-          this.envoyer(ws, { t: "refuse", id: m.id, message: "Vous avez bloqué ce contact. Débloquez-le pour lui écrire." });
-          return;
-        }
-        // Bloqué par le destinataire : le message est accepté mais ne lui parvient
-        // jamais. L'expéditeur reste sur une coche, sans être averti du blocage.
-        if (relation.ilBloque) destinataires = [];
-      }
-    }
-    // Discussion à deux : on annonce toujours un destinataire, même bloqué (sauf à soi-même).
-    const annonces = m.groupe || m.a === moi ? destinataires.length : 1;
-
-    // Renvoi après une coupure : déjà accepté, on confirme sans redistribuer.
-    const deja = this.sql
-      .exec<{ contenu: string }>("SELECT contenu FROM journal WHERE message_id = ? AND type = 'message' AND expediteur = ?", m.id, moi)
-      .toArray()[0];
-    if (deja) {
-      const { message } = JSON.parse(deja.contenu) as { message: Message };
-      this.envoyer(ws, { t: "accepte", id: m.id, le: message.le, destinataires: annonces });
-      return;
-    }
-
-    let media: MediaMessage | undefined;
-    if (m.media) {
-      // Un message ne peut joindre qu'un fichier que son auteur a envoyé,
-      // entièrement, pour cette discussion.
-      const ligne = await this.env.DB.prepare(
-        `SELECT id, type, mime, nom, taille FROM medias
-         WHERE id = ?1 AND proprietaire = ?2 AND conversation = ?3 AND fichier_id IS NOT NULL AND expire_le > ?4`,
-      )
-        .bind(m.media.id, moi, conversation, maintenant)
-        .first<Pick<MediaMessage, "id" | "type" | "mime" | "nom" | "taille">>();
-      if (!ligne) {
-        this.envoyer(ws, { t: "refuse", id: m.id, message: "Le fichier n'est pas arrivé jusqu'au serveur. Réessayez." });
-        return;
-      }
-      const { id: _, ...declare } = m.media;
-      media = { ...ligne, ...declare };
-    }
-
-    // Fiche de contact : le nom et le pseudo viennent de la base, pas de l'expéditeur.
-    let contact: Message["contact"];
-    if (m.contact) {
-      const fiche = await this.env.DB.prepare("SELECT id, nom, pseudo FROM utilisateurs WHERE id = ?1 AND pseudo IS NOT NULL")
-        .bind(m.contact.id)
-        .first<{ id: string; nom: string; pseudo: string }>();
-      if (!fiche) {
-        this.envoyer(ws, { t: "refuse", id: m.id, message: "Cette personne n'existe pas ou plus sur UniChat." });
-        return;
-      }
-      contact = fiche;
-    }
-
-    const message: Message = {
-      id: m.id,
-      conversation,
-      de: moi,
-      a: m.groupe ?? m.a!,
-      texte: m.texte.trim(),
-      le: maintenant,
-      ...(media ? { media } : {}),
-      ...(m.reponseA ? { reponseA: m.reponseA } : {}),
-      ...(m.transfere ? { transfere: m.transfere } : {}),
-      ...(m.lien ? { lien: m.lien } : {}),
-      // Les mentions n'ont de sens que dans un groupe.
-      ...(m.groupe && m.mentions?.length ? { mentions: [...new Set(m.mentions)] } : {}),
-      ...(m.ephemere ? { ephemere: m.ephemere } : {}),
-      ...(m.position ? { position: m.position } : {}),
-      ...(contact ? { contact } : {}),
-      ...(m.sondage ? { sondage: m.sondage } : {}),
-    };
-    await this.distribuer(destinataires, { type: "message", message });
-    // Copie dans ma propre boîte : mes autres appareils voient ce que j'envoie.
-    this.ajouter({ type: "message", message });
-    this.envoyer(ws, { t: "accepte", id: m.id, le: maintenant, destinataires: annonces });
   }
 
   /**
@@ -578,17 +411,6 @@ export class Boite extends DurableObject<Bindings> {
     this.envoyer(ws, { t: "accepte", id: m.id, le: maintenant, destinataires: annonces });
   }
 
-  /** Réaction ou suppression : transmise à chaque participant et à mes autres appareils. */
-  private async partager(ws: WebSocket, moi: string, conversation: string, entree: NouvelleEntree): Promise<void> {
-    const autres = await this.destinatairesPermis(conversation, moi);
-    if (!autres) {
-      this.envoyer(ws, { t: "refuse", message: "Vous ne faites pas partie de cette discussion." });
-      return;
-    }
-    await this.distribuer(autres, entree);
-    this.ajouter(entree);
-  }
-
   /**
    * Les autres participants d'une discussion, ou null si je n'en fais pas
    * partie. Un groupe est vérifié dans la base : un ancien membre ne peut plus
@@ -661,10 +483,7 @@ export class Boite extends DurableObject<Bindings> {
     // La notification part sans retarder l'expéditeur.
     if (!proprietaire) return;
     const echec = (e: unknown) => console.warn("notification non envoyée", String(e));
-    if (entree.type === "message" && entree.message.de !== proprietaire) {
-      const m = entree.message;
-      this.ctx.waitUntil(this.notifier(proprietaire, { conversation: m.conversation, de: m.de, mentions: m.mentions, resume: resumer(m) }).catch(echec));
-    } else if (entree.type === "chiffre" && entree.enveloppe.genre === "message" && entree.enveloppe.de !== proprietaire) {
+    if (entree.type === "chiffre" && entree.enveloppe.genre === "message" && entree.enveloppe.de !== proprietaire) {
       const e = entree.enveloppe;
       this.ctx.waitUntil(
         this.notifier(proprietaire, { conversation: e.conversation, de: e.de, mentions: e.mentions, resume: "Nouveau message", enveloppe: e }).catch(echec),

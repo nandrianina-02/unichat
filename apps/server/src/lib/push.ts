@@ -133,27 +133,6 @@ export async function pousser(
   return reponse.status;
 }
 
-/** Résumé d'un message pour la notification, comme dans la liste des discussions. */
-export function resumer(m: {
-  texte: string;
-  media?: { type: string; nom: string; vocal?: boolean; vueUnique?: boolean };
-  position?: unknown;
-  contact?: { nom: string };
-  sondage?: { question: string };
-}): string {
-  if (m.texte) return m.texte.slice(0, 200);
-  if (m.media) {
-    if (m.media.type === "image") return m.media.vueUnique ? "Photo à vue unique" : "Photo";
-    if (m.media.type === "video") return m.media.vueUnique ? "Vidéo à vue unique" : "Vidéo";
-    if (m.media.type === "audio") return m.media.vocal ? "Message vocal" : "Audio";
-    return m.media.nom;
-  }
-  if (m.position) return "Position";
-  if (m.contact) return `Contact : ${m.contact.nom}`;
-  if (m.sondage) return `Sondage : ${m.sondage.question}`;
-  return "Nouveau message";
-}
-
 /**
  * Message chiffré : la notification d'un appareil emporte l'enveloppe et la
  * clé qui lui est destinée, pour qu'il en montre le texte. Sans clé pour lui,

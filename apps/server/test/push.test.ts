@@ -3,6 +3,7 @@ import { conversationDirecte, type MessageServeur, type Moi } from "@unichat/sha
 import { env } from "cloudflare:workers";
 import { decodeProtectedHeader, importJWK, jwtVerify } from "jose";
 import { base64url, chiffrer, clePubliqueVapid, depuisBase64url, enteteVapid, joindreChiffre, serviceAutorise } from "../src/lib/push";
+import { inscrireCles, trameChiffree } from "./chiffre-outils";
 import { identite, preparer } from "./outils";
 
 type Contexte = Awaited<ReturnType<typeof preparer>>;
@@ -13,6 +14,7 @@ async function personne(t: Contexte, prefixe: string) {
     method: "PATCH",
     json: { pseudo: `${prefixe}_${crypto.randomUUID().slice(0, 8)}` },
   })).json()) as Moi;
+  await inscrireCles(appareil);
   return { appareil, id: moi.id };
 }
 
@@ -109,7 +111,7 @@ describe("Web Push", () => {
 
     const wsBob = await bob.appareil.tempsReel();
     if (wsBob.refus !== null) throw new Error("connexion refusée");
-    wsBob.envoyer({ t: "envoyer", id: crypto.randomUUID(), a: ana.id, texte: "Pendant la sourdine" });
+    wsBob.envoyer(await trameChiffree(bob.appareil, bob.id, { a: ana.id, comptes: [ana.id] }));
     await wsBob.attendre((m): m is Extract<MessageServeur, { t: "accepte" }> => m.t === "accepte");
     expect(await attendre(async () => (await compter()) === 0)).toBe(false);
 
@@ -118,7 +120,7 @@ describe("Web Push", () => {
     if (wsAna2.refus !== null) throw new Error("connexion refusée");
     wsAna2.envoyer({ t: "preference", conversation, preference: { muetJusqua: null } });
     await wsAna2.attendre((m): m is Extract<MessageServeur, { t: "entree" }> => m.t === "entree" && m.entree.type === "preference");
-    wsBob.envoyer({ t: "envoyer", id: crypto.randomUUID(), a: ana.id, texte: "Tu es là ?" });
+    wsBob.envoyer(await trameChiffree(bob.appareil, bob.id, { a: ana.id, comptes: [ana.id] }));
     expect(await attendre(async () => (await compter()) === 0)).toBe(true);
   });
 });

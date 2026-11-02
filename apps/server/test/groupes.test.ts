@@ -7,6 +7,7 @@ import {
   type MessageServeur,
   type Moi,
 } from "@unichat/shared";
+import { inscrireCles, trameChiffree } from "./chiffre-outils";
 import { identite, preparer } from "./outils";
 
 type Contexte = Awaited<ReturnType<typeof preparer>>;
@@ -18,6 +19,7 @@ async function personne(t: Contexte, prefixe: string) {
     method: "PATCH",
     json: { pseudo: `${prefixe}_${crypto.randomUUID().slice(0, 8)}` },
   })).json()) as Moi;
+  await inscrireCles(appareil);
   return { identite: id, appareil, id: moi.id };
 }
 
@@ -81,14 +83,16 @@ describe("groupes", () => {
     const groupe = await creerGroupe(ana, [bob.id, lova.id]);
     const [wsAna, wsBob, wsLova] = await Promise.all([ouvrir(ana.appareil), ouvrir(bob.appareil), ouvrir(lova.appareil)]);
 
-    const id = crypto.randomUUID();
-    wsAna.envoyer({ t: "envoyer", id, groupe: groupe.id, texte: "Bonjour à tous" });
+    const trame = await trameChiffree(ana.appareil, ana.id, { groupe: groupe.id, comptes: [bob.id, lova.id] });
+    const id = trame.id;
+    wsAna.envoyer(trame);
     const accepte = await wsAna.attendre((m): m is Extract<MessageServeur, { t: "accepte" }> => m.t === "accepte" && m.id === id);
     expect(accepte.destinataires).toBe(2);
 
-    for (const ws of [wsBob, wsLova]) {
-      const recu = await ws.attendre(entree("message", (e) => e.message.id === id));
-      expect(recu.entree.type === "message" && recu.entree.message).toMatchObject({ de: ana.id, a: groupe.id, texte: "Bonjour à tous" });
+    for (const [ws, membre] of [[wsBob, bob.id], [wsLova, lova.id]] as const) {
+      const recu = await ws.attendre(entree("chiffre", (e) => e.enveloppe.id === id));
+      // Chaque membre ne reçoit que les clés de ses propres appareils.
+      expect(recu.entree.type === "chiffre" && recu.entree.enveloppe).toMatchObject({ de: ana.id, a: groupe.id, cles: trame.cles[membre] });
       ws.envoyer({ t: "recu", jusqua: recu.entree.seq });
     }
     // Un accusé de remise par membre : l'application d'Ana en déduit « remis à tous ».
@@ -108,9 +112,9 @@ describe("groupes", () => {
     const retrait = await wsBob.attendre(entree("groupe", (e) => e.evenement.action === "retrait"));
     expect(retrait.entree.type === "groupe" && retrait.entree.evenement.cibles).toEqual([bob.id]);
 
-    const id = crypto.randomUUID();
-    wsBob.envoyer({ t: "envoyer", id, groupe: groupe.id, texte: "Encore là ?" });
-    const refus = await wsBob.attendre((m): m is Extract<MessageServeur, { t: "refuse" }> => m.t === "refuse" && m.id === id, 15000);
+    const trame = await trameChiffree(bob.appareil, bob.id, { groupe: groupe.id, comptes: [ana.id, lova.id] });
+    wsBob.envoyer(trame);
+    const refus = await wsBob.attendre((m): m is Extract<MessageServeur, { t: "refuse" }> => m.t === "refuse" && m.id === trame.id, 15000);
     expect(refus.message).toBe("Vous ne faites pas partie de ce groupe.");
     expect((await bob.appareil.appel(`/api/groupes/${groupe.id}`)).status).toBe(404);
   });
@@ -138,37 +142,31 @@ describe("groupes", () => {
 });
 
 describe("réactions et suppression", () => {
-  it("transmet une réaction et la suppression d'un message à l'autre personne", async () => {
+  it("transmet une réaction et la suppression d'un message, chiffrées, à l'autre personne", async () => {
     const { ana, bob } = await trio();
     const [wsAna, wsBob] = await Promise.all([ouvrir(ana.appareil), ouvrir(bob.appareil)]);
-    const conversation = conversationDirecte(ana.id, bob.id);
-    const id = crypto.randomUUID();
-    wsAna.envoyer({ t: "envoyer", id, a: bob.id, texte: "À supprimer" });
-    await wsBob.attendre(entree("message"));
+    const message = await trameChiffree(ana.appareil, ana.id, { a: bob.id, comptes: [bob.id] });
+    wsAna.envoyer(message);
+    await wsBob.attendre(entree("chiffre"));
 
-    wsBob.envoyer({ t: "reagir", conversation, message: id, code: "coeur" });
-    const reaction = await wsAna.attendre(entree("reaction"));
-    expect(reaction.entree).toMatchObject({ message: id, par: bob.id, code: "coeur" });
+    const reaction = await trameChiffree(bob.appareil, bob.id, { a: ana.id, comptes: [ana.id], genre: "action" });
+    wsBob.envoyer(reaction);
+    const recue = await wsAna.attendre(entree("chiffre", (e) => e.enveloppe.id === reaction.id));
+    expect(recue.entree.type === "chiffre" && recue.entree.enveloppe).toMatchObject({ de: bob.id, genre: "action", conversation: conversationDirecte(ana.id, bob.id) });
 
-    wsAna.envoyer({ t: "supprimer", conversation, message: id });
-    const suppression = await wsBob.attendre(entree("suppression"));
-    expect(suppression.entree).toMatchObject({ message: id, par: ana.id });
+    const suppression = await trameChiffree(ana.appareil, ana.id, { a: bob.id, comptes: [bob.id], genre: "action" });
+    wsAna.envoyer(suppression);
+    const recu = await wsBob.attendre(entree("chiffre", (e) => e.enveloppe.id === suppression.id));
+    expect(recu.entree.type === "chiffre" && recu.entree.enveloppe.genre).toBe("action");
   });
 
-  it("refuse d'agir dans une discussion dont on ne fait pas partie", async () => {
-    const { t, ana, bob } = await trio();
-    const intrus = await personne(t, "intrus");
-    const ws = await ouvrir(intrus.appareil);
-    ws.envoyer({ t: "reagir", conversation: conversationDirecte(ana.id, bob.id), message: crypto.randomUUID(), code: "pouce" });
-    const refus = await ws.attendre((m): m is Extract<MessageServeur, { t: "refuse" }> => m.t === "refuse");
-    expect(refus.message).toBe("Vous ne faites pas partie de cette discussion.");
-  });
-
-  it("refuse une réaction inconnue", async () => {
+  it("une action ne traverse pas un blocage", async () => {
     const { ana, bob } = await trio();
-    const ws = await ouvrir(ana.appareil);
-    ws.envoyer({ t: "reagir", conversation: conversationDirecte(ana.id, bob.id), message: crypto.randomUUID(), code: "licorne" } as never);
-    const refus = await ws.attendre((m): m is Extract<MessageServeur, { t: "refuse" }> => m.t === "refuse");
-    expect(refus.message).toBeTruthy();
+    const [wsAna, wsBob] = await Promise.all([ouvrir(ana.appareil), ouvrir(bob.appareil)]);
+    expect((await bob.appareil.appel("/api/blocages", { method: "POST", json: { id: ana.id } })).status).toBe(201);
+    const reaction = await trameChiffree(ana.appareil, ana.id, { a: bob.id, comptes: [bob.id], genre: "action" });
+    wsAna.envoyer(reaction);
+    await wsAna.attendre((m): m is Extract<MessageServeur, { t: "accepte" }> => m.t === "accepte" && m.id === reaction.id);
+    expect(await wsBob.attendre(entree("chiffre"), 400).then(() => true, () => false)).toBe(false);
   });
 });
