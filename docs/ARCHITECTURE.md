@@ -624,7 +624,10 @@ s'installe par-dessus l'ancienne, en version 10 (l'ancienne est en 5).
 
 1. Socle : projet, construction signée, connexion Google, profil et
    appareils connectés, déconnexion (fait).
-2. Chiffrement porté en Kotlin, jeux d'essai croisés avec le web.
+2. Chiffrement porté en Kotlin, jeux d'essai croisés avec le web (fait) :
+   `packages/chiffrement/test/vecteurs.test.ts` produit les jeux d'essai
+   relus par les tests Kotlin, et `test/kotlin.test.ts` relit ce que Kotlin
+   chiffre, à chaque construction de l'appli.
 3. Relier l'appareil (code QR scanné depuis un appareil déjà relié), temps
    réel, réception et lecture des discussions.
 4. Envoi chiffré, accusés, « écrit… », présence.
