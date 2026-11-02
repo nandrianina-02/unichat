@@ -1,0 +1,10 @@
+# Une icône Lucide par ligne (nom kebab-case), générée par outils/icones.mjs.
+log-in
+log-out
+smartphone
+monitor
+globe
+shield-check
+message-circle
+link-2
+user-round

@@ -595,3 +595,41 @@ Sur le modèle de la WhatsApp Business API :
 | Durable Objects | 100 000 requêtes par jour, stockage SQLite | WebSocket en veille ; messages effacés après remise |
 | Fichiers statiques | Gratuits, illimités | Application web servie par le Worker |
 | Karaks Storage | Espace du Google Drive relié | Fichiers effacés après 30 jours ; 64 Mo au plus par vidéo ou document, 16 Mo par photo ou audio |
+
+## Application Android native
+
+L'appli Trusted Web Activity (apps/android) s'arrêtait au lancement et
+dépendait de Chrome. Elle est remplacée par une appli native, en Kotlin et
+Jetpack Compose (apps/android-natif), construite par GitHub Actions et
+jamais sur le poste de développement. Même identifiant
+(`io.github.nandrianina02.unichat`) et même clé de signature : elle
+s'installe par-dessus l'ancienne, en version 10 (l'ancienne est en 5).
+
+- **Connexion** : Google par Credential Manager, qui rend directement un
+  jeton d'identité. Le serveur délivre le nonce
+  (`POST /api/auth/natif/nonce`), vérifie le jeton comme pour le web
+  (signature, audience = client web, nonce, adresse vérifiée) et répond par
+  un jeton de session (`POST /api/auth/natif`), présenté ensuite en
+  `Authorization: Bearer`. Le jeton renouvelé revient dans
+  `X-UniChat-Jeton`. Il faut, dans Google Cloud, un client OAuth « Android »
+  pour l'identifiant de l'appli et l'empreinte SHA-1 de la clé (affichée
+  dans le résumé de chaque construction).
+- **Jeton de session** : chiffré par une clé AES du Keystore Android.
+- **Chiffrement** : l'appli devra produire exactement les mêmes octets que
+  `packages/chiffrement` (X3DH, Double Ratchet, AES-GCM, HKDF, Ed25519,
+  X25519). Portage en Kotlin sur BouncyCastle (licence de type MIT), vérifié
+  par des jeux d'essai produits par le code TypeScript.
+
+### Lots
+
+1. Socle : projet, construction signée, connexion Google, profil et
+   appareils connectés, déconnexion (fait).
+2. Chiffrement porté en Kotlin, jeux d'essai croisés avec le web.
+3. Relier l'appareil (code QR scanné depuis un appareil déjà relié), temps
+   réel, réception et lecture des discussions.
+4. Envoi chiffré, accusés, « écrit… », présence.
+5. Fichiers et messages vocaux.
+6. Notifications (Firebase Cloud Messaging, gratuit), déchiffrées sur
+   l'appareil.
+7. Groupes, réactions, modifications, suppressions, réglages.
+
