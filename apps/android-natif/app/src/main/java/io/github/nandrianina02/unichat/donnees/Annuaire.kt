@@ -1,6 +1,10 @@
 package io.github.nandrianina02.unichat.donnees
 
+import kotlinx.serialization.json.JsonArray
+import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.booleanOrNull
+import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
 
@@ -31,6 +35,22 @@ class Annuaire(private val api: UniChatApi, private val base: Base) {
             }
         }
         if (aDemander.isNotEmpty()) base.signaler()
+    }
+
+    /**
+     * Les membres d'un groupe, pour savoir à qui chiffrer. Relus au serveur
+     * quand la base ne les a pas, ou quand il a refusé une liste périmée.
+     * Null si je n'en fais plus partie.
+     */
+    suspend fun membres(groupe: String, frais: Boolean = false): List<String>? {
+        val g = base.groupe(groupe)?.takeIf { !frais && it["membres"] is JsonArray }
+            ?: appel { api.groupe(groupe) }.fold(
+                onSuccess = { it.also { base.ecrireGroupe(it); base.signaler() } },
+                // Le serveur ne montre un groupe qu'à ses membres.
+                onFailure = { if (it is ErreurServeur && it.statut == 404) return null else throw it },
+            )
+        if (g["moiMembre"]?.jsonPrimitive?.booleanOrNull == false) return null
+        return (g["membres"] as? JsonArray)?.mapNotNull { (it as? JsonObject)?.texteOuNul("id") }?.takeIf { it.isNotEmpty() }
     }
 
     /** Les noms de mes groupes, relus en bloc (un événement de groupe a pu les changer). */

@@ -54,6 +54,13 @@ fun jourMessage(le: Long, maintenant: Long = System.currentTimeMillis()): String
     }
 }
 
+/** Présence d'une personne absente : « vu aujourd'hui à 14:05 », « vu hier à… », « vu le 3 mars à… ». */
+fun vuLe(le: Long, maintenant: Long = System.currentTimeMillis()): String = when (ecartJours(le, maintenant)) {
+    0 -> "vu aujourd'hui à ${heureCourte(le)}"
+    1 -> "vu hier à ${heureCourte(le)}"
+    else -> "vu le ${SimpleDateFormat("d MMMM", FR).format(Date(le))} à ${heureCourte(le)}"
+}
+
 fun enumeration(noms: List<String>): String = if (noms.size <= 1) noms.firstOrNull() ?: "" else "${noms.dropLast(1).joinToString(", ")} et ${noms.last()}"
 
 /** Ligne système d'un groupe : « Ana a ajouté Bob et Lova ». `nom` donne « Vous » pour soi. */

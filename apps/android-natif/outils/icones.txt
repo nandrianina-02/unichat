@@ -24,3 +24,5 @@ contact
 chart-bar-big
 clock
 lock-keyhole
+send-horizontal
+circle-alert

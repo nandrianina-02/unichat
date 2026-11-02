@@ -110,3 +110,30 @@ data class GroupeCourt(val id: String, val nom: String)
 @Serializable
 data class ListeGroupes(val groupes: List<GroupeCourt>)
 
+
+// --- Envoi chiffré (Chiffreur.chiffrer, apps/web/src/lib/chiffrement.ts) ---------------
+
+@Serializable
+data class DemandeAppareils(val comptes: List<String>)
+
+/** Appareils inscrits d'un compte : pour qui chiffrer, sans consommer de clé unique. */
+@Serializable
+data class AppareilsDuCompte(val id: String, val identite: IdentiteCles, val appareils: List<Int>)
+
+@Serializable
+data class AppareilsDesComptes(val comptes: List<AppareilsDuCompte>)
+
+@Serializable
+data class DemandePaquet(val id: String, val appareils: List<Int>)
+
+@Serializable
+data class DemandePaquets(val comptes: List<DemandePaquet>)
+
+@Serializable
+data class PaquetAppareil(val numero: Int, val cleSignee: CleSigneeTransport, val cleUnique: CleUniqueTransport? = null)
+
+@Serializable
+data class PaquetsDuCompte(val id: String, val identite: IdentiteCles, val appareils: List<PaquetAppareil>)
+
+@Serializable
+data class ListePaquets(val comptes: List<PaquetsDuCompte>)

@@ -26,7 +26,7 @@ class EspaceCompte(
     val annuaire = Annuaire(reseau.api, base)
     val liaison = LiaisonAppareil(reseau.api, cles, base)
     val messagerie = Messagerie(
-        reseau.client, serveur, cles, Dechiffreur(cles, trousseau, moi), base, moi, portee,
+        reseau.client, serveur, cles, Dechiffreur(cles, trousseau, moi), Chiffreur(reseau.api, cles, trousseau, moi), annuaire, base, moi, portee,
         surSessionFermee = { session.oublier() },
         sessionValide = { session.connecte { reseau.api.moi() }.isSuccess },
     ).also { it.rafraichirGroupes = { annuaire.rafraichirGroupes() } }

@@ -629,8 +629,12 @@ s'installe par-dessus l'ancienne, en version 10 (l'ancienne est en 5).
    relus par les tests Kotlin, et `test/kotlin.test.ts` relit ce que Kotlin
    chiffre, à chaque construction de l'appli.
 3. Relier l'appareil (code QR scanné depuis un appareil déjà relié), temps
-   réel, réception et lecture des discussions.
-4. Envoi chiffré, accusés, « écrit… », présence.
+   réel, réception et lecture des discussions (fait).
+4. Envoi chiffré, accusés, « écrit… », présence (fait). Le Chiffreur
+   Kotlin reprend celui du web : un message part « en attente », repart au
+   retour de la connexion, et un refus « appareils » est rechiffré deux fois
+   au plus. Dans un groupe, les membres sont relus après chaque événement.
+   `EnvoiChiffreTest` vérifie l'aller-retour avec le déchiffreur.
 5. Fichiers et messages vocaux.
 6. Notifications (Firebase Cloud Messaging, gratuit), déchiffrées sur
    l'appareil.

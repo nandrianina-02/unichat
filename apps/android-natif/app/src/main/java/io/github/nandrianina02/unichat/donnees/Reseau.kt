@@ -1,6 +1,7 @@
 package io.github.nandrianina02.unichat.donnees
 
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonObject
 import okhttp3.Interceptor
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
@@ -79,6 +80,12 @@ interface UniChatApi {
     @POST("api/cles/appareil")
     suspend fun relierAppareil(@Body relie: AppareilRelie): EtatCles
 
+    @POST("api/cles/appareils")
+    suspend fun appareilsCles(@Body demande: DemandeAppareils): AppareilsDesComptes
+
+    @POST("api/cles/paquets")
+    suspend fun paquets(@Body demande: DemandePaquets): ListePaquets
+
     // --- Liaison et historique (lot 8 du web) --------------------------------------------
 
     @GET("api/cles/liaisons/{canal}")
@@ -103,6 +110,10 @@ interface UniChatApi {
 
     @GET("api/groupes")
     suspend fun groupes(): ListeGroupes
+
+    /** Le groupe dans la forme du web (Groupe, packages/shared) : il se range tel quel dans la base. */
+    @GET("api/groupes/{id}")
+    suspend fun groupe(@Path("id") id: String): JsonObject
 }
 
 class Reseau(serveur: String, stockage: StockageJeton) {

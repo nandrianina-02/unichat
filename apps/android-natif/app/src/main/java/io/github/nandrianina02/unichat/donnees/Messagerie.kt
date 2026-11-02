@@ -1,5 +1,6 @@
 package io.github.nandrianina02.unichat.donnees
 
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.channels.Channel
@@ -7,6 +8,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.withLock
@@ -24,9 +26,14 @@ import okhttp3.Request
 import okhttp3.Response
 import okhttp3.WebSocket
 import okhttp3.WebSocketListener
+import java.util.UUID
+import java.util.concurrent.ConcurrentHashMap
 import kotlin.math.min
 
 enum class EtatConnexion { HORS_LIGNE, CONNEXION, CONNECTE }
+
+/** En ligne, ou vu pour la dernière fois (null : la personne ne le montre pas). */
+data class Presence(val enLigne: Boolean, val vuLe: Long?)
 
 /**
  * Fin des messages en clair (FIN_DU_CLAIR, packages/shared) : un contenu en
@@ -39,19 +46,27 @@ private val CONTENUS_EN_CLAIR = setOf("message", "reaction", "suppression", "mod
 private const val FERMETURE_SESSION = 4001
 private const val INTERVALLE_PING = 25_000L
 private const val DELAI_MODIFICATION = 15 * 60 * 1000L
+/** « En train d'écrire » s'efface sans nouveau signal (DUREE_ECRIT du web). */
+private const val DUREE_ECRIT = 5000L
+/** Rechiffrements après un refus « appareils » : au-delà, la liste ne se stabilise pas. */
+private const val TENTATIVES_MAX = 2
 private val RANG = mapOf("echec" to -1, "attente" to 0, "envoye" to 1, "remis" to 2, "lu" to 3)
 
 /**
- * Le temps réel, porté d'apps/web/src/lib/messagerie.ts (réception) : la
- * boîte du compte remet son journal par lots ; chaque entrée est ouverte
+ * Le temps réel, porté d'apps/web/src/lib/messagerie.ts. À la réception,
+ * la boîte du compte remet son journal par lots ; chaque entrée est ouverte
  * (enveloppe chiffrée), appliquée à la base, puis acquittée. Le serveur
- * efface ce que tous les appareils ont reçu.
+ * efface ce que tous les appareils ont reçu. À l'envoi, le message est
+ * rangé « en attente », chiffré pour chaque appareil, puis confirmé par le
+ * serveur (accepte) ou refusé avec la raison.
  */
 class Messagerie(
     private val client: OkHttpClient,
     private val serveur: String,
     private val cles: ClesAppareil,
     private val dechiffreur: Dechiffreur,
+    private val chiffreur: Chiffreur,
+    private val annuaire: Annuaire,
     private val base: Base,
     private val moi: String,
     private val portee: CoroutineScope,
@@ -68,6 +83,20 @@ class Messagerie(
     private var ping: Job? = null
     private var accuse: Job? = null
     private var reconnexion: Job? = null
+    /** Mes envois en route, avec le nombre de rechiffrements déjà faits. */
+    private val envois = ConcurrentHashMap<String, Int>()
+    /** Les messages en attente repartent une fois par connexion, après le rattrapage du journal. */
+    private var renvoyes = false
+    private val dernierEcrit = ConcurrentHashMap<String, Long>()
+    private val finsEcrit = ConcurrentHashMap<String, Job>()
+
+    private val _ecrit = MutableStateFlow<Map<String, String>>(emptyMap())
+    /** Qui écrit, par discussion. */
+    val ecrit: StateFlow<Map<String, String>> = _ecrit.asStateFlow()
+
+    private val _presences = MutableStateFlow<Map<String, Presence>>(emptyMap())
+    val presences: StateFlow<Map<String, Presence>> = _presences.asStateFlow()
+
     /** Les trames sont traitées une à une, dans l'ordre d'arrivée. */
     private val file = Channel<JsonObject>(Channel.UNLIMITED)
 
@@ -97,6 +126,7 @@ class Messagerie(
         val socket = client.newWebSocket(Request.Builder().url(adresse).build(), object : WebSocketListener() {
             override fun onOpen(webSocket: WebSocket, response: Response) {
                 tentative = 0
+                renvoyes = false
                 brut(webSocket, buildJsonObject { put("t", "bonjour"); put("depuis", seq?.let { JsonPrimitive(it) } ?: JsonPrimitive(null as Long?)) })
                 ping?.cancel()
                 // Maintien de connexion : le serveur répond sans se réveiller.
@@ -152,12 +182,176 @@ class Messagerie(
         when (m.texte("t")) {
             "lot" -> {
                 appliquer(m["entrees"]?.jsonArray?.map { it.jsonObject } ?: emptyList())
-                if (m.vrai("fin")) _connexion.value = EtatConnexion.CONNECTE
-                else brut(m = buildJsonObject { put("t", "bonjour"); put("depuis", seq ?: 0L) })
+                if (m.vrai("fin")) {
+                    _connexion.value = EtatConnexion.CONNECTE
+                    if (!renvoyes) {
+                        renvoyes = true
+                        portee.launch { base.enAttente(moi).forEach { expedier(it) } }
+                    }
+                } else {
+                    brut(m = buildJsonObject { put("t", "bonjour"); put("depuis", seq ?: 0L) })
+                }
             }
             "entree" -> m.objet("entree")?.let { appliquer(listOf(it)) }
-            // accepte, refuse, ecrit, presence : concernent l'envoi et la présence (lots suivants).
+            "accepte" -> accepte(m)
+            "refuse" -> refuse(m)
+            "ecrit" -> {
+                val conversation = m.texte("conversation")
+                _ecrit.update { it + (conversation to m.texte("de")) }
+                finsEcrit.remove(conversation)?.cancel()
+                finsEcrit[conversation] = portee.launch {
+                    delay(DUREE_ECRIT)
+                    _ecrit.update { it - conversation }
+                }
+            }
+            "presence" -> _presences.update { it + (m.texte("de") to Presence(m.vrai("enLigne"), m.entier("vuLe"))) }
         }
+    }
+
+    // --- Envoi ---------------------------------------------------------------------------
+
+    private fun autreParticipant(conversation: String): String {
+        val (_, x, y) = conversation.split(":")
+        return if (x == moi) y else x
+    }
+
+    /** Durée des messages éphémères de la discussion, si elle les a activés. */
+    private fun ephemereDe(conversation: String): Long? = base.conversation(conversation)?.entier("ephemere")?.takeIf { it > 0 }
+
+    /**
+     * Un message écrit sur cet appareil : rangé tout de suite « en attente »,
+     * puis chiffré et envoyé. Hors connexion, il part au retour de celle-ci.
+     * Lancé dans la portée du compte : quitter l'écran ne l'interrompt pas.
+     */
+    fun envoyer(conversation: String, texte: String) {
+        val propre = texte.trim()
+        if (propre.isEmpty()) return
+        portee.launch {
+            val maintenant = System.currentTimeMillis()
+            var message = buildJsonObject {
+                put("id", UUID.randomUUID().toString())
+                put("conversation", conversation)
+                put("de", moi)
+                put("a", if (conversation.startsWith("d:")) autreParticipant(conversation) else conversation.removePrefix("g:"))
+                put("texte", propre)
+                put("le", maintenant)
+                put("type", "texte")
+                put("etat", "attente")
+            }
+            ephemereDe(conversation)?.let { message = message.avec("ephemere", it).avec("expireLe", maintenant + it) }
+            base.ecrireMessage(message)
+            base.signaler()
+            expedier(message)
+        }
+    }
+
+    /** Un envoi en échec repart, comme si on venait de l'écrire. */
+    fun reessayer(id: String) {
+        portee.launch {
+            val msg = base.message(id)?.takeIf { it.texte("de") == moi && it.texteOuNul("etat") == "echec" } ?: return@launch
+            envois.remove(id)
+            val enAttente = msg.avec("etat", "attente").avec("erreur", null)
+            base.ecrireMessage(enAttente)
+            base.signaler()
+            expedier(enAttente)
+        }
+    }
+
+    /**
+     * À qui chiffrer. Pour un groupe, ses membres, ou ceux qu'impose le
+     * serveur après un refus (liste périmée) ; faute de membres connus, on
+     * échoue plutôt que de partir en clair.
+     */
+    private suspend fun destination(conversation: String, imposes: List<String>?): Destination {
+        if (conversation.startsWith("d:")) {
+            val a = autreParticipant(conversation)
+            return Destination(conversation, a = a, comptes = listOf(a))
+        }
+        val groupe = conversation.removePrefix("g:")
+        if (imposes != null) portee.launch { runCatching { annuaire.membres(groupe, frais = true) } }
+        val membres = imposes ?: annuaire.membres(groupe) ?: throw ErreurChiffrement("groupe", "Vous ne faites plus partie de ce groupe.")
+        return Destination(conversation, groupe = groupe, comptes = membres)
+    }
+
+    /**
+     * Toujours chiffré. Hors connexion, le message attend ; sinon l'échec
+     * dit pourquoi, et rien ne part jamais en clair.
+     */
+    private suspend fun expedier(m: JsonObject, imposes: List<String>? = null) {
+        if (_connexion.value != EtatConnexion.CONNECTE) return
+        val id = m.texte("id")
+        try {
+            val destination = destination(m.texte("conversation"), imposes)
+            val contenu = buildJsonObject {
+                put("v", 1)
+                put("texte", m.texte("texte"))
+                m.entier("ephemere")?.let { put("ephemere", it) }
+            }
+            val enveloppe = cles.verrou.withLock { chiffreur.chiffrer(destination, id, "message", contenu) }
+            envois.putIfAbsent(id, 0)
+            brut(m = enveloppe)
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            if (_connexion.value != EtatConnexion.CONNECTE) return
+            envois.remove(id)
+            val raison = when {
+                e is ErreurChiffrement && e.raison == "sans-cles" ->
+                    "${annuaire.nomPersonne(m.texte("a")) ?: "Cette personne"} n'a pas encore ouvert une version d'UniChat qui chiffre les messages. Réessayez quand ce sera fait."
+                e is ErreurChiffrement -> e.message ?: "Envoi impossible."
+                else -> "Envoi impossible pour le moment. Réessayez."
+            }
+            modifier(id) { it.avec("etat", "echec").avec("erreur", raison) }
+        }
+    }
+
+    private fun accepte(m: JsonObject) {
+        val id = m.texte("id")
+        envois.remove(id)
+        modifier(id) { msg ->
+            // Un accusé « remis » ou « lu » peut précéder la confirmation : l'état n'y recule pas.
+            val actuel = msg.texteOuNul("etat")?.takeIf { it != "echec" } ?: "attente"
+            val etat = if ((RANG[actuel] ?: 0) >= RANG.getValue("envoye")) actuel else "envoye"
+            msg.avec("le", m.entier("le") ?: msg.entier("le") ?: 0L)
+                .avec("attendus", m.entier("destinataires"))
+                .avec("erreur", null)
+                .avec("etat", etat)
+        }
+    }
+
+    private fun refuse(m: JsonObject) {
+        val id = m.texteOuNul("id") ?: return
+        val tentatives = envois[id]
+        // Appareils de la discussion changés depuis la dernière liste : on rechiffre pour les bons.
+        if (tentatives != null && m.texte("code") == "appareils" && tentatives < TENTATIVES_MAX) {
+            val comptes = m.objet("appareils")?.keys?.toList().orEmpty()
+            envois[id] = tentatives + 1
+            chiffreur.oublier(comptes)
+            base.message(id)?.let { msg -> portee.launch { expedier(msg, comptes.ifEmpty { null }) } }
+            return
+        }
+        envois.remove(id)
+        modifier(id) { it.avec("etat", "echec").avec("erreur", m.texte("message")) }
+    }
+
+    private fun modifier(id: String, changement: (JsonObject) -> JsonObject) {
+        val msg = base.message(id) ?: return
+        base.ecrireMessage(changement(msg))
+        base.signaler()
+    }
+
+    /** « En train d'écrire » : un signal au plus toutes les 3 s (5 s dans un groupe, relayé à chacun). */
+    fun signalerEcriture(conversation: String) {
+        val maintenant = System.currentTimeMillis()
+        val intervalle = if (conversation.startsWith("d:")) 3000L else 5000L
+        if (maintenant - (dernierEcrit[conversation] ?: 0) < intervalle) return
+        dernierEcrit[conversation] = maintenant
+        brut(m = buildJsonObject { put("t", "ecrit"); put("conversation", conversation) })
+    }
+
+    /** La présence n'est pas poussée : on la demande en ouvrant la discussion. */
+    fun demanderPresence(autre: String) {
+        brut(m = buildJsonObject { put("t", "presence"); put("de", autre) })
     }
 
     /** Messages lus sur cet appareil : leurs auteurs l'apprennent (et mes autres appareils), comme sur le web. */
@@ -273,6 +467,8 @@ class Messagerie(
                     if (local.texteOuNul("etat") == null) local = local.avec("etat", "envoye")
                     base.ecrireMessage(local)
                 } else if (existant == null || existant.vrai("indechiffrable")) {
+                    // Le message attendu est arrivé : son auteur n'écrit plus.
+                    _ecrit.update { it - m.texte("conversation") }
                     var local = m.avec("type", "texte").avec("lu", false)
                     if (ephemere != null) local = local.avec("expireLe", ephemere)
                     base.ecrireMessage(local)
@@ -330,6 +526,10 @@ class Messagerie(
                 }
             }
             "ephemere" -> {
+                // Retenue sur la discussion : mes prochains messages en héritent.
+                val conversation = e.texte("conversation")
+                val duree = e.entier("duree")?.takeIf { it > 0 }
+                base.ecrireConversation((base.conversation(conversation) ?: buildJsonObject { put("id", conversation) }).avec("ephemere", duree))
                 val id = "ephemere:${e.texte("par")}:${e.entier("le")}"
                 if (base.message(id) == null) {
                     base.ecrireMessage(buildJsonObject {
@@ -364,6 +564,9 @@ class Messagerie(
                     })
                 }
                 groupesAChanger += ev.texte("conversation")
+                // Les membres ont pu changer : ils seront relus au prochain envoi.
+                val gid = ev.texte("conversation").removePrefix("g:")
+                base.groupe(gid)?.let { base.ecrireGroupe(it.avec("membres", null)) }
             }
             // epingle, important, vote, ouvert, blocage, preference : rien à montrer encore dans l'appli.
         }

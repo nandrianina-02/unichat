@@ -108,6 +108,16 @@ class Base(contexte: Context, compte: String) : SQLiteOpenHelper(contexte, "unic
         }
     }
 
+    /**
+     * Mes messages pas encore partis, du plus ancien au plus récent : ils
+     * partent dès que la connexion revient. L'état vit dans le contenu (forme
+     * du web) ; le filtre SQL dégrossit, la lecture tranche.
+     */
+    fun enAttente(moi: String): List<JsonObject> =
+        readableDatabase.rawQuery("SELECT contenu FROM messages WHERE de = ? AND contenu LIKE '%\"attente\"%' ORDER BY le", arrayOf(moi)).use { c ->
+            buildList { while (c.moveToNext()) add(Json.parseToJsonElement(c.getString(0)).jsonObject) }
+        }.filter { it.texteOuNul("etat") == "attente" }
+
     /** Messages reçus d'une discussion marqués lus sur cet appareil ; rend leurs identifiants et auteurs. */
     fun marquerLus(conversation: String, moi: String): List<Pair<String, String>> {
         val db = writableDatabase
@@ -144,6 +154,7 @@ class Base(contexte: Context, compte: String) : SQLiteOpenHelper(contexte, "unic
     fun ecrirePersonne(p: JsonObject) = ecrireObjet("personnes", p.texte("id"), p)
     fun groupe(id: String) = lireObjet("groupes", id)
     fun ecrireGroupe(g: JsonObject) = ecrireObjet("groupes", g.texte("id"), g)
+    fun conversation(id: String) = lireObjet("conversations", id)
     fun ecrireConversation(c: JsonObject) = ecrireObjet("conversations", c.texte("id"), c)
 
     fun reglage(cle: String): String? =
