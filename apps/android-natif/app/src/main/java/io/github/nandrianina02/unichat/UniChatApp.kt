@@ -3,6 +3,10 @@ package io.github.nandrianina02.unichat
 import android.app.Application
 import coil.ImageLoader
 import io.github.nandrianina02.unichat.donnees.Coffre
+import io.github.nandrianina02.unichat.donnees.EspaceCompte
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
 import io.github.nandrianina02.unichat.donnees.Reseau
 import io.github.nandrianina02.unichat.donnees.Session
 
@@ -11,10 +15,33 @@ class UniChatApp : Application() {
 }
 
 /** Ce que partagent tous les écrans : le réseau, la session, le chargeur d'images. */
-class Conteneur(app: Application) {
+class Conteneur(private val app: Application) {
     private val coffre = Coffre(app)
     val reseau = Reseau(BuildConfig.SERVEUR, coffre)
     val session = Session(reseau, coffre)
+    /** Temps réel et déchiffrement : hors du fil de l'interface. */
+    val portee = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+
+    private var espaceOuvert: EspaceCompte? = null
+
+    init {
+        session.surFermeture = { fermerEspace() }
+    }
+
+    /** L'espace du compte connecté ; un autre compte ferme le précédent. */
+    @Synchronized
+    fun espace(moi: String): EspaceCompte {
+        espaceOuvert?.takeIf { it.moi == moi }?.let { return it }
+        espaceOuvert?.fermer()
+        return EspaceCompte(app, reseau, BuildConfig.SERVEUR, session, moi, portee).also { espaceOuvert = it }
+    }
+
+    /** Déconnexion : le temps réel s'arrête ; les discussions restent sur l'appareil. */
+    @Synchronized
+    fun fermerEspace() {
+        espaceOuvert?.fermer()
+        espaceOuvert = null
+    }
 
     /** Les photos de profil exigent la session : le chargeur passe par le même client que l'API. */
     val images: ImageLoader = ImageLoader.Builder(app).okHttpClient(reseau.client).crossfade(true).build()

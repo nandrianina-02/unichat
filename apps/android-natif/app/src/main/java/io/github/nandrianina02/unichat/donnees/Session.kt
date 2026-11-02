@@ -35,8 +35,12 @@ class Session(private val reseau: Reseau, private val stockage: StockageJeton) {
         oublier()
     }
 
+    /** Branché par le conteneur : la session fermée, l'espace du compte s'arrête (temps réel compris). */
+    var surFermeture: (() -> Unit)? = null
+
     fun oublier() {
         stockage.ecrire(null)
+        surFermeture?.invoke()
         _etat.value = EtatSession.Anonyme
     }
 

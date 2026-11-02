@@ -52,14 +52,9 @@ import io.github.nandrianina02.unichat.donnees.messageErreur
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
-/**
- * L'accueil du premier lot : le compte connecté et ses appareils. Les
- * discussions arrivent avec le chiffrement (lot suivant) : depuis la fin du
- * clair, aucun message ne peut s'afficher ni partir sans les clés de
- * l'appareil.
- */
+/** Le compte connecté, ses appareils, et la déconnexion. */
 @Composable
-fun EcranAccueil(conteneur: Conteneur) {
+fun EcranCompte(conteneur: Conteneur, onRetour: () -> Unit) {
     val p = LocalPalette.current
     val portee = rememberCoroutineScope()
     var moi by remember { mutableStateOf<Moi?>(null) }
@@ -83,7 +78,14 @@ fun EcranAccueil(conteneur: Conteneur) {
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
         item(key = "titre") {
-            Text("UniChat", color = p.texte, fontSize = 24.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(vertical = 8.dp))
+            Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(vertical = 4.dp)) {
+                Icon(
+                    painterResource(R.drawable.lucide_arrow_left), contentDescription = "Retour", tint = p.texte,
+                    modifier = Modifier.size(40.dp).clip(CircleShape).clickable(role = Role.Button, onClick = onRetour).padding(9.dp),
+                )
+                Spacer(Modifier.width(8.dp))
+                Text("Compte", color = p.texte, fontSize = 22.sp, fontWeight = FontWeight.SemiBold)
+            }
         }
         item(key = "moi") {
             Box(Modifier.entree(0)) {
@@ -103,23 +105,9 @@ fun EcranAccueil(conteneur: Conteneur) {
                 }
             }
         }
-        item(key = "discussions") {
-            Carte(Modifier.entree(1)) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Icon(painterResource(R.drawable.lucide_message_circle), contentDescription = null, tint = p.primaire, modifier = Modifier.size(22.dp))
-                    Spacer(Modifier.width(12.dp))
-                    Text("Discussions", color = p.texte, fontSize = 16.sp, fontWeight = FontWeight.Medium)
-                }
-                Spacer(Modifier.height(6.dp))
-                Text(
-                    "Elles arrivent avec la prochaine version : ce téléphone recevra les clés de votre compte en scannant le code affiché par UniChat sur votre ordinateur, comme un appareil relié.",
-                    color = p.texte2, fontSize = 14.sp, lineHeight = 20.sp,
-                )
-            }
-        }
         appareils?.let { liste ->
             item(key = "appareils-titre") {
-                Text("Appareils connectés", color = p.texte2, fontSize = 13.sp, fontWeight = FontWeight.Medium, modifier = Modifier.padding(top = 8.dp, start = 4.dp).entree(2))
+                Text("Appareils connectés", color = p.texte2, fontSize = 13.sp, fontWeight = FontWeight.Medium, modifier = Modifier.padding(top = 8.dp, start = 4.dp).entree(1))
             }
             itemsIndexed(liste, key = { _, a -> a.id }) { i, a -> LigneAppareil(a, Modifier.entree(i + 3)) }
         }
@@ -133,7 +121,10 @@ fun EcranAccueil(conteneur: Conteneur) {
                     .border(1.dp, p.bordure, RoundedCornerShape(12.dp))
                     .clickable(enabled = !sortie, role = Role.Button) {
                         sortie = true
-                        portee.launch { conteneur.session.deconnecter() }
+                        portee.launch {
+                            conteneur.fermerEspace()
+                            conteneur.session.deconnecter()
+                        }
                     },
                 horizontalArrangement = Arrangement.Center,
                 verticalAlignment = Alignment.CenterVertically,

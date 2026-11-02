@@ -24,8 +24,8 @@ android {
         minSdk = 26
         targetSdk = 35
         // Au-dessus de l'appli Trusted Web Activity (5) : sinon Android refuse la mise à jour.
-        versionCode = 11
-        versionName = "2.1.0"
+        versionCode = 12
+        versionName = "2.2.0"
         vectorDrawables.useSupportLibrary = true
         buildConfigField("String", "SERVEUR", "\"https://unichat.unichat-server.workers.dev/\"")
         buildConfigField("String", "GOOGLE_CLIENT_WEB", "\"" + google.getProperty("clientWeb") + "\"")
@@ -87,6 +87,8 @@ dependencies {
     implementation(libs.googleid)
     // X25519, Ed25519 et HKDF du chiffrement de bout en bout (licence de type MIT, comme noble côté web).
     implementation(libs.bouncycastle)
+    // Lecteur de QR code de Google Play : il s'ouvre par-dessus l'appli, sans autorisation de caméra pour elle.
+    implementation(libs.code.scanner)
 
     testImplementation(libs.junit)
     testImplementation(libs.okhttp.mockwebserver)

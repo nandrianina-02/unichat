@@ -9,7 +9,7 @@ import androidx.compose.animation.core.tween
 import androidx.compose.runtime.getValue
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import io.github.nandrianina02.unichat.donnees.EtatSession
-import io.github.nandrianina02.unichat.ui.EcranAccueil
+import io.github.nandrianina02.unichat.ui.EcranPrincipal
 import io.github.nandrianina02.unichat.ui.EcranConnexion
 import io.github.nandrianina02.unichat.ui.ThemeUniChat
 
@@ -25,7 +25,7 @@ class MainActivity : ComponentActivity() {
                 Crossfade(etat, animationSpec = tween(250), label = "session") { e ->
                     when (e) {
                         EtatSession.Anonyme -> EcranConnexion(conteneur)
-                        EtatSession.Connecte -> EcranAccueil(conteneur)
+                        EtatSession.Connecte -> EcranPrincipal(conteneur)
                     }
                 }
             }

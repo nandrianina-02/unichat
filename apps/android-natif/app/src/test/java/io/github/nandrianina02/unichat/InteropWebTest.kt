@@ -170,6 +170,36 @@ class InteropWebTest {
         assertArrayEquals(f.b("clair"), dechiffrerOctets(f.b("scelle"), f.b("cle")))
     }
 
+    /** Une enveloppe complète du web (contenu scellé, clé par la session) ouverte par le déchiffreur de l'appli. */
+    @Test
+    fun enveloppe_du_web_ouverte_par_le_dechiffreur() {
+        val s = v.o("session")
+        val ve = v.o("enveloppe")
+        val trousseau = io.github.nandrianina02.unichat.donnees.RangementMemoire()
+        trousseau.ecrire("identite", identitePriveeJson(identitePrivee(s.o("bob"))))
+        trousseau.ecrire("appareil", buildJsonObject { put("numero", ve.n("numeroBob")); put("jeton", versBase64(aleatoire(32))) })
+        trousseau.ecrire("signees", kotlinx.serialization.json.JsonArray(listOf(cleSigneeJson(cleSignee(s.o("cleSignee"))))))
+        val unique = cleUnique(s.o("cleUnique"))
+        trousseau.ecrire("unique:${unique.id}", cleUniqueJson(unique))
+        val api = io.github.nandrianina02.unichat.donnees.Reseau("http://localhost/", object : io.github.nandrianina02.unichat.donnees.StockageJeton {
+            override fun lire(): String? = null
+            override fun ecrire(jeton: String?) = Unit
+        }).api
+        val cles = io.github.nandrianina02.unichat.donnees.ClesAppareil(api, trousseau)
+        val dechiffreur = io.github.nandrianina02.unichat.donnees.Dechiffreur(cles, trousseau, "22222222-2222-4222-8222-222222222222")
+
+        val r = dechiffreur.dechiffrer(ve.o("enveloppe"))
+        assertTrue(r is io.github.nandrianina02.unichat.donnees.Dechiffrement.Message)
+        val contenu = (r as io.github.nandrianina02.unichat.donnees.Dechiffrement.Message).contenu
+        assertEquals(ve.o("contenu").t("texte"), contenu.t("texte"))
+        assertEquals("Citation", contenu.o("reponseA").t("extrait"))
+        // La clé unique consommée par l'ouverture est effacée, la session est rangée.
+        assertEquals(null, trousseau.lire("unique:${unique.id}"))
+        assertTrue(trousseau.lire("correspondant:11111111-1111-4111-8111-111111111111:1") != null)
+        // Rejouée, la même enveloppe ne s'ouvre plus : sa clé de message n'existe plus.
+        assertTrue(dechiffreur.dechiffrer(ve.o("enveloppe")) is io.github.nandrianina02.unichat.donnees.Dechiffrement.Illisible)
+    }
+
     /** Ce que Kotlin chiffre, pour que le web le relise (test/kotlin.test.ts). */
     @Test
     fun ecrire_la_sortie_pour_le_web() {

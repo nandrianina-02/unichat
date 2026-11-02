@@ -8,9 +8,13 @@ import okhttp3.Response
 import retrofit2.HttpException
 import retrofit2.Retrofit
 import retrofit2.converter.kotlinx.serialization.asConverterFactory
+import okhttp3.ResponseBody
 import retrofit2.http.Body
+import retrofit2.http.DELETE
 import retrofit2.http.GET
 import retrofit2.http.POST
+import retrofit2.http.PUT
+import retrofit2.http.Path
 import java.io.IOException
 import java.util.concurrent.TimeUnit
 
@@ -54,6 +58,51 @@ interface UniChatApi {
 
     @GET("api/sessions")
     suspend fun appareils(): ListeAppareils
+
+    // --- Annuaire des clés --------------------------------------------------------------
+
+    @GET("api/cles")
+    suspend fun etatCles(): EtatCles
+
+    @POST("api/cles/identite")
+    suspend fun inscrireCles(@Body inscription: InscriptionCles): EtatCles
+
+    @POST("api/cles/reprendre")
+    suspend fun reprendreCles(@Body reprise: RepriseCles): EtatCles
+
+    @POST("api/cles/uniques")
+    suspend fun ajouterClesUniques(@Body envoi: EnvoiClesUniques): EtatCles
+
+    @PUT("api/cles/signee")
+    suspend fun publierCleSignee(@Body envoi: EnvoiCleSignee): EtatCles
+
+    @POST("api/cles/appareil")
+    suspend fun relierAppareil(@Body relie: AppareilRelie): EtatCles
+
+    // --- Liaison et historique (lot 8 du web) --------------------------------------------
+
+    @GET("api/cles/liaisons/{canal}")
+    suspend fun liaison(@Path("canal") canal: String): EtatLiaison
+
+    @POST("api/cles/liaisons/{canal}/reponse")
+    suspend fun repondreLiaison(@Path("canal") canal: String, @Body reponse: ReponseLiaison): EtatLiaison
+
+    @GET("api/cles/liaisons/{canal}/historique")
+    suspend fun etatHistorique(@Path("canal") canal: String): EtatHistorique
+
+    @GET("api/cles/liaisons/{canal}/historique/{indice}")
+    suspend fun morceauHistorique(@Path("canal") canal: String, @Path("indice") indice: Int): ResponseBody
+
+    @DELETE("api/cles/liaisons/{canal}/historique")
+    suspend fun supprimerHistorique(@Path("canal") canal: String)
+
+    // --- Personnes et groupes -----------------------------------------------------------
+
+    @GET("api/personnes/{id}")
+    suspend fun personne(@Path("id") id: String): CarteProfil
+
+    @GET("api/groupes")
+    suspend fun groupes(): ListeGroupes
 }
 
 class Reseau(serveur: String, stockage: StockageJeton) {

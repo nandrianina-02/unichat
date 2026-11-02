@@ -14,6 +14,7 @@ import {
   scellerIdentite,
   texteVersOctets,
   versHex,
+  assembler,
   type Correspondant,
 } from "../src";
 import { aleatoire, authentifier, chiffrerAead, deriver, echanger, paireEchange, paireSignature, sceller, signer } from "../src/primitives";
@@ -83,6 +84,28 @@ describe.skipIf(!CIBLE)("jeux d'essai pour l'appli Android", () => {
     }
     const reponse = chiffrer(cB, bob, texte("Réponse de Bob"));
 
+    // --- Enveloppe d'un message, comme apps/web/src/lib/chiffrement.ts la fabrique --------
+    // Le contenu est scellé sous une clé aléatoire ; cette clé, suivie de l'identifiant du
+    // message, part vers l'appareil 3 de Bob par une session neuve.
+    const idMessage = "8f14e45f-ceea-467a-9a36-dedd4bea2543";
+    const conversationEnveloppe = "d:11111111-1111-4111-8111-111111111111:22222222-2222-4222-8222-222222222222";
+    const alicId = "11111111-1111-4111-8111-111111111111";
+    const contenuEnveloppe = { v: 1, texte: "Message chiffré par le web, lu par Android", reponseA: { id: idMessage, de: alicId, extrait: "Citation" } };
+    const cleContenu = aleatoire(32);
+    const corps = sceller(cleContenu, texte(JSON.stringify(contenuEnveloppe)), texte(`UniChat-contenu-v1|${idMessage}|${conversationEnveloppe}|${alicId}`));
+    const pourBob = chiffrer(undefined, alice, assembler(cleContenu, texte(idMessage)), paquet);
+    const enveloppe = {
+      id: idMessage,
+      conversation: conversationEnveloppe,
+      de: alicId,
+      deAppareil: 1,
+      a: "22222222-2222-4222-8222-222222222222",
+      genre: "message",
+      corps: b64(corps),
+      cles: { "3": b64(pourBob.message) },
+      le: 1_793_700_000_000,
+    };
+
     // --- Liaison --------------------------------------------------------------------
     const { code, paire: paireCode } = preparerCode("canal-essai-0123456789abcdef", "donneur");
     const paireReponse = paireEchange();
@@ -140,6 +163,7 @@ describe.skipIf(!CIBLE)("jeux d'essai pour l'appli Android", () => {
         ...codeSecurite(parties.moi, parties.autre),
       },
       fichier: { cle: b64(fichier.cle), scelle: b64(fichier.scelle), clair: b64(fichierClair) },
+      enveloppe: { enveloppe, numeroBob: 3, contenu: contenuEnveloppe },
     };
     await ecrireFichier(CIBLE!, JSON.stringify(vecteurs, null, 2) + "\n");
   });
