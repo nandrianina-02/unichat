@@ -1,4 +1,5 @@
 import { Hono } from "hono";
+import { schemaConnexionNatif, type NonceNatif, type SessionNatif } from "@unichat/shared";
 import { getCookie } from "hono/cookie";
 import { trouverOuCreerCompte } from "../lib/comptes";
 import { fermerConnexions } from "../lib/connexions";
@@ -12,10 +13,11 @@ import {
   verifierJetonIdentite,
   type ConfigGoogle,
 } from "../lib/google";
+import { Refus, refus } from "../lib/erreurs";
 import { creerSession, revoquer } from "../lib/sessions";
 import type { AppEnv } from "../types";
 import { exigerSession } from "./garde";
-import { COOKIE_ETAT, COOKIE_SESSION, MINUTE, effacerCookie, ip, lieu, poserCookie, poserCookieSession } from "./outils";
+import { COOKIE_ETAT, COOKIE_SESSION, MINUTE, corpsJson, effacerCookie, ip, lieu, limiter, poserCookie, poserCookieSession } from "./outils";
 
 const DUREE_ETAT = 10 * MINUTE;
 
@@ -110,6 +112,68 @@ auth.get("/google/rappel", async (c) => {
   effacerCookie(c, COOKIE_ETAT);
   poserCookieSession(c, jeton);
   return c.redirect("/", 302);
+});
+
+// --- Application Android native -------------------------------------------
+// Le système Android interroge Google et rend un jeton d'identité : pas de
+// redirection ni de cookie. Le serveur fournit le nonce, le vérifie dans le
+// jeton comme pour le web, et répond par un jeton de session que
+// l'application présente ensuite en `Authorization: Bearer`.
+
+auth.post("/natif/nonce", async (c) => {
+  const maintenant = c.get("deps").maintenant();
+  if (!configuration(c.env)) throw new Refus(503, "configuration", "La connexion Google n'est pas configurée.");
+  await limiter(c, `connexion:${ip(c)}`, 20, 10 * MINUTE);
+
+  const etat = aleatoire(32);
+  const nonce = aleatoire(16);
+  // Pas de PKCE ici : aucun code n'est échangé, Google rend le jeton à l'appareil.
+  await c.env.DB.prepare(
+    "INSERT INTO etats_oauth (etat_hash, verificateur, nonce, plateforme, cree_le) VALUES (?1, '', ?2, 'android', ?3)",
+  )
+    .bind(await empreinte(etat), nonce, maintenant)
+    .run();
+  return c.json<NonceNatif>({ etat, nonce });
+});
+
+auth.post("/natif", async (c) => {
+  const { recuperer, maintenant: horloge } = c.get("deps");
+  const maintenant = horloge();
+  const config = configuration(c.env);
+  if (!config) throw new Refus(503, "configuration", "La connexion Google n'est pas configurée.");
+  await limiter(c, `rappel:${ip(c)}`, 30, 10 * MINUTE);
+  const demande = await corpsJson(c, schemaConnexionNatif);
+
+  // Usage unique, et seulement un état délivré à l'application native.
+  const attente = await c.env.DB.prepare(
+    "DELETE FROM etats_oauth WHERE etat_hash = ?1 AND plateforme = 'android' RETURNING nonce, cree_le",
+  )
+    .bind(await empreinte(demande.etat))
+    .first<{ nonce: string; cree_le: number }>();
+  if (!attente || maintenant - attente.cree_le > DUREE_ETAT) {
+    throw new Refus(400, "etat_invalide", "La connexion a expiré. Réessayez.");
+  }
+
+  let identite;
+  try {
+    identite = await verifierJetonIdentite(recuperer, config, demande.jeton, attente.nonce, maintenant);
+  } catch (erreur) {
+    console.warn("connexion Google native refusée :", erreur instanceof Error ? erreur.message : String(erreur));
+    if (erreur instanceof ErreurAdresseNonVerifiee) {
+      throw new Refus(401, "email_non_verifie", "Votre adresse Google n'est pas vérifiée.");
+    }
+    throw new Refus(401, "google", "Google n'a pas confirmé votre identité. Réessayez.");
+  }
+
+  const utilisateurId = await trouverOuCreerCompte(c.env.DB, recuperer, identite, maintenant);
+  const suspension = await c.env.DB.prepare("SELECT suspendu_le FROM utilisateurs WHERE id = ?1").bind(utilisateurId).first<{ suspendu_le: number | null }>();
+  if (suspension?.suspendu_le) throw new Refus(403, "compte_suspendu", "Ce compte est suspendu.");
+  const { jeton } = await creerSession(
+    c.env.DB,
+    { utilisateurId, plateforme: "android", appareil: demande.appareil, ...lieu(c) },
+    maintenant,
+  );
+  return c.json<SessionNatif>({ jeton });
 });
 
 auth.post("/deconnexion", exigerSession, async (c) => {

@@ -78,6 +78,24 @@ export async function creerGoogleFaux() {
   return {
     recuperer,
     reglerHorloge: (t: number) => (horloge = t),
+    /** Jeton d'identité rendu directement à l'appareil, comme le fait Credential Manager sur Android. */
+    async jetonDirect(identite: IdentiteFausse, nonce: string) {
+      const secondes = Math.floor(horloge / 1000);
+      return new SignJWT({
+        email: identite.email,
+        email_verified: identite.emailVerifie ?? true,
+        name: identite.nom ?? "Personne Essai",
+        picture: identite.photo,
+        nonce,
+      })
+        .setProtectedHeader({ alg: "RS256", kid: "cle-essai" })
+        .setIssuer("https://accounts.google.com")
+        .setAudience(CLIENT_ID)
+        .setSubject(identite.sub)
+        .setIssuedAt(secondes)
+        .setExpirationTime(secondes + 3600)
+        .sign(privateKey);
+    },
     /** La personne accepte sur la page Google : Google émet un code lié au défi PKCE. */
     consentir(urlGoogle: string, identite: IdentiteFausse, options: { nonceForce?: string } = {}) {
       const u = new URL(urlGoogle);

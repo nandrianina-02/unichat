@@ -1,5 +1,6 @@
 export * from "./admin";
 export * from "./cles";
+export * from "./connexion";
 export * from "./groupes";
 export * from "./medias";
 export * from "./moderation";
