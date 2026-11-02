@@ -24,8 +24,8 @@ android {
         minSdk = 26
         targetSdk = 35
         // Au-dessus de l'appli Trusted Web Activity (5) : sinon Android refuse la mise à jour.
-        versionCode = 10
-        versionName = "2.0.0"
+        versionCode = 11
+        versionName = "2.1.0"
         vectorDrawables.useSupportLibrary = true
         buildConfigField("String", "SERVEUR", "\"https://unichat.unichat-server.workers.dev/\"")
         buildConfigField("String", "GOOGLE_CLIENT_WEB", "\"" + google.getProperty("clientWeb") + "\"")
@@ -61,6 +61,10 @@ android {
         compose = true
         buildConfig = true
     }
+    packaging {
+        // Fichiers de description de BouncyCastle, inutiles à l'appli et en double d'une version de Java à l'autre.
+        resources.excludes += setOf("META-INF/versions/9/OSGI-INF/MANIFEST.MF", "META-INF/LICENSE.md", "META-INF/LICENSE-notice.md")
+    }
 }
 
 dependencies {
@@ -81,6 +85,8 @@ dependencies {
     implementation(libs.androidx.credentials)
     implementation(libs.androidx.credentials.play.services)
     implementation(libs.googleid)
+    // X25519, Ed25519 et HKDF du chiffrement de bout en bout (licence de type MIT, comme noble côté web).
+    implementation(libs.bouncycastle)
 
     testImplementation(libs.junit)
     testImplementation(libs.okhttp.mockwebserver)

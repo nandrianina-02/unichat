@@ -11,6 +11,8 @@ on:
     paths:
       - "apps/android-natif/**"
       - "apps/android/cle/**"
+      # Le chiffrement du web : l'appli doit rester compatible octet pour octet.
+      - "packages/chiffrement/**"
       - ".github/workflows/android-natif.yml"
   workflow_dispatch:
 
@@ -40,6 +42,22 @@ jobs:
 
       - name: Tests
         run: gradle --no-daemon --stacktrace testDebugUnitTest
+
+      # Le chiffrement Kotlin a relu les jeux d'essai du web ; le web relit maintenant ce que Kotlin a chiffré.
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: package-lock.json
+
+      - name: Le web relit le chiffrement Kotlin
+        working-directory: .
+        run: |
+          npm ci --no-audit --no-fund
+          cd packages/chiffrement
+          export VECTEURS="$GITHUB_WORKSPACE/apps/android-natif/app/src/test/resources/vecteurs-web.json"
+          export SORTIE_KOTLIN="$GITHUB_WORKSPACE/apps/android-natif/app/build/sortie-kotlin.json"
+          npx vitest run test/kotlin.test.ts
 
       - name: Rapport des tests
         if: failure()
