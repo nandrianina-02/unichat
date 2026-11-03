@@ -8,7 +8,7 @@ package io.github.nandrianina02.unichat.donnees
 private const val PSEUDO_MIN = 3
 private const val PSEUDO_MAX = 30
 private val PSEUDO = Regex("^[a-z][a-z0-9._]*$")
-private val EMAIL = Regex("^[^\s@]+@[^\s@]+\.[^\s@]+$")
+private val EMAIL = Regex("""^[^\s@]+@[^\s@]+\.[^\s@]+$""")
 
 /**
  * Vrai pour un nom d'utilisateur complet (avec ou sans @) ou une adresse
