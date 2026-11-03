@@ -65,7 +65,7 @@ import kotlinx.coroutines.launch
 /** Délai avant de pouvoir redemander un code : le SMS met parfois une minute à arriver. */
 private const val ATTENTE_RENVOI = 60
 
-private enum class Etape { VERIFIE, SAISIE, CODE }
+private enum class EtapeTelephone { VERIFIE, SAISIE, CODE }
 
 /**
  * Le numéro du profil, vérifié par un code SMS (même parcours que le
@@ -83,9 +83,9 @@ fun CarteTelephone(conteneur: Conteneur, moi: Moi, onMoi: (Moi) -> Unit, modifie
     var erreur by remember { mutableStateOf<String?>(null) }
     var renvoi by remember { mutableIntStateOf(0) }
     val etape = when {
-        moi.verificationTelephone != null -> Etape.CODE
-        saisie || moi.telephone == null -> Etape.SAISIE
-        else -> Etape.VERIFIE
+        moi.verificationTelephone != null -> EtapeTelephone.CODE
+        saisie || moi.telephone == null -> EtapeTelephone.SAISIE
+        else -> EtapeTelephone.VERIFIE
     }
 
     LaunchedEffect(renvoi) {
@@ -133,9 +133,9 @@ fun CarteTelephone(conteneur: Conteneur, moi: Moi, onMoi: (Moi) -> Unit, modifie
                 Text("Numéro de téléphone", color = p.texte, fontSize = 15.sp, fontWeight = FontWeight.Medium)
                 Text(
                     when (etape) {
-                        Etape.VERIFIE -> "Vérifié · jamais affiché aux autres"
-                        Etape.CODE -> "Code envoyé par SMS"
-                        Etape.SAISIE -> "Pour que vos contacts vous trouvent"
+                        EtapeTelephone.VERIFIE -> "Vérifié · jamais affiché aux autres"
+                        EtapeTelephone.CODE -> "Code envoyé par SMS"
+                        EtapeTelephone.SAISIE -> "Pour que vos contacts vous trouvent"
                     },
                     color = p.texte2, fontSize = 13.sp,
                 )
@@ -146,7 +146,7 @@ fun CarteTelephone(conteneur: Conteneur, moi: Moi, onMoi: (Moi) -> Unit, modifie
         AnimatedContent(etape, transitionSpec = { fadeIn(tween(250)) togetherWith fadeOut(tween(120)) }, label = "telephone") { e ->
             Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 when (e) {
-                    Etape.VERIFIE -> {
+                    EtapeTelephone.VERIFIE -> {
                         Text(afficherTelephone(moi.telephone.orEmpty()), color = p.texte, fontSize = 20.sp, fontFamily = FontFamily.Monospace)
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             Text("Me trouver avec ce numéro", color = p.texte, fontSize = 14.sp, modifier = Modifier.weight(1f))
@@ -165,7 +165,7 @@ fun CarteTelephone(conteneur: Conteneur, moi: Moi, onMoi: (Moi) -> Unit, modifie
                             Lien("Retirer", p.danger) { executer({ conteneur.reseau.api.retirerTelephone() }) { saisie = true } }
                         }
                     }
-                    Etape.SAISIE -> {
+                    EtapeTelephone.SAISIE -> {
                         Champ(numero, { numero = it; erreur = null }, "034 12 345 67", KeyboardType.Phone)
                         Text(
                             if (numero.isNotBlank() && normaliserTelephone(numero) == null) "Un mobile malgache : 032, 033, 034, 037, 038 ou 039."
@@ -175,7 +175,7 @@ fun CarteTelephone(conteneur: Conteneur, moi: Moi, onMoi: (Moi) -> Unit, modifie
                         Bouton("Recevoir le code", actif = normaliserTelephone(numero) != null, enCours = enCours) { demander(normaliserTelephone(numero)!!) }
                         if (moi.telephone != null) Lien("Garder le ${afficherTelephone(moi.telephone)}", p.texte2) { saisie = false }
                     }
-                    Etape.CODE -> {
+                    EtapeTelephone.CODE -> {
                         val attente = moi.verificationTelephone
                         Text(
                             "Saisissez le code envoyé au ${afficherTelephone(attente?.numero.orEmpty())}. Il est valable 10 minutes.",
