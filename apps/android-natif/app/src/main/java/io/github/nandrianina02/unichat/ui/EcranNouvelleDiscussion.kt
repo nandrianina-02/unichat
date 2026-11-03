@@ -81,7 +81,7 @@ private sealed interface Resultat {
  * exacte, comme sur le web : pas de résultats partiels.
  */
 @Composable
-fun EcranNouvelleDiscussion(espace: EspaceCompte, conteneur: Conteneur, onRetour: () -> Unit, onOuvrir: (String) -> Unit) {
+fun EcranNouvelleDiscussion(espace: EspaceCompte, conteneur: Conteneur, onRetour: () -> Unit, onOuvrir: (String) -> Unit, onNouveauGroupe: () -> Unit = {}) {
     val p = LocalPalette.current
     val portee = rememberCoroutineScope()
     var texte by rememberSaveable { mutableStateOf("") }
@@ -198,6 +198,19 @@ fun EcranNouvelleDiscussion(espace: EspaceCompte, conteneur: Conteneur, onRetour
             }
         }
 
+        Row(
+            Modifier.fillMaxWidth().clickable(role = Role.Button, onClick = onNouveauGroupe).padding(horizontal = 16.dp, vertical = 10.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Box(Modifier.size(46.dp).clip(CircleShape).background(p.primaire), contentAlignment = Alignment.Center) {
+                Icon(painterResource(R.drawable.lucide_users), contentDescription = null, tint = p.surPrimaire, modifier = Modifier.size(22.dp))
+            }
+            Spacer(Modifier.width(14.dp))
+            Column {
+                Text("Nouveau groupe", color = p.texte, fontSize = 16.sp, fontWeight = FontWeight.Medium)
+                Text("Jusqu'à 40 personnes de vos contacts", color = p.texte2, fontSize = 13.sp)
+            }
+        }
         val liste = contacts
         Titre("Contacts sur UniChat")
         when {

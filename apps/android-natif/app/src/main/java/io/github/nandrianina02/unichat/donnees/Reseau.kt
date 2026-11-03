@@ -13,6 +13,7 @@ import okhttp3.ResponseBody
 import retrofit2.http.Body
 import retrofit2.http.DELETE
 import retrofit2.http.GET
+import retrofit2.http.PATCH
 import retrofit2.http.POST
 import retrofit2.http.PUT
 import retrofit2.http.Path
@@ -125,6 +126,22 @@ interface UniChatApi {
     /** Le groupe dans la forme du web (Groupe, packages/shared) : il se range tel quel dans la base. */
     @GET("api/groupes/{id}")
     suspend fun groupe(@Path("id") id: String): JsonObject
+
+    @POST("api/groupes")
+    suspend fun creerGroupe(@Body creation: CreationGroupe): JsonObject
+
+    @PATCH("api/groupes/{id}")
+    suspend fun majGroupe(@Path("id") id: String, @Body maj: MajGroupe): JsonObject
+
+    @POST("api/groupes/{id}/membres")
+    suspend fun ajouterMembres(@Path("id") id: String, @Body ajout: AjoutMembres): JsonObject
+
+    /** Retirer un membre (admin), ou partir quand le membre est soi-même. */
+    @DELETE("api/groupes/{id}/membres/{membre}")
+    suspend fun retirerMembre(@Path("id") id: String, @Path("membre") membre: String)
+
+    @POST("api/groupes/{id}/admins/{membre}")
+    suspend fun nommerAdmin(@Path("id") id: String, @Path("membre") membre: String): JsonObject
 }
 
 class Reseau(serveur: String, stockage: StockageJeton) {

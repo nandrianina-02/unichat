@@ -45,6 +45,8 @@ private sealed interface Vue {
     data object Liste : Vue
     data object Compte : Vue
     data object Nouvelle : Vue
+    data object NouveauGroupe : Vue
+    data class InfosGroupe(val conversation: String) : Vue
     data class Discussion(val conversation: String) : Vue
 }
 
@@ -93,15 +95,26 @@ fun EcranPrincipal(conteneur: Conteneur) {
     var conversationOuverte by rememberSaveable { mutableStateOf<String?>(null) }
     LaunchedEffect(Unit) { conversationOuverte?.let { vue = Vue.Discussion(it) } }
     BackHandler(enabled = vue != Vue.Liste) {
-        vue = Vue.Liste
-        conversationOuverte = null
+        // Depuis les infos d'un groupe, le retour ramène à sa discussion.
+        when (val v = vue) {
+            is Vue.InfosGroupe -> vue = Vue.Discussion(v.conversation)
+            Vue.NouveauGroupe -> vue = Vue.Nouvelle
+            else -> {
+                vue = Vue.Liste
+                conversationOuverte = null
+            }
+        }
     }
 
     // Glissement court (250 ms) vers la discussion ouverte, retour en sens inverse.
     AnimatedContent(
         targetState = if (chiffrement == EtatChiffrement.A_RELIER && vue == Vue.Liste) null else vue,
         transitionSpec = {
-            val avance = targetState is Vue.Discussion || targetState == Vue.Compte || targetState == Vue.Nouvelle
+            val avance = when (targetState) {
+                is Vue.InfosGroupe, Vue.NouveauGroupe, Vue.Compte, Vue.Nouvelle -> true
+                is Vue.Discussion -> initialState !is Vue.InfosGroupe
+                else -> false
+            }
             (slideInHorizontally(tween(250)) { l -> if (avance) l / 6 else -l / 6 } + fadeIn(tween(250))) togetherWith fadeOut(tween(150))
         },
         label = "vue",
@@ -119,15 +132,37 @@ fun EcranPrincipal(conteneur: Conteneur) {
                 onNouvelle = { vue = Vue.Nouvelle },
             )
             Vue.Compte -> EcranCompte(conteneur, onRetour = { vue = Vue.Liste })
-            Vue.Nouvelle -> EcranNouvelleDiscussion(espace, conteneur, onRetour = { vue = Vue.Liste }, onOuvrir = { id ->
-                val c = conversationDirecte(espace.moi, id)
+            Vue.Nouvelle -> EcranNouvelleDiscussion(
+                espace, conteneur, onRetour = { vue = Vue.Liste },
+                onOuvrir = { id ->
+                    val c = conversationDirecte(espace.moi, id)
+                    conversationOuverte = c
+                    vue = Vue.Discussion(c)
+                },
+                onNouveauGroupe = { vue = Vue.NouveauGroupe },
+            )
+            Vue.NouveauGroupe -> EcranNouveauGroupe(espace, conteneur, onRetour = { vue = Vue.Nouvelle }, onCree = { c ->
                 conversationOuverte = c
                 vue = Vue.Discussion(c)
             })
-            is Vue.Discussion -> EcranDiscussion(espace, conteneur, v.conversation, onRetour = {
-                conversationOuverte = null
-                vue = Vue.Liste
-            })
+            is Vue.InfosGroupe -> EcranInfosGroupe(
+                espace, conteneur, v.conversation.removePrefix("g:"),
+                onRetour = { vue = Vue.Discussion(v.conversation) },
+                onEcrire = { id ->
+                    val c = conversationDirecte(espace.moi, id)
+                    conversationOuverte = c
+                    vue = Vue.Discussion(c)
+                },
+                onQuitte = { vue = Vue.Discussion(v.conversation) },
+            )
+            is Vue.Discussion -> EcranDiscussion(
+                espace, conteneur, v.conversation,
+                onRetour = {
+                    conversationOuverte = null
+                    vue = Vue.Liste
+                },
+                onInfos = { vue = Vue.InfosGroupe(v.conversation) },
+            )
         }
     }
 }

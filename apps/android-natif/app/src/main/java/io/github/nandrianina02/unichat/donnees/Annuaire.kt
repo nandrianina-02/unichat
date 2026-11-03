@@ -65,6 +65,19 @@ class Annuaire(private val api: UniChatApi, private val base: Base) {
         return (g["membres"] as? JsonArray)?.mapNotNull { (it as? JsonObject)?.texteOuNul("id") }?.takeIf { it.isNotEmpty() }
     }
 
+    /** Un groupe renvoyé par le serveur après une modification : la base le reprend tel quel. */
+    fun rangerGroupe(g: JsonObject) {
+        base.ecrireGroupe(g)
+        base.signaler()
+    }
+
+    /** Je ne fais plus partie du groupe : il reste dans la base (l'historique aussi), sans ses membres. */
+    fun quitterGroupe(id: String) {
+        val g = base.groupe(id) ?: buildJsonObject { put("id", id) }
+        base.ecrireGroupe(g.avec("moiMembre", false).avec("membres", JsonArray(emptyList())))
+        base.signaler()
+    }
+
     /** Les noms de mes groupes, relus en bloc (un événement de groupe a pu les changer). */
     suspend fun rafraichirGroupes() {
         appel { api.groupes() }.onSuccess { liste ->

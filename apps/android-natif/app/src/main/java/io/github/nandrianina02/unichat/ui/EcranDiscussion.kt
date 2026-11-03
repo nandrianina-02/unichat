@@ -125,7 +125,7 @@ private fun reactionsDe(m: JsonObject): Map<String, String> =
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun EcranDiscussion(espace: EspaceCompte, conteneur: Conteneur, conversation: String, onRetour: () -> Unit) {
+fun EcranDiscussion(espace: EspaceCompte, conteneur: Conteneur, conversation: String, onRetour: () -> Unit, onInfos: () -> Unit = {}) {
     val p = LocalPalette.current
     val contexte = LocalContext.current
     val presse = LocalClipboardManager.current
@@ -188,13 +188,20 @@ fun EcranDiscussion(espace: EspaceCompte, conteneur: Conteneur, conversation: St
     // À l'ouverture et à chaque nouveau message : le bas de la discussion.
     LaunchedEffect(lignes.size) { if (lignes.isNotEmpty()) liste.scrollToItem(lignes.lastIndex) }
 
+    val infosGroupe by produceState<JsonObject?>(null, version) {
+        value = if (groupe) withContext(Dispatchers.IO) { espace.base.groupe(conversation.removePrefix("g:")) } else null
+    }
     val quiEcrit = ecrit[conversation]
     val statut = when {
         quiEcrit != null && groupe -> "${nomPersonne(espace, quiEcrit)} écrit…"
         quiEcrit != null -> "écrit…"
         autre == espace.moi -> "Envoyez-vous des messages"
         autre != null -> presences[autre]?.let { if (it.enLigne) "en ligne" else it.vuLe?.let(::vuLe) }
-        else -> null
+        // Groupe : ses membres, comme sous le titre du web ; ou le départ.
+        infosGroupe?.texteOuNul("moiMembre") == "false" -> "Vous ne faites plus partie de ce groupe"
+        else -> (infosGroupe?.get("membres") as? kotlinx.serialization.json.JsonArray)
+            ?.mapNotNull { (it as? JsonObject)?.takeIf { m -> m.texte("id") != espace.moi }?.texte("nom") }
+            ?.takeIf { it.isNotEmpty() }?.let { (it + "Vous").joinToString(", ") }
     }
 
     Column(Modifier.fillMaxSize().background(p.fond).safeDrawingPadding().imePadding()) {
@@ -203,6 +210,11 @@ fun EcranDiscussion(espace: EspaceCompte, conteneur: Conteneur, conversation: St
                 painterResource(R.drawable.lucide_arrow_left), contentDescription = "Retour", tint = p.texte,
                 modifier = Modifier.size(44.dp).clip(CircleShape).clickable(role = Role.Button, onClick = onRetour).padding(11.dp),
             )
+            // Pour un groupe, l'en-tête ouvre ses infos.
+            Row(
+                Modifier.weight(1f).clip(RoundedCornerShape(8.dp)).clickable(enabled = groupe, role = Role.Button, onClick = onInfos).padding(vertical = 2.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
             AvatarDiscussion(espace, conteneur, conversation, 38)
             Spacer(Modifier.width(12.dp))
             Column(Modifier.weight(1f)) {
@@ -211,6 +223,7 @@ fun EcranDiscussion(espace: EspaceCompte, conteneur: Conteneur, conversation: St
                 AnimatedVisibility(statut != null, enter = fadeIn(tween(200)), exit = fadeOut(tween(200))) {
                     Text(statut ?: "", color = if (quiEcrit != null) p.primaire else p.texte2, fontSize = 13.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
                 }
+            }
             }
         }
         LazyColumn(Modifier.weight(1f).fillMaxWidth(), state = liste, contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp)) {

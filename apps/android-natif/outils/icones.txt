@@ -51,3 +51,4 @@ circle-minus
 mail
 mail-open
 chevron-right
+user-minus

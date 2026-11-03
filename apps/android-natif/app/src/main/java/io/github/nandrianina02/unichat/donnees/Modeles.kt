@@ -129,6 +129,16 @@ data class GroupeCourt(val id: String, val nom: String)
 @Serializable
 data class ListeGroupes(val groupes: List<GroupeCourt>)
 
+/** Les membres invités doivent être des contacts (vérifié par le serveur), 40 personnes au plus avec moi. */
+@Serializable
+data class CreationGroupe(val nom: String, val membres: List<String>)
+
+@Serializable
+data class MajGroupe(val nom: String? = null, val description: String? = null)
+
+@Serializable
+data class AjoutMembres(val membres: List<String>)
+
 
 // --- Envoi chiffré (Chiffreur.chiffrer, apps/web/src/lib/chiffrement.ts) ---------------
 

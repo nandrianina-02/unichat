@@ -647,5 +647,8 @@ s'installe par-dessus l'ancienne, en version 10 (l'ancienne est en 5).
    Réglages de discussion (appui long dans la liste) : épingler, mode
    silencieux, archiver, marquer comme non lu, effacer, supprimer. Ils
    partent par la trame « preference », comme ceux du web, et se
-   rattrapent au retour de la connexion. Reste la gestion des groupes.
+   rattrapent au retour de la connexion. Groupes : création (contacts,
+   40 personnes au plus), fiche du groupe (nom, description, membres et
+   rôles), ajout, retrait, nomination d'un administrateur, départ. Le
+   serveur annonce chaque changement dans la discussion.
 
