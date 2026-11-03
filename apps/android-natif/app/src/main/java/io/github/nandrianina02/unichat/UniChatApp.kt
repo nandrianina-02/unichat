@@ -4,6 +4,8 @@ import android.app.Application
 import coil.ImageLoader
 import io.github.nandrianina02.unichat.donnees.Coffre
 import io.github.nandrianina02.unichat.donnees.EspaceCompte
+import io.github.nandrianina02.unichat.donnees.MiseAJour
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -19,6 +21,9 @@ class Conteneur(private val app: Application) {
     private val coffre = Coffre(app)
     val reseau = Reseau(BuildConfig.SERVEUR, coffre)
     val session = Session(reseau, coffre)
+    val miseAJour = MiseAJour(app)
+    /** Recherche de mise à jour demandée (Compte, notification) : la fenêtre de l'activité y répond. */
+    val demandeMiseAJour = MutableStateFlow(false)
     /** Temps réel et déchiffrement : hors du fil de l'interface. */
     val portee = CoroutineScope(SupervisorJob() + Dispatchers.Default)
 

@@ -44,6 +44,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
+import io.github.nandrianina02.unichat.BuildConfig
 import io.github.nandrianina02.unichat.Conteneur
 import io.github.nandrianina02.unichat.R
 import io.github.nandrianina02.unichat.donnees.AppareilConnecte
@@ -110,6 +111,20 @@ fun EcranCompte(conteneur: Conteneur, onRetour: () -> Unit) {
                 Text("Appareils connectés", color = p.texte2, fontSize = 13.sp, fontWeight = FontWeight.Medium, modifier = Modifier.padding(top = 8.dp, start = 4.dp).entree(1))
             }
             itemsIndexed(liste, key = { _, a -> a.id }) { i, a -> LigneAppareil(a, Modifier.entree(i + 3)) }
+        }
+        item(key = "appli") {
+            Carte {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Column(Modifier.weight(1f)) {
+                        Text("UniChat pour Android", color = p.texte, fontSize = 15.sp, fontWeight = FontWeight.Medium)
+                        Text("Version ${BuildConfig.VERSION_NAME}", color = p.texte2, fontSize = 13.sp)
+                    }
+                    Text(
+                        "Rechercher une mise à jour", color = p.primaire, fontSize = 14.sp, fontWeight = FontWeight.Medium,
+                        modifier = Modifier.clip(RoundedCornerShape(8.dp)).clickable(role = Role.Button) { conteneur.demandeMiseAJour.value = true }.padding(8.dp),
+                    )
+                }
+            }
         }
         item(key = "sortie") {
             Row(

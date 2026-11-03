@@ -516,6 +516,12 @@ sans appareil photo), et le code peut se copier-coller.
   messages jusqu'à tenir. Un échec de l'historique ne défait pas la
   liaison : les nouveaux messages arrivent de toute façon.
 
+- **Mises à jour** : hors Play Store, l'appli consulte les publications du
+  dépôt (étiquettes natif-v..., fichier unichat.apk ; pré-versions d'essai
+  ignorées) au lancement et deux fois par jour (WorkManager, notification).
+  Elle télécharge l'APK dans son cache et ouvre l'installateur d'Android
+  (FileProvider, REQUEST_INSTALL_PACKAGES) ; le navigateur reste un recours.
+
 ### Lots
 
 1. Socle cryptographique, annuaire des clés, inscription du premier appareil (fait).
