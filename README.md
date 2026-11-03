@@ -68,6 +68,7 @@ signe de vrais jetons.
    npx wrangler secret put GOOGLE_CLIENT_SECRET
    npx wrangler secret put KARAKS_STORAGE_CLE
    npx wrangler secret put VAPID_PRIVEE   # clé privée VAPID (JWK) pour les notifications
+   npx wrangler secret put MESS_CLE       # clé d'API Mess (codes SMS du numéro de téléphone)
    ```
    Une clé VAPID se crée avec
    `node -e "crypto.subtle.generateKey({name:'ECDSA',namedCurve:'P-256'},true,['sign']).then(p=>crypto.subtle.exportKey('jwk',p.privateKey)).then(k=>console.log(JSON.stringify(k)))"`
@@ -76,6 +77,9 @@ signe de vrais jetons.
    (`KARAKS_STORAGE_URL` dans `wrangler.jsonc`) : préréglage « Application
    cliente », plus « Mettre à la corbeille et supprimer ». Sans elle, tout
    fonctionne sauf l'envoi de fichiers.
+   La clé Mess se crée dans le tableau de bord de Mess (`MESS_URL` dans
+   `wrangler.jsonc`), page Applications, application « UniChat ». Sans
+   elle, tout fonctionne sauf l'ajout d'un numéro de téléphone.
 5. **Déploiement** : `npm run deploy` (migrations, construction, envoi).
 
 ## Application Android

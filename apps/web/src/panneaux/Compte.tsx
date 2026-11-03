@@ -1,4 +1,5 @@
-import { History, Mail, MonitorSmartphone, Trash2 } from "lucide-react";
+import { afficherTelephone } from "@unichat/shared";
+import { History, Mail, MonitorSmartphone, Phone, Trash2 } from "lucide-react";
 import { LigneReglage } from "../composants/Lignes";
 import { EnTetePanneau } from "../composants/Panneau";
 import { useMoi } from "../lib/compte";
@@ -18,6 +19,18 @@ export function Compte({ onRetour, onOuvrir }: { onRetour: () => void; onOuvrir:
         />
         <LigneReglage icone={History} titre="Activité du compte" detail="Connexions et changements récents" onClick={() => onOuvrir("activite")} />
         <LigneReglage icone={Mail} titre="Adresse e-mail" detail={`${moi.email} · connexion avec Google`} />
+        <LigneReglage
+          icone={Phone}
+          titre="Numéro de téléphone"
+          detail={
+            moi.verificationTelephone
+              ? `Code envoyé au ${afficherTelephone(moi.verificationTelephone.numero)}`
+              : moi.telephone
+                ? `${afficherTelephone(moi.telephone)} · vérifié`
+                : "Ajoutez-le pour que vos contacts vous trouvent"
+          }
+          onClick={() => onOuvrir("telephone")}
+        />
         <LigneReglage icone={Trash2} titre="Supprimer mon compte" danger onClick={() => onOuvrir("supprimer-compte")} />
       </div>
     </>

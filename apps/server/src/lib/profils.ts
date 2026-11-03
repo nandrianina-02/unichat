@@ -11,6 +11,8 @@ export interface LigneUtilisateur {
   visibilite_photo: Visibilite;
   visibilite_infos: Visibilite;
   trouvable_email: number;
+  telephone: string | null;
+  trouvable_telephone: number;
   visibilite_vu: Visibilite;
   en_ligne: VisibiliteEnLigne;
   confirmations_lecture: number;
@@ -20,7 +22,12 @@ export interface LigneUtilisateur {
   motif_suspension: string | null;
 }
 
-export function versMoi(u: LigneUtilisateur, sessionId: string, admin: boolean): Moi {
+export function versMoi(
+  u: LigneUtilisateur,
+  sessionId: string,
+  admin: boolean,
+  verification: { numero: string; expireLe: number } | null = null,
+): Moi {
   return {
     id: u.id,
     email: u.email,
@@ -31,6 +38,9 @@ export function versMoi(u: LigneUtilisateur, sessionId: string, admin: boolean):
     visibilitePhoto: u.visibilite_photo,
     visibiliteInfos: u.visibilite_infos,
     trouvableParEmail: u.trouvable_email === 1,
+    telephone: u.telephone,
+    trouvableParTelephone: u.trouvable_telephone === 1,
+    verificationTelephone: verification,
     visibiliteVu: u.visibilite_vu,
     enLigne: u.en_ligne,
     confirmationsLecture: u.confirmations_lecture === 1,
@@ -101,11 +111,16 @@ export async function carte(db: D1Database, cibleId: string, lecteurId: string):
 
 export async function rechercher(
   db: D1Database,
-  critere: { type: "email" | "pseudo"; valeur: string },
+  critere: { type: "email" | "telephone" | "pseudo"; valeur: string },
   lecteurId: string,
 ): Promise<CarteProfil[]> {
   // Correspondance exacte uniquement : on ne laisse pas parcourir l'annuaire.
-  const condition = `${critere.type === "email" ? "u.email = ?2 AND u.trouvable_email = 1" : "u.pseudo = ?2"} AND u.suspendu_le IS NULL`;
+  const conditions = {
+    email: "u.email = ?2 AND u.trouvable_email = 1",
+    telephone: "u.telephone = ?2 AND u.trouvable_telephone = 1",
+    pseudo: "u.pseudo = ?2",
+  };
+  const condition = `${conditions[critere.type]} AND u.suspendu_le IS NULL`;
   const l = await db
     .prepare(`SELECT ${SELECTION_CARTE} FROM utilisateurs u WHERE ${condition} AND u.pseudo IS NOT NULL LIMIT 1`)
     .bind(lecteurId, critere.valeur)

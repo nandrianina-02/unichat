@@ -192,14 +192,61 @@ export function creerKaraksFaux(base: string) {
   return { recuperer, fichiers, effaces, noms, options };
 }
 
+/**
+ * Faux Mess : mêmes adresses et mêmes réponses que l'API réelle (codes de
+ * vérification, cinq essais, expiration). Le test lit le « SMS » envoyé.
+ */
+export function creerMessFaux(base: string) {
+  const demandes = new Map<string, { numero: string; code: string; essais: number; valide: boolean; expireLe: number }>();
+  const sms: { numero: string; texte: string }[] = [];
+  const options = { panne: false, horloge: () => Date.now() };
+
+  const recuperer = async (url: string, init: RequestInit = {}): Promise<Response | null> => {
+    if (!url.startsWith(base)) return null;
+    if (options.panne) return Response.json({ erreur: "interne", message: "Panne." }, { status: 500 });
+    if (new Headers(init.headers).get("Authorization") !== "Bearer cle-mess-essai") {
+      return Response.json({ erreur: "authentification", message: "Clé d'API absente ou invalide." }, { status: 401 });
+    }
+    const chemin = url.slice(base.length);
+    const corps = JSON.parse(String(init.body ?? "{}")) as { a?: string; code?: string; duree?: number };
+    if (chemin === "/v1/codes") {
+      const id = crypto.randomUUID();
+      const code = String(Math.floor(100000 + Math.random() * 900000));
+      const expireLe = options.horloge() + (corps.duree ?? 300) * 1000;
+      demandes.set(id, { numero: corps.a!, code, essais: 0, valide: false, expireLe });
+      sms.push({ numero: corps.a!, texte: `${code} est votre code UniChat.` });
+      return Response.json({ id, destinataire: corps.a, expireLe, message: crypto.randomUUID() }, { status: 201 });
+    }
+    const verif = /^\/v1\/codes\/([^/]+)\/verifier$/.exec(chemin);
+    if (verif) {
+      const d = demandes.get(decodeURIComponent(verif[1]!));
+      if (!d) return Response.json({ erreur: "introuvable", message: "Demande de code introuvable." }, { status: 404 });
+      if (d.valide) return Response.json({ valide: false, raison: "deja_utilise" });
+      if (d.expireLe <= options.horloge()) return Response.json({ valide: false, raison: "expire" });
+      if (d.essais >= 5) return Response.json({ valide: false, raison: "trop_d_essais" });
+      d.essais++;
+      if (corps.code !== d.code) return Response.json({ valide: false, raison: "incorrect", essaisRestants: 5 - d.essais });
+      d.valide = true;
+      return Response.json({ valide: true, destinataire: d.numero });
+    }
+    return Response.json({ erreur: "introuvable", message: "Introuvable." }, { status: 404 });
+  };
+
+  /** Le dernier code reçu par ce numéro, lu sur le « téléphone ». */
+  const codeRecu = (numero: string) => /\d{6}/.exec([...sms].reverse().find((s) => s.numero === numero)?.texte ?? "")?.[0] ?? "";
+  return { recuperer, sms, codeRecu, options };
+}
+
 /** Une application de test, son faux Google et une horloge que le test fait avancer. */
-export async function preparer(options: { stockage?: boolean } = {}) {
+export async function preparer(options: { stockage?: boolean; sms?: boolean } = {}) {
   const google = await creerGoogleFaux();
   const karaks = creerKaraksFaux(env.KARAKS_STORAGE_URL!);
+  const mess = creerMessFaux(env.MESS_URL!);
   let maintenant = Date.now();
+  mess.options.horloge = () => maintenant;
   const recuperer: typeof fetch = async (entree, init) => {
     const url = typeof entree === "string" ? entree : entree instanceof URL ? entree.href : entree.url;
-    return (await karaks.recuperer(url, init)) ?? google.recuperer(entree, init);
+    return (await karaks.recuperer(url, init)) ?? (await mess.recuperer(url, init)) ?? google.recuperer(entree, init);
   };
   const app = creerApp({ recuperer, maintenant: () => maintenant });
   const environnement = {
@@ -207,6 +254,7 @@ export async function preparer(options: { stockage?: boolean } = {}) {
     GOOGLE_CLIENT_ID: CLIENT_ID,
     GOOGLE_CLIENT_SECRET: "secret-essai",
     ...(options.stockage === false ? {} : { KARAKS_STORAGE_CLE: "cle-essai" }),
+    ...(options.sms === false ? {} : { MESS_CLE: "cle-mess-essai" }),
   };
 
   // Une adresse par environnement de test : les compteurs de limitation ne
@@ -299,6 +347,7 @@ export async function preparer(options: { stockage?: boolean } = {}) {
     app,
     google,
     karaks,
+    mess,
     recuperer,
     environnement,
     requete,

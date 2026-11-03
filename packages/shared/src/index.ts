@@ -6,5 +6,6 @@ export * from "./medias";
 export * from "./moderation";
 export * from "./profil";
 export * from "./push";
+export * from "./telephone";
 export * from "./temps-reel";
 export * from "./types";

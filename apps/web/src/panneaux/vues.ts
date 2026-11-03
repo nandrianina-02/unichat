@@ -14,4 +14,5 @@ export type Vue =
   | "visibilite-vu"
   | "ajout-groupes"
   | "importants"
-  | "supprimer-compte";
+  | "supprimer-compte"
+  | "telephone";

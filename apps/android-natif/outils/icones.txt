@@ -52,3 +52,7 @@ mail
 mail-open
 chevron-right
 user-minus
+phone
+phone-off
+message-square-text
+rotate-cw

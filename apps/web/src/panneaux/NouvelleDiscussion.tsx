@@ -116,7 +116,7 @@ export function NouvelleDiscussion({ onRetour, onOuvrir, invitation, onNouveauGr
             autoFocus
             value={texte}
             onChange={(e) => setTexte(e.target.value)}
-            placeholder="Nom d'utilisateur ou adresse e-mail"
+            placeholder="Nom d'utilisateur, e-mail ou numéro"
             autoCapitalize="none"
             spellCheck={false}
             className="min-w-0 flex-1 bg-transparent text-[15px] text-texte outline-none placeholder:text-texte-2"
@@ -132,7 +132,8 @@ export function NouvelleDiscussion({ onRetour, onOuvrir, invitation, onNouveauGr
       <div className="min-h-0 flex-1 overflow-y-auto">
         {resultat.etat === "indice" && (
           <p className="animate-fade px-7 py-4 text-sm leading-relaxed text-texte-2">
-            Saisissez un nom d'utilisateur complet (par exemple @ana.rakoto) ou une adresse e-mail entière. Pour protéger
+            Saisissez un nom d'utilisateur complet (par exemple @ana.rakoto), une adresse e-mail entière ou un numéro de
+            téléphone (034 12 345 67). Pour protéger
             chacun, UniChat ne propose pas de résultats partiels.
           </p>
         )}

@@ -1,6 +1,6 @@
 import type { EvenementSecurite, TypeEvenement } from "@unichat/shared";
 import clsx from "clsx";
-import { AtSign, Ban, KeyRound, Link2, LoaderCircle, LogIn, LogOut, ShieldAlert, ShieldCheck, ShieldX, type LucideIcon } from "lucide-react";
+import { AtSign, Ban, KeyRound, Link2, LoaderCircle, LogIn, LogOut, Phone, PhoneOff, ShieldAlert, ShieldCheck, ShieldX, type LucideIcon } from "lucide-react";
 import { useEffect, useState } from "react";
 import { EnTetePanneau } from "../composants/Panneau";
 import { api } from "../lib/api";
@@ -17,6 +17,8 @@ const DESCRIPTIONS: Record<TypeEvenement, { icone: LucideIcon; titre: string; al
   suspension_levee: { icone: ShieldCheck, titre: "Suspension levée" },
   appareil_relie: { icone: Link2, titre: "Appareil relié : il a reçu les clés du compte" },
   cles_reinitialisees: { icone: KeyRound, titre: "Clés du compte refaites", alerte: true },
+  telephone_ajoute: { icone: Phone, titre: "Numéro de téléphone vérifié" },
+  telephone_retire: { icone: PhoneOff, titre: "Numéro de téléphone retiré" },
 };
 
 export function Activite({ onRetour }: { onRetour: () => void }) {

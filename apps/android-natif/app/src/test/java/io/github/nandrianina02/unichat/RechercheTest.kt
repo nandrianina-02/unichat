@@ -1,6 +1,8 @@
 package io.github.nandrianina02.unichat
 
+import io.github.nandrianina02.unichat.donnees.afficherTelephone
 import io.github.nandrianina02.unichat.donnees.conversationDirecte
+import io.github.nandrianina02.unichat.donnees.normaliserTelephone
 import io.github.nandrianina02.unichat.donnees.rechercheValide
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -27,6 +29,18 @@ class RechercheTest {
         assertFalse(rechercheValide("ana@"))
         assertFalse(rechercheValide("ana@exemple"))
         assertFalse(rechercheValide("a".repeat(31)))
+    }
+
+    @Test
+    fun numeros_malgaches_acceptes_et_normalises() {
+        assertTrue(rechercheValide("034 12 345 67"))
+        assertTrue(rechercheValide("+261 33 38 369 82"))
+        assertFalse(rechercheValide("0612345678"))
+        assertFalse(rechercheValide("034 12"))
+        assertEquals("+261341234567", normaliserTelephone("034.12.345.67"))
+        assertEquals("+261333836982", normaliserTelephone("00261333836982"))
+        assertEquals(null, normaliserTelephone("0351234567"))
+        assertEquals("034 12 345 67", afficherTelephone("+261341234567"))
     }
 
     @Test

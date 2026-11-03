@@ -25,6 +25,7 @@ import { NouvelleDiscussion } from "../panneaux/NouvelleDiscussion";
 import { Parametres } from "../panneaux/Parametres";
 import { Profil } from "../panneaux/Profil";
 import { SupprimerCompte } from "../panneaux/SupprimerCompte";
+import { Telephone } from "../panneaux/Telephone";
 import type { Vue } from "../panneaux/vues";
 import { Accueil } from "../vues/Accueil";
 import { Administration } from "../vues/Administration";
@@ -181,6 +182,8 @@ export function Application() {
         return <ChoixVisibilite champ="infos" onRetour={retour} />;
       case "supprimer-compte":
         return <SupprimerCompte onRetour={retour} />;
+      case "telephone":
+        return <Telephone onRetour={retour} />;
       case "bloques":
         return <Bloques onRetour={retour} />;
       case "visibilite-vu":

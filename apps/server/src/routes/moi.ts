@@ -1,5 +1,13 @@
 import { Hono, type Context } from "hono";
-import { schemaMajProfil, schemaPseudo, schemaSuppressionCompte, type MajProfil } from "@unichat/shared";
+import {
+  schemaAjoutTelephone,
+  schemaCodeTelephone,
+  schemaMajProfil,
+  schemaPseudo,
+  schemaSuppressionCompte,
+  type MajProfil,
+  type TypeEvenement,
+} from "@unichat/shared";
 import { estAdmin } from "../lib/admin";
 import { lireUtilisateur } from "../lib/comptes";
 import { refus } from "../lib/erreurs";
@@ -7,9 +15,10 @@ import { journaliser } from "../lib/evenements";
 import { enregistrerPhoto, lirePhotoEnvoyee, supprimerPhoto } from "../lib/photos";
 import { versMoi } from "../lib/profils";
 import { supprimerCompte } from "../lib/suppression";
+import { confirmerVerification, demanderVerification, retirerTelephone, verificationEnCours } from "../lib/telephone";
 import type { AppEnv } from "../types";
 import { exigerSession } from "./garde";
-import { COOKIE_SESSION, MINUTE, corpsJson, effacerCookie, limiter } from "./outils";
+import { COOKIE_SESSION, MINUTE, corpsJson, effacerCookie, ip, limiter } from "./outils";
 
 export const moi = new Hono<AppEnv>();
 moi.use("*", exigerSession);
@@ -18,7 +27,22 @@ async function moiActuel(c: Context<AppEnv>) {
   const session = c.get("session");
   const u = await lireUtilisateur(c.env.DB, session.utilisateur_id);
   if (!u) throw refus.nonConnecte();
-  return versMoi(u, session.id, estAdmin(c.env, u.id));
+  const verification = await verificationEnCours(c.env.DB, u.id, c.get("deps").maintenant());
+  return versMoi(u, session.id, estAdmin(c.env, u.id), verification);
+}
+
+/** Un changement du compte noté dans son activité, avec l'appareil qui l'a fait. */
+function evenement(c: Context<AppEnv>, type: TypeEvenement) {
+  const session = c.get("session");
+  return journaliser(c.env.DB, {
+    utilisateurId: session.utilisateur_id,
+    type,
+    sessionId: session.id,
+    appareil: session.appareil,
+    ville: session.ville,
+    pays: session.pays,
+    maintenant: c.get("deps").maintenant(),
+  });
 }
 
 moi.get("/", async (c) => c.json(await moiActuel(c)));
@@ -44,6 +68,7 @@ const COLONNES: Record<keyof MajProfil, string> = {
   visibilitePhoto: "visibilite_photo",
   visibiliteInfos: "visibilite_infos",
   trouvableParEmail: "trouvable_email",
+  trouvableParTelephone: "trouvable_telephone",
   visibiliteVu: "visibilite_vu",
   enLigne: "en_ligne",
   confirmationsLecture: "confirmations_lecture",
@@ -58,7 +83,7 @@ moi.patch("/", async (c) => {
   if (!avant) throw refus.nonConnecte();
 
   const cles = (Object.keys(changements) as (keyof MajProfil)[]).filter((k) => changements[k] !== undefined);
-  if (cles.length === 0) return c.json(versMoi(avant, session.id, estAdmin(c.env, avant.id)));
+  if (cles.length === 0) return c.json(await moiActuel(c));
 
   const valeurs = cles.map((k) => (typeof changements[k] === "boolean" ? (changements[k] ? 1 : 0) : changements[k]));
   const affectations = cles.map((k, i) => `${COLONNES[k]} = ?${i + 1}`).join(", ");
@@ -90,8 +115,41 @@ moi.patch("/", async (c) => {
     if (String(erreur).includes("UNIQUE")) throw refus.conflit("Ce nom d'utilisateur est déjà pris.");
     throw erreur;
   }
-  const apres = await lireUtilisateur(c.env.DB, avant.id);
-  return c.json(versMoi(apres!, session.id, estAdmin(c.env, apres!.id)));
+  return c.json(await moiActuel(c));
+});
+
+/*
+ * Numéro de téléphone : un code est envoyé par SMS (service Mess), puis
+ * saisi ici. Les limites protègent le crédit SMS et les numéros des autres :
+ * on ne fait pas pleuvoir des codes sur un inconnu.
+ */
+moi.post("/telephone", async (c) => {
+  const { numero } = await corpsJson(c, schemaAjoutTelephone);
+  const session = c.get("session");
+  await limiter(c, `telephone:${session.utilisateur_id}`, 5, 60 * MINUTE);
+  await limiter(c, `telephone-ip:${ip(c)}`, 20, 60 * MINUTE);
+  await demanderVerification(c.env, c.get("deps").recuperer, session.utilisateur_id, numero, c.get("deps").maintenant());
+  return c.json(await moiActuel(c));
+});
+
+moi.post("/telephone/verifier", async (c) => {
+  const { code } = await corpsJson(c, schemaCodeTelephone);
+  const session = c.get("session");
+  await limiter(c, `telephone-code:${session.utilisateur_id}`, 15, 10 * MINUTE);
+  await confirmerVerification(c.env, c.get("deps").recuperer, session.utilisateur_id, code, c.get("deps").maintenant());
+  await evenement(c, "telephone_ajoute").run();
+  return c.json(await moiActuel(c));
+});
+
+/** Abandonner la vérification en cours, sans toucher au numéro déjà vérifié. */
+moi.delete("/telephone/verification", async (c) => {
+  await c.env.DB.prepare("DELETE FROM verifications_telephone WHERE utilisateur_id = ?1").bind(c.get("session").utilisateur_id).run();
+  return c.json(await moiActuel(c));
+});
+
+moi.delete("/telephone", async (c) => {
+  if (await retirerTelephone(c.env.DB, c.get("session").utilisateur_id)) await evenement(c, "telephone_retire").run();
+  return c.json(await moiActuel(c));
 });
 
 moi.get("/pseudo-disponible", async (c) => {

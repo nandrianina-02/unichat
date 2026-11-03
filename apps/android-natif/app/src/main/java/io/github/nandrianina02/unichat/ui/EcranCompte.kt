@@ -53,7 +53,7 @@ import io.github.nandrianina02.unichat.donnees.messageErreur
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
-/** Le compte connecté, ses appareils, et la déconnexion. */
+/** Le compte connecté, son numéro de téléphone, ses appareils, et la déconnexion. */
 @Composable
 fun EcranCompte(conteneur: Conteneur, onRetour: () -> Unit) {
     val p = LocalPalette.current
@@ -105,6 +105,9 @@ fun EcranCompte(conteneur: Conteneur, onRetour: () -> Unit) {
                     }
                 }
             }
+        }
+        moi?.let { m ->
+            item(key = "telephone") { CarteTelephone(conteneur, m, onMoi = { moi = it }, modifier = Modifier.entree(1)) }
         }
         appareils?.let { liste ->
             item(key = "appareils-titre") {

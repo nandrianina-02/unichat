@@ -75,6 +75,10 @@ export const api = {
   },
   supprimerPhoto: () => appel<Moi>("/moi/photo", { method: "DELETE" }),
   supprimerCompte: (confirmation: string) => appel<void>("/moi", json("DELETE", { confirmation })),
+  demanderTelephone: (numero: string) => appel<Moi>("/moi/telephone", json("POST", { numero })),
+  verifierTelephone: (code: string) => appel<Moi>("/moi/telephone/verifier", json("POST", { code })),
+  annulerVerificationTelephone: () => appel<Moi>("/moi/telephone/verification", { method: "DELETE" }),
+  retirerTelephone: () => appel<Moi>("/moi/telephone", { method: "DELETE" }),
 
   rechercher: (texte: string, signal?: AbortSignal) =>
     appel<{ resultats: CarteProfil[] }>(`/recherche?q=${encodeURIComponent(texte)}`, { signal }),

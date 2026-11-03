@@ -59,6 +59,22 @@ interface UniChatApi {
     @GET("api/moi")
     suspend fun moi(): Moi
 
+    /** Numéro du profil : un code part par SMS (service Mess), puis il est saisi. */
+    @POST("api/moi/telephone")
+    suspend fun demanderTelephone(@Body demande: DemandeTelephone): Moi
+
+    @POST("api/moi/telephone/verifier")
+    suspend fun verifierTelephone(@Body code: CodeTelephone): Moi
+
+    @DELETE("api/moi/telephone/verification")
+    suspend fun annulerVerificationTelephone(): Moi
+
+    @DELETE("api/moi/telephone")
+    suspend fun retirerTelephone(): Moi
+
+    @PATCH("api/moi")
+    suspend fun trouvableParTelephone(@Body maj: MajTrouvableTelephone): Moi
+
     @GET("api/sessions")
     suspend fun appareils(): ListeAppareils
 
@@ -110,7 +126,7 @@ interface UniChatApi {
     @GET("api/personnes/{id}")
     suspend fun personne(@Path("id") id: String): CarteProfil
 
-    /** Recherche exacte : un nom d'utilisateur complet ou une adresse e-mail entière (lireRecherche). */
+    /** Recherche exacte : un nom d'utilisateur complet, une adresse e-mail entière ou un numéro (lireRecherche). */
     @GET("api/recherche")
     suspend fun rechercher(@Query("q") texte: String): ResultatsRecherche
 

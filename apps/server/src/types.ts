@@ -15,6 +15,9 @@ export interface Bindings {
   /** Application Android : identifiant et empreintes SHA-256 de ses clés de signature (séparées par des virgules). */
   ANDROID_PAQUET?: string;
   ANDROID_EMPREINTES?: string;
+  /** Service SMS Mess (codes de vérification du téléphone) : adresse publique, et clé secrète. */
+  MESS_URL?: string;
+  MESS_CLE?: string;
   /** Comptes d'administration : identifiants UniChat séparés par des virgules (secret). */
   ADMINS?: string;
 }

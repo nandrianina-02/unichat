@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { normaliserTelephone } from "./telephone";
 
 // Mêmes longueurs que WhatsApp : 25 caractères pour le nom, 139 pour les infos.
 export const LIMITES = {
@@ -75,6 +76,7 @@ export const schemaMajProfil = z
     visibilitePhoto: schemaVisibilite.optional(),
     visibiliteInfos: schemaVisibilite.optional(),
     trouvableParEmail: z.boolean().optional(),
+    trouvableParTelephone: z.boolean().optional(),
     visibiliteVu: schemaVisibilite.optional(),
     enLigne: z.enum(VISIBILITES_EN_LIGNE).optional(),
     confirmationsLecture: z.boolean().optional(),
@@ -88,10 +90,17 @@ export const schemaSuppressionCompte = z.object({ confirmation: z.string().trim(
 
 export const schemaAjoutContact =z.object({ id: z.string().uuid("Identifiant invalide.") }).strict();
 
-/** Recherche exacte : une adresse e-mail ou un nom d'utilisateur, jamais un fragment. */
-export function lireRecherche(brute: string): { type: "email"; valeur: string } | { type: "pseudo"; valeur: string } | null {
+/** Recherche exacte : une adresse e-mail, un numéro de téléphone ou un nom d'utilisateur, jamais un fragment. */
+export function lireRecherche(
+  brute: string,
+): { type: "email"; valeur: string } | { type: "telephone"; valeur: string } | { type: "pseudo"; valeur: string } | null {
   const texte = brute.trim().toLowerCase();
   if (!texte || texte.length > 254) return null;
+  // Un nom d'utilisateur ne commence pas par un chiffre ni par « + » : pas d'ambiguïté.
+  if (/^[+\d]/.test(texte)) {
+    const numero = normaliserTelephone(texte);
+    return numero ? { type: "telephone", valeur: numero } : null;
+  }
   if (texte.includes("@") && !texte.startsWith("@")) {
     return z.string().email().safeParse(texte).success ? { type: "email", valeur: texte } : null;
   }

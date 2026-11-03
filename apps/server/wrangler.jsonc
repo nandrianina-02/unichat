@@ -38,7 +38,7 @@
 
   // Stockage des fichiers joints. La clé est un secret :
   // `wrangler secret put KARAKS_STORAGE_CLE`.
-  "vars": { "KARAKS_STORAGE_URL": "https://nuvora-cloud.vercel.app",
+  "vars": { "KARAKS_STORAGE_URL": "https://nuvora-cloud.vercel.app", "MESS_URL": "https://mess.unichat-server.workers.dev",
     "VAPID_CONTACT": "mailto:randriantsoa54@gmail.com",
     // Application Android (apps/android) : identifiant et empreintes publiques de ses clés de
     // signature. Vide pour l'instant : la première clé, créée sur un poste infecté, est écartée.

@@ -8,6 +8,7 @@ declare global {
       BOITE: DurableObjectNamespace<Boite>;
       TEST_MIGRATIONS: D1Migration[];
       KARAKS_STORAGE_URL?: string;
+      MESS_URL?: string;
       VAPID_PRIVEE?: string;
       ADMINS?: string;
     }

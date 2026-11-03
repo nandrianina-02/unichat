@@ -133,7 +133,7 @@ fun EcranNouvelleDiscussion(espace: EspaceCompte, conteneur: Conteneur, onRetour
             Icon(painterResource(R.drawable.lucide_search), contentDescription = null, tint = p.texte3, modifier = Modifier.size(18.dp))
             Spacer(Modifier.width(10.dp))
             Box(Modifier.weight(1f), contentAlignment = Alignment.CenterStart) {
-                if (texte.isEmpty()) Text("Nom d'utilisateur ou adresse e-mail", color = p.texte3, fontSize = 15.sp, maxLines = 1)
+                if (texte.isEmpty()) Text("Nom d'utilisateur, e-mail ou numéro", color = p.texte3, fontSize = 15.sp, maxLines = 1)
                 BasicTextField(
                     value = texte,
                     onValueChange = { texte = it },
@@ -157,7 +157,8 @@ fun EcranNouvelleDiscussion(espace: EspaceCompte, conteneur: Conteneur, onRetour
             when (r) {
                 Resultat.Vide -> Unit
                 Resultat.Indice -> Note(
-                    "Saisissez un nom d'utilisateur complet (par exemple @ana.rakoto) ou une adresse e-mail entière. " +
+                    "Saisissez un nom d'utilisateur complet (par exemple @ana.rakoto), une adresse e-mail entière " +
+                        "ou un numéro de téléphone (034 12 345 67). " +
                         "Pour protéger chacun, UniChat ne propose pas de résultats partiels.",
                 )
                 Resultat.EnCours -> Row(Modifier.padding(horizontal = 28.dp, vertical = 16.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -166,7 +167,7 @@ fun EcranNouvelleDiscussion(espace: EspaceCompte, conteneur: Conteneur, onRetour
                     Text("Recherche…", color = p.texte2, fontSize = 14.sp)
                 }
                 Resultat.Aucun -> Note(
-                    "Personne sur UniChat n'a ce nom d'utilisateur, ou cette personne ne souhaite pas être trouvée par son adresse e-mail.",
+                    "Personne sur UniChat ne correspond, ou cette personne ne souhaite pas être trouvée de cette façon.",
                 )
                 is Resultat.Erreur -> Note(r.message, couleur = p.danger)
                 is Resultat.Trouve -> Column {

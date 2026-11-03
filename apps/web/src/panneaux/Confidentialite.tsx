@@ -89,6 +89,21 @@ export function Confidentialite({ onRetour, onOuvrir }: { onRetour: () => void; 
             onChange={(trouvableParEmail) => void enregistrer({ trouvableParEmail })}
           />
         </div>
+        <div className="flex items-center gap-4 px-7">
+          <div className="flex-1 border-b border-bordure py-4">
+            <p className="text-[16px] text-texte">Me trouver avec mon numéro de téléphone</p>
+            <p className="mt-0.5 text-[14px] leading-relaxed text-texte-2">
+              {moi.telephone
+                ? "Le numéro n'est jamais affiché : seule une personne qui le connaît déjà peut vous trouver."
+                : "Sans effet tant que vous n'avez pas ajouté de numéro (Paramètres, Compte)."}
+            </p>
+          </div>
+          <Interrupteur
+            libelle="Me trouver avec mon numéro de téléphone"
+            actif={moi.trouvableParTelephone}
+            onChange={(trouvableParTelephone) => void enregistrer({ trouvableParTelephone })}
+          />
+        </div>
         <TitreSection>Contacts</TitreSection>
         <button
           type="button"

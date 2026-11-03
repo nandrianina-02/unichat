@@ -25,7 +25,24 @@ data class Moi(
     val infos: String = "",
     /** Version de la photo (elle invalide le cache) ; absente sans photo. */
     val photo: String? = null,
+    /** Numéro vérifié par SMS (+261…), visible de soi seul : il sert à être trouvé. */
+    val telephone: String? = null,
+    val trouvableParTelephone: Boolean = true,
+    /** Numéro qui attend le code reçu par SMS. */
+    val verificationTelephone: VerificationTelephone? = null,
 )
+
+@Serializable
+data class VerificationTelephone(val numero: String, val expireLe: Long)
+
+@Serializable
+data class DemandeTelephone(val numero: String)
+
+@Serializable
+data class CodeTelephone(val code: String)
+
+@Serializable
+data class MajTrouvableTelephone(val trouvableParTelephone: Boolean)
 
 @Serializable
 data class AppareilConnecte(
