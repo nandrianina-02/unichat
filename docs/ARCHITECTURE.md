@@ -638,5 +638,10 @@ s'installe par-dessus l'ancienne, en version 10 (l'ancienne est en 5).
 5. Fichiers et messages vocaux.
 6. Notifications (Firebase Cloud Messaging, gratuit), déchiffrées sur
    l'appareil.
-7. Groupes, réactions, modifications, suppressions, réglages.
+7. Groupes, réactions, modifications, suppressions, réglages. Fait pour les
+   messages : un appui long ouvre réagir (pictogrammes, comme le web),
+   répondre, copier, modifier (15 minutes), supprimer pour moi ou pour tous.
+   Les actions partent chiffrées comme les messages, avec la même relance
+   après un refus « appareils ». Restent les réglages de discussion et la
+   gestion des groupes.
 

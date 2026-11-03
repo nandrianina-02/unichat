@@ -26,3 +26,14 @@ clock
 lock-keyhole
 send-horizontal
 circle-alert
+thumbs-up
+heart
+laugh
+party-popper
+frown
+hand-heart
+reply
+copy
+pencil
+trash-2
+x

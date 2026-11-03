@@ -143,6 +143,29 @@ class EnvoiChiffreTest {
     }
 
     @Test
+    fun reaction_chiffree_ici_rouverte_comme_action() = runBlocking {
+        val a = appareil(1)
+        val b = appareil(3)
+        val apiAlice = api(mapOf(alice to a, bob to b), mutableListOf())
+        val chiffreur = Chiffreur(apiAlice, ClesAppareil(apiAlice, a.trousseau), a.trousseau, alice)
+        val dechiffreur = Dechiffreur(ClesAppareil(apiAlice, b.trousseau), b.trousseau, bob)
+        val message = UUID.randomUUID().toString()
+        val id = UUID.randomUUID().toString()
+        val reaction = buildJsonObject {
+            put("v", 1)
+            put("action", "reaction")
+            put("message", message)
+            put("code", "coeur")
+        }
+        val trame = chiffreur.chiffrer(Destination(conversation, a = bob, comptes = listOf(bob)), id, "action", reaction)
+        val recue = JsonObject(recue(trame, id, bob) + ("genre" to kotlinx.serialization.json.JsonPrimitive("action")))
+        val r = dechiffreur.dechiffrer(recue)
+        assertTrue(r is Dechiffrement.Action)
+        assertEquals("coeur", (r as Dechiffrement.Action).contenu.texte("code"))
+        assertEquals(message, r.contenu.texte("message"))
+    }
+
+    @Test
     fun contenu_deplace_vers_une_autre_discussion_illisible() = runBlocking {
         val a = appareil(1)
         val b = appareil(3)

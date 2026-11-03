@@ -79,6 +79,9 @@ function elements(nom) {
     return Function(`return ${source.slice(debutTableau, fin + 1)};`)();
   }
   const debut = source.indexOf("createLucideIcon(");
+  // Ancien nom gardé par Lucide (laugh, frown, trash-2) : le fichier renvoie à l'icône actuelle.
+  const alias = debut < 0 && source.match(/from\s+['"]\.\/([a-z0-9-]+)\.m?js['"]/);
+  if (alias) return elements(alias[1]);
   const tableau = source.slice(source.indexOf("[", debut), source.lastIndexOf("]);") + 1);
   return Function(`return ${tableau};`)();
 }

@@ -77,6 +77,10 @@ class Base(contexte: Context, compte: String) : SQLiteOpenHelper(contexte, "unic
         db.insertWithOnConflict("messages", null, valeurs, SQLiteDatabase.CONFLICT_REPLACE)
     }
 
+    fun supprimerMessage(id: String) {
+        writableDatabase.delete("messages", "id = ?", arrayOf(id))
+    }
+
     /** Les derniers messages d'une discussion, du plus ancien au plus récent. */
     fun messages(conversation: String, limite: Int = 500): List<JsonObject> =
         readableDatabase.rawQuery(

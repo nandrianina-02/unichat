@@ -14,6 +14,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.withLock
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonArray
+import kotlinx.serialization.json.JsonNull
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.buildJsonObject
@@ -83,8 +84,9 @@ class Messagerie(
     private var ping: Job? = null
     private var accuse: Job? = null
     private var reconnexion: Job? = null
-    /** Mes envois en route, avec le nombre de rechiffrements déjà faits. */
-    private val envois = ConcurrentHashMap<String, Int>()
+    /** Un envoi en route (message ou action) : ses rechiffrements, et comment le refaire pour d'autres comptes. */
+    private class Envoi(var tentatives: Int, val relancer: suspend (List<String>?) -> Unit)
+    private val envois = ConcurrentHashMap<String, Envoi>()
     /** Les messages en attente repartent une fois par connexion, après le rattrapage du journal. */
     private var renvoyes = false
     private val dernierEcrit = ConcurrentHashMap<String, Long>()
@@ -223,7 +225,7 @@ class Messagerie(
      * puis chiffré et envoyé. Hors connexion, il part au retour de celle-ci.
      * Lancé dans la portée du compte : quitter l'écran ne l'interrompt pas.
      */
-    fun envoyer(conversation: String, texte: String) {
+    fun envoyer(conversation: String, texte: String, reponseA: JsonObject? = null) {
         val propre = texte.trim()
         if (propre.isEmpty()) return
         portee.launch {
@@ -239,6 +241,7 @@ class Messagerie(
                 put("etat", "attente")
             }
             ephemereDe(conversation)?.let { message = message.avec("ephemere", it).avec("expireLe", maintenant + it) }
+            reponseA?.let { message = message.avec("reponseA", it) }
             base.ecrireMessage(message)
             base.signaler()
             expedier(message)
@@ -286,9 +289,17 @@ class Messagerie(
                 put("v", 1)
                 put("texte", m.texte("texte"))
                 m.entier("ephemere")?.let { put("ephemere", it) }
+                // La citation voyage réduite à ce qui s'affiche : l'original reste chez chacun.
+                m.objet("reponseA")?.let { r ->
+                    put("reponseA", buildJsonObject {
+                        put("id", r.texte("id"))
+                        put("de", r.texte("de"))
+                        put("extrait", r.texte("extrait"))
+                    })
+                }
             }
             val enveloppe = cles.verrou.withLock { chiffreur.chiffrer(destination, id, "message", contenu) }
-            envois.putIfAbsent(id, 0)
+            envois.putIfAbsent(id, Envoi(0) { imposes -> base.message(id)?.let { expedier(it, imposes) } })
             brut(m = enveloppe)
         } catch (e: CancellationException) {
             throw e
@@ -321,13 +332,13 @@ class Messagerie(
 
     private fun refuse(m: JsonObject) {
         val id = m.texteOuNul("id") ?: return
-        val tentatives = envois[id]
+        val envoi = envois[id]
         // Appareils de la discussion changés depuis la dernière liste : on rechiffre pour les bons.
-        if (tentatives != null && m.texte("code") == "appareils" && tentatives < TENTATIVES_MAX) {
+        if (envoi != null && m.texte("code") == "appareils" && envoi.tentatives < TENTATIVES_MAX) {
             val comptes = m.objet("appareils")?.keys?.toList().orEmpty()
-            envois[id] = tentatives + 1
+            envoi.tentatives += 1
             chiffreur.oublier(comptes)
-            base.message(id)?.let { msg -> portee.launch { expedier(msg, comptes.ifEmpty { null }) } }
+            portee.launch { runCatching { envoi.relancer(comptes.ifEmpty { null }) } }
             return
         }
         envois.remove(id)
@@ -337,6 +348,80 @@ class Messagerie(
     private fun modifier(id: String, changement: (JsonObject) -> JsonObject) {
         val msg = base.message(id) ?: return
         base.ecrireMessage(changement(msg))
+        base.signaler()
+    }
+
+    // --- Actions sur un message ------------------------------------------------------------
+
+    /**
+     * Une action (réaction, modification, suppression) part chiffrée comme un
+     * message, vers les mêmes appareils. Faux si elle n'a pas pu partir :
+     * l'appelant défait alors ce qu'il avait affiché.
+     */
+    private suspend fun agir(conversation: String, contenu: JsonObject): Boolean {
+        if (_connexion.value != EtatConnexion.CONNECTE) return false
+        val id = UUID.randomUUID().toString()
+        suspend fun partir(imposes: List<String>?): Boolean {
+            val destination = destination(conversation, imposes)
+            val enveloppe = cles.verrou.withLock { chiffreur.chiffrer(destination, id, "action", contenu) }
+            envois.putIfAbsent(id, Envoi(0) { partir(it) })
+            return brut(m = enveloppe)
+        }
+        return try {
+            partir(null)
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            false
+        }
+    }
+
+    private fun action(nom: String, message: String, champs: JsonObject.() -> JsonObject = { this }) =
+        buildJsonObject {
+            put("v", 1)
+            put("action", nom)
+            put("message", message)
+        }.champs()
+
+    /** Réagir, ou retirer sa réaction avec null. Affichée tout de suite, retirée si elle ne part pas. */
+    suspend fun reagir(id: String, code: String?): Boolean {
+        val msg = base.message(id) ?: return false
+        if (_connexion.value != EtatConnexion.CONNECTE || msg.vrai("supprime")) return false
+        val avant = msg.objet("reactions") ?: JsonObject(emptyMap())
+        modifier(id) { it.avec("reactions", avant.avec(moi, code)) }
+        val ok = agir(msg.texte("conversation"), action("reaction", id) { avec("code", code?.let { JsonPrimitive(it) } ?: JsonNull) })
+        if (!ok) modifier(id) { it.avec("reactions", avant) }
+        return ok
+    }
+
+    /** Modifier son message, dans les 15 minutes qui suivent l'envoi (les autres appareils vérifient aussi le délai). */
+    suspend fun modifierTexte(id: String, texte: String): Boolean {
+        val propre = texte.trim()
+        val msg = base.message(id) ?: return false
+        if (!modifiable(msg) || propre.isEmpty()) return false
+        if (propre == msg.texte("texte")) return true
+        if (!agir(msg.texte("conversation"), action("modification", id) { avec("texte", propre) })) return false
+        modifier(id) { it.avec("texte", propre).avec("modifieLe", System.currentTimeMillis()) }
+        return true
+    }
+
+    fun modifiable(msg: JsonObject): Boolean =
+        msg.texte("de") == moi && !msg.vrai("supprime") && msg.objet("media") == null && msg.texte("texte").isNotEmpty() &&
+            msg.texteOuNul("etat") != "attente" && msg.texteOuNul("etat") != "echec" &&
+            System.currentTimeMillis() - (msg.entier("le") ?: 0) <= DELAI_MODIFICATION
+
+    /** Supprimer pour tout le monde : réservé à l'auteur, et seulement en ligne (les autres doivent être prévenus). */
+    suspend fun supprimerPourTous(id: String): Boolean {
+        val msg = base.message(id) ?: return false
+        if (msg.texte("de") != moi || msg.vrai("supprime")) return false
+        if (!agir(msg.texte("conversation"), action("suppression", id))) return false
+        modifier(id) { it.avec("texte" to "", "supprime" to true, "reactions" to JsonObject(emptyMap()), "reponseA" to null, "media" to null) }
+        return true
+    }
+
+    /** Supprimer pour moi : le message disparaît de cet appareil seulement. */
+    fun supprimerPourMoi(id: String) {
+        base.supprimerMessage(id)
         base.signaler()
     }
 
