@@ -14,6 +14,9 @@ export default defineConfig(async () => {
         wrangler: { configPath: "./wrangler.jsonc" },
         miniflare: {
           bindings: { TEST_MIGRATIONS: migrations, VAPID_PRIVEE: vapid },
+          // La liaison vers Mess (wrangler.jsonc) n'existe pas ici : les tests
+          // passent par le faux Mess de test/outils.ts.
+          serviceBindings: { MESS: () => new Response("Mess absent des tests", { status: 503 }) },
           // Requêtes sortantes des boîtes (notifications) : un faux service de
           // notification. Un abonnement « disparu » répond 410, comme une
           // application désinstallée ; tout le reste est refusé.

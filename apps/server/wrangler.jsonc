@@ -36,6 +36,11 @@
   },
   "migrations": [{ "tag": "v1", "new_sqlite_classes": ["Boite"] }],
 
+  // Mess (codes SMS), sur le même compte Cloudflare : un Worker ne peut pas
+  // en appeler un autre par son adresse workers.dev (erreur 1042), il passe
+  // par cette liaison de service.
+  "services": [{ "binding": "MESS", "service": "mess" }],
+
   // Stockage des fichiers joints. La clé est un secret :
   // `wrangler secret put KARAKS_STORAGE_CLE`.
   "vars": { "KARAKS_STORAGE_URL": "https://nuvora-cloud.vercel.app", "MESS_URL": "https://mess.unichat-server.workers.dev",

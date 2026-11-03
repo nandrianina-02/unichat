@@ -255,6 +255,7 @@ export async function preparer(options: { stockage?: boolean; sms?: boolean } = 
     GOOGLE_CLIENT_SECRET: "secret-essai",
     ...(options.stockage === false ? {} : { KARAKS_STORAGE_CLE: "cle-essai" }),
     ...(options.sms === false ? {} : { MESS_CLE: "cle-mess-essai" }),
+    MESS: undefined,
   };
 
   // Une adresse par environnement de test : les compteurs de limitation ne

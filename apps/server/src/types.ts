@@ -18,6 +18,8 @@ export interface Bindings {
   /** Service SMS Mess (codes de vérification du téléphone) : adresse publique, et clé secrète. */
   MESS_URL?: string;
   MESS_CLE?: string;
+  /** Liaison de service vers le Worker Mess (même compte Cloudflare). */
+  MESS?: Fetcher;
   /** Comptes d'administration : identifiants UniChat séparés par des virgules (secret). */
   ADMINS?: string;
 }

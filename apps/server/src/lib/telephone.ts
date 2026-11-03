@@ -15,9 +15,17 @@ export function configurationMess(env: Bindings): ConfigMess {
   return { url: env.MESS_URL, cle: env.MESS_CLE };
 }
 
+/** Par la liaison de service quand elle existe (production), sinon par le réseau (tests, local). */
+export function versMess(env: Bindings, recuperer: typeof fetch): typeof fetch {
+  const liaison = env.MESS;
+  return liaison ? (entree, init) => liaison.fetch(entree, init) : recuperer;
+}
+
 /** Ce que Mess refuse se dit en mots d'UniChat ; une panne de Mess n'est pas la faute de la personne. */
 function traduire(e: unknown): never {
   if (!(e instanceof ErreurMess)) throw e;
+  // La cause exacte va au journal du Worker ; la personne reçoit un message simple.
+  console.warn("Mess a refusé :", e.statut, e.code, e.message);
   if (e.statut === 429) throw new Refus(429, "trop_de_demandes", "Trop de codes demandés pour ce numéro. Réessayez dans quelques minutes.");
   if (e.code === "numero") throw refus.requete("Ce numéro ne peut pas recevoir de SMS : il faut un mobile malgache.");
   throw new Refus(503, "sms_indisponible", "L'envoi de SMS est momentanément indisponible. Réessayez plus tard.");
@@ -47,7 +55,7 @@ export async function demanderVerification(
   const config = configurationMess(env);
   const actuel = await env.DB.prepare("SELECT telephone FROM utilisateurs WHERE id = ?1").bind(utilisateurId).first<{ telephone: string | null }>();
   if (actuel?.telephone === numero) throw refus.requete(`Le ${afficherTelephone(numero)} est déjà votre numéro.`);
-  const demande = await demanderCode(recuperer, config, numero).catch(traduire);
+  const demande = await demanderCode(versMess(env, recuperer), config, numero).catch(traduire);
   await env.DB.prepare(
     `INSERT INTO verifications_telephone (utilisateur_id, numero, demande_mess, expire_le) VALUES (?1, ?2, ?3, ?4)
      ON CONFLICT (utilisateur_id) DO UPDATE SET numero = ?2, demande_mess = ?3, expire_le = ?4`,
@@ -79,7 +87,7 @@ export async function confirmerVerification(
     .first<{ numero: string; demande_mess: string }>();
   if (!v) throw refus.requete("Aucune vérification en cours, ou elle a expiré. Demandez un nouveau code.");
 
-  const r = await verifierCode(recuperer, config, v.demande_mess, code).catch(traduire);
+  const r = await verifierCode(versMess(env, recuperer), config, v.demande_mess, code).catch(traduire);
   if (!r.valide) {
     if (r.raison === "incorrect") {
       const reste = r.essaisRestants ?? 0;

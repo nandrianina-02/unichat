@@ -29,8 +29,8 @@ async function appel<T>(recuperer: typeof fetch, config: ConfigMess, chemin: str
       headers: { Authorization: `Bearer ${config.cle}`, "Content-Type": "application/json" },
       body: JSON.stringify(corps),
     });
-  } catch {
-    throw new ErreurMess("Le service SMS ne répond pas.", 502, "injoignable");
+  } catch (e) {
+    throw new ErreurMess(`Le service SMS ne répond pas (${e instanceof Error ? e.message : String(e)}).`, 502, "injoignable");
   }
   const donnees = (await reponse.json().catch(() => null)) as (T & { erreur?: string; message?: string }) | null;
   if (!reponse.ok) throw new ErreurMess(donnees?.message ?? `Mess a répondu ${reponse.status}.`, reponse.status, donnees?.erreur ?? "inconnu");
