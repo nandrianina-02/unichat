@@ -642,6 +642,7 @@ s'installe par-dessus l'ancienne, en version 10 (l'ancienne est en 5).
    messages : un appui long ouvre réagir (pictogrammes, comme le web),
    répondre, copier, modifier (15 minutes), supprimer pour moi ou pour tous.
    Les actions partent chiffrées comme les messages, avec la même relance
-   après un refus « appareils ». Restent les réglages de discussion et la
-   gestion des groupes.
+   après un refus « appareils ». Nouvelle discussion : contacts, et recherche
+   exacte par nom d'utilisateur ou adresse e-mail, comme sur le web. Restent
+   les réglages de discussion et la gestion des groupes.
 

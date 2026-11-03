@@ -102,7 +102,26 @@ data class EtatHistorique(val etat: String, val deposes: Int = 0, val morceaux: 
 // --- Personnes et groupes ----------------------------------------------------------------
 
 @Serializable
-data class CarteProfil(val id: String, val nom: String, val pseudo: String? = null, val photo: String? = null)
+data class CarteProfil(
+    val id: String,
+    val nom: String,
+    val pseudo: String? = null,
+    val photo: String? = null,
+    val infos: String? = null,
+    val estContact: Boolean = false,
+    val estSoi: Boolean = false,
+    /** Je l'ai bloquée. L'inverse n'est jamais révélé. */
+    val bloque: Boolean = false,
+)
+
+@Serializable
+data class ResultatsRecherche(val resultats: List<CarteProfil>)
+
+@Serializable
+data class ListeContacts(val contacts: List<CarteProfil>)
+
+@Serializable
+data class AjoutContact(val id: String)
 
 @Serializable
 data class GroupeCourt(val id: String, val nom: String)

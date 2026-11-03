@@ -36,13 +36,15 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import io.github.nandrianina02.unichat.Conteneur
 import io.github.nandrianina02.unichat.donnees.EtatChiffrement
 import io.github.nandrianina02.unichat.donnees.Moi
+import io.github.nandrianina02.unichat.donnees.conversationDirecte
 import io.github.nandrianina02.unichat.donnees.messageErreur
 import kotlinx.coroutines.launch
 
-/** Ce qu'affiche l'appli connectée : la liste, une discussion, ou le compte. */
+/** Ce qu'affiche l'appli connectée : la liste, une discussion, le compte, ou la recherche d'une personne. */
 private sealed interface Vue {
     data object Liste : Vue
     data object Compte : Vue
+    data object Nouvelle : Vue
     data class Discussion(val conversation: String) : Vue
 }
 
@@ -99,7 +101,7 @@ fun EcranPrincipal(conteneur: Conteneur) {
     AnimatedContent(
         targetState = if (chiffrement == EtatChiffrement.A_RELIER && vue == Vue.Liste) null else vue,
         transitionSpec = {
-            val avance = targetState is Vue.Discussion || targetState == Vue.Compte
+            val avance = targetState is Vue.Discussion || targetState == Vue.Compte || targetState == Vue.Nouvelle
             (slideInHorizontally(tween(250)) { l -> if (avance) l / 6 else -l / 6 } + fadeIn(tween(250))) togetherWith fadeOut(tween(150))
         },
         label = "vue",
@@ -114,8 +116,14 @@ fun EcranPrincipal(conteneur: Conteneur) {
                 },
                 onCompte = { vue = Vue.Compte },
                 onReessayer = { portee.launch { espace.preparer() } },
+                onNouvelle = { vue = Vue.Nouvelle },
             )
             Vue.Compte -> EcranCompte(conteneur, onRetour = { vue = Vue.Liste })
+            Vue.Nouvelle -> EcranNouvelleDiscussion(espace, conteneur, onRetour = { vue = Vue.Liste }, onOuvrir = { id ->
+                val c = conversationDirecte(espace.moi, id)
+                conversationOuverte = c
+                vue = Vue.Discussion(c)
+            })
             is Vue.Discussion -> EcranDiscussion(espace, conteneur, v.conversation, onRetour = {
                 conversationOuverte = null
                 vue = Vue.Liste

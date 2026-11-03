@@ -16,6 +16,7 @@ import retrofit2.http.GET
 import retrofit2.http.POST
 import retrofit2.http.PUT
 import retrofit2.http.Path
+import retrofit2.http.Query
 import java.io.IOException
 import java.util.concurrent.TimeUnit
 
@@ -107,6 +108,16 @@ interface UniChatApi {
 
     @GET("api/personnes/{id}")
     suspend fun personne(@Path("id") id: String): CarteProfil
+
+    /** Recherche exacte : un nom d'utilisateur complet ou une adresse e-mail entière (lireRecherche). */
+    @GET("api/recherche")
+    suspend fun rechercher(@Query("q") texte: String): ResultatsRecherche
+
+    @GET("api/contacts")
+    suspend fun contacts(): ListeContacts
+
+    @POST("api/contacts")
+    suspend fun ajouterContact(@Body ajout: AjoutContact): CarteProfil
 
     @GET("api/groupes")
     suspend fun groupes(): ListeGroupes

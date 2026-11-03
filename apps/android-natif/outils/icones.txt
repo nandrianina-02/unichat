@@ -37,3 +37,7 @@ copy
 pencil
 trash-2
 x
+square-pen
+search
+user-plus
+user-check

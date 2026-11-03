@@ -81,6 +81,7 @@ fun EcranDiscussions(
     onOuvrir: (String) -> Unit,
     onCompte: () -> Unit,
     onReessayer: () -> Unit,
+    onNouvelle: () -> Unit,
 ) {
     val p = LocalPalette.current
     val version by espace.base.version.collectAsStateWithLifecycle()
@@ -94,7 +95,8 @@ fun EcranDiscussions(
         if (inconnues.isNotEmpty()) withContext(Dispatchers.IO) { espace.annuaire.completer(inconnues) }
     }
 
-    Column(Modifier.fillMaxSize().background(p.fond).safeDrawingPadding()) {
+    Box(Modifier.fillMaxSize().background(p.fond).safeDrawingPadding()) {
+    Column(Modifier.fillMaxSize()) {
         Row(Modifier.fillMaxWidth().padding(start = 20.dp, end = 8.dp, top = 8.dp, bottom = 8.dp), verticalAlignment = Alignment.CenterVertically) {
             Column(Modifier.weight(1f)) {
                 Text("UniChat", color = p.texte, fontSize = 24.sp, fontWeight = FontWeight.SemiBold)
@@ -132,12 +134,21 @@ fun EcranDiscussions(
                 Spacer(Modifier.height(12.dp))
                 Text("Aucune discussion pour l'instant.", color = p.texte2, fontSize = 15.sp)
             }
-            else -> LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = 16.dp)) {
+            // Le bas de liste laisse la place au bouton « Nouvelle discussion ».
+            else -> LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = 88.dp)) {
                 itemsIndexed(liste, key = { _, d -> d.conversation }) { i, d ->
                     LigneDiscussion(espace, conteneur, d, Modifier.entree(i)) { onOuvrir(d.conversation) }
                 }
             }
         }
+    }
+    if (chiffrement == EtatChiffrement.PRET) {
+        Icon(
+            painterResource(R.drawable.lucide_square_pen), contentDescription = "Nouvelle discussion", tint = p.surPrimaire,
+            modifier = Modifier.align(Alignment.BottomEnd).padding(20.dp).size(56.dp).clip(RoundedCornerShape(16.dp)).background(p.primaire)
+                .clickable(role = Role.Button, onClick = onNouvelle).padding(16.dp),
+        )
+    }
     }
 }
 

@@ -20,6 +20,18 @@ class Annuaire(private val api: UniChatApi, private val base: Base) {
     fun photoPersonne(id: String): String? = base.personne(id)?.texteOuNul("photo")
     fun nomGroupe(id: String): String? = base.groupe(id)?.texteOuNul("nom")
 
+    /** Une personne choisie dans la recherche ou les contacts : son nom s'affiche aussitôt dans la discussion. */
+    fun retenir(p: CarteProfil) {
+        base.ecrirePersonne(buildJsonObject {
+            put("id", p.id)
+            put("nom", p.nom)
+            put("pseudo", p.pseudo?.let { JsonPrimitive(it) } ?: JsonPrimitive(null as String?))
+            put("photo", p.photo?.let { JsonPrimitive(it) } ?: JsonPrimitive(null as String?))
+            put("maj", System.currentTimeMillis())
+        })
+        base.signaler()
+    }
+
     /** Les personnes inconnues de la base sont demandées une fois au serveur. */
     suspend fun completer(personnes: Collection<String>) {
         val aDemander = personnes.filter { base.personne(it) == null && demandees.add(it) }
