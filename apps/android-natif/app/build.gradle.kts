@@ -24,8 +24,8 @@ android {
         minSdk = 26
         targetSdk = 35
         // Au-dessus de l'appli Trusted Web Activity (5) : sinon Android refuse la mise à jour.
-        versionCode = 15
-        versionName = "2.5.0"
+        versionCode = 16
+        versionName = "2.6.0"
         vectorDrawables.useSupportLibrary = true
         buildConfigField("String", "SERVEUR", "\"https://unichat.unichat-server.workers.dev/\"")
         buildConfigField("String", "GOOGLE_CLIENT_WEB", "\"" + google.getProperty("clientWeb") + "\"")

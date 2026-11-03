@@ -90,6 +90,8 @@ class Messagerie(
     /** Les messages en attente repartent une fois par connexion, après le rattrapage du journal. */
     private var renvoyes = false
     private val dernierEcrit = ConcurrentHashMap<String, Long>()
+    /** Réglages décidés hors connexion : ils partent vers mes autres appareils au retour de celle-ci. */
+    private val preferencesEnAttente = ConcurrentHashMap<String, JsonObject>()
     private val finsEcrit = ConcurrentHashMap<String, Job>()
 
     private val _ecrit = MutableStateFlow<Map<String, String>>(emptyMap())
@@ -189,6 +191,9 @@ class Messagerie(
                     if (!renvoyes) {
                         renvoyes = true
                         portee.launch { base.enAttente(moi).forEach { expedier(it) } }
+                        for ((conversation, preference) in preferencesEnAttente) {
+                            if (envoyerPreference(conversation, preference)) preferencesEnAttente.remove(conversation, preference)
+                        }
                     }
                 } else {
                     brut(m = buildJsonObject { put("t", "bonjour"); put("depuis", seq ?: 0L) })
@@ -351,6 +356,40 @@ class Messagerie(
         base.signaler()
     }
 
+    // --- Réglages d'une discussion -------------------------------------------------------
+
+    private fun envoyerPreference(conversation: String, preference: JsonObject) =
+        brut(m = buildJsonObject {
+            put("t", "preference")
+            put("conversation", conversation)
+            put("preference", preference)
+        })
+
+    /**
+     * Sourdine, épingle, archive, « non lu », effacement : appliqué ici tout
+     * de suite, puis transmis à mes autres appareils (ou mis de côté hors
+     * connexion). Ces réglages ne concernent que moi : rien n'est chiffré
+     * pour mes correspondants.
+     */
+    fun regler(conversation: String, preference: JsonObject) {
+        base.appliquerPreference(conversation, preference)
+        base.signaler()
+        if (!envoyerPreference(conversation, preference)) {
+            preferencesEnAttente.merge(conversation, preference) { a, b -> JsonObject(a + b) }
+        }
+    }
+
+    /** Effacer : les messages disparaissent de mes appareils, la discussion reste dans la liste. */
+    fun effacer(conversation: String) =
+        regler(conversation, buildJsonObject { put("effaceAvant", maxOf(System.currentTimeMillis(), base.dernierLe(conversation))) })
+
+    /** Supprimer : messages effacés et discussion retirée de la liste ; elle revient au prochain message. */
+    fun supprimerDiscussion(conversation: String) =
+        regler(conversation, buildJsonObject {
+            put("effaceAvant", maxOf(System.currentTimeMillis(), base.dernierLe(conversation)))
+            put("supprimee", true)
+        })
+
     // --- Actions sur un message ------------------------------------------------------------
 
     /**
@@ -441,6 +480,10 @@ class Messagerie(
 
     /** Messages lus sur cet appareil : leurs auteurs l'apprennent (et mes autres appareils), comme sur le web. */
     fun marquerLu(conversation: String) {
+        // « Marquer comme non lu » ne vaut que jusqu'à la prochaine ouverture.
+        if (base.conversation(conversation)?.objet("reglages")?.vrai("nonLu") == true) {
+            regler(conversation, buildJsonObject { put("nonLu", false) })
+        }
         val lus = base.marquerLus(conversation, moi).filter { (id, _) -> base.message(id)?.texte("type") != "evenement" }
         lus.groupBy({ it.second }, { it.first }).forEach { (auteur, ids) ->
             ids.chunked(500).forEach { lot ->
@@ -653,7 +696,8 @@ class Messagerie(
                 val gid = ev.texte("conversation").removePrefix("g:")
                 base.groupe(gid)?.let { base.ecrireGroupe(it.avec("membres", null)) }
             }
-            // epingle, important, vote, ouvert, blocage, preference : rien à montrer encore dans l'appli.
+            "preference" -> e.objet("preference")?.let { base.appliquerPreference(e.texte("conversation"), it) }
+            // epingle, important, vote, ouvert, blocage : rien à montrer encore dans l'appli.
         }
     }
 

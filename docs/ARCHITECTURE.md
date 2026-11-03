@@ -643,6 +643,9 @@ s'installe par-dessus l'ancienne, en version 10 (l'ancienne est en 5).
    répondre, copier, modifier (15 minutes), supprimer pour moi ou pour tous.
    Les actions partent chiffrées comme les messages, avec la même relance
    après un refus « appareils ». Nouvelle discussion : contacts, et recherche
-   exacte par nom d'utilisateur ou adresse e-mail, comme sur le web. Restent
-   les réglages de discussion et la gestion des groupes.
+   exacte par nom d'utilisateur ou adresse e-mail, comme sur le web.
+   Réglages de discussion (appui long dans la liste) : épingler, mode
+   silencieux, archiver, marquer comme non lu, effacer, supprimer. Ils
+   partent par la trame « preference », comme ceux du web, et se
+   rattrapent au retour de la connexion. Reste la gestion des groupes.
 

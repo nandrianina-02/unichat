@@ -41,3 +41,13 @@ square-pen
 search
 user-plus
 user-check
+pin
+pin-off
+bell
+bell-off
+archive
+archive-restore
+circle-minus
+mail
+mail-open
+chevron-right

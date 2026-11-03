@@ -9,13 +9,27 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.put
 import kotlinx.serialization.json.booleanOrNull
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.json.longOrNull
 
-/** Ce que montre la liste des discussions. */
-data class ApercuDiscussion(val conversation: String, val dernier: JsonObject, val nonLus: Int)
+/**
+ * Ce que montre la liste des discussions. Les réglages (sourdine, épingle,
+ * archive, « non lu ») sont ceux du web, partagés entre mes appareils.
+ */
+data class ApercuDiscussion(
+    val conversation: String,
+    val dernier: JsonObject,
+    val nonLus: Int,
+    val epinglee: Boolean = false,
+    val archivee: Boolean = false,
+    val muette: Boolean = false,
+    /** « Marquer comme non lu » : un point dans la liste jusqu'à la prochaine ouverture. */
+    val marqueeNonLue: Boolean = false,
+)
 
 /**
  * La base d'un compte sur l'appareil : messages, personnes et groupes. Comme
@@ -88,8 +102,43 @@ class Base(contexte: Context, compte: String) : SQLiteOpenHelper(contexte, "unic
             arrayOf(conversation, limite.toString()),
         ).use { c -> buildList { while (c.moveToNext()) add(Json.parseToJsonElement(c.getString(0)).jsonObject) } }
 
-    /** Une ligne par discussion : son dernier message et ses non-lus, la plus récente en haut. */
-    fun discussions(moi: String): List<ApercuDiscussion> {
+    /**
+     * Une ligne par discussion : son dernier message et ses non-lus. Les
+     * épinglées d'abord, puis la plus récente en haut. Une discussion effacée
+     * (sans être supprimée) reste dans la liste, à la date de l'effacement.
+     */
+    fun discussions(moi: String, maintenant: Long = System.currentTimeMillis()): List<ApercuDiscussion> {
+        val reglages = HashMap<String, JsonObject>()
+        readableDatabase.rawQuery("SELECT id, contenu FROM conversations", null).use { c ->
+            while (c.moveToNext()) reglages[c.getString(0)] = Json.parseToJsonElement(c.getString(1)).jsonObject
+        }
+        fun avecReglages(a: ApercuDiscussion): ApercuDiscussion {
+            val r = reglages[a.conversation]?.objet("reglages") ?: return a
+            val muet = r.entier("muetJusqua")
+            return a.copy(
+                epinglee = r.vrai("epingle"),
+                archivee = r.vrai("archive"),
+                muette = muet != null && muet > maintenant,
+                marqueeNonLue = r.vrai("nonLu"),
+            )
+        }
+        val parMessages = discussionsDesMessages(moi)
+        val presentes = parMessages.map { it.conversation }.toSet()
+        val videes = reglages.values.filter { it.texte("id") !in presentes && it.entier("videeLe") != null }.map { c ->
+            ApercuDiscussion(c.texte("id"), buildJsonObject {
+                put("id", "")
+                put("conversation", c.texte("id"))
+                put("de", "")
+                put("texte", "")
+                put("type", "texte")
+                put("le", c.entier("videeLe") ?: 0L)
+            }, 0)
+        }
+        return (parMessages + videes).map(::avecReglages)
+            .sortedWith(compareByDescending<ApercuDiscussion> { it.epinglee }.thenByDescending { it.dernier.entier("le") ?: 0L })
+    }
+
+    private fun discussionsDesMessages(moi: String): List<ApercuDiscussion> {
         val nonLus = HashMap<String, Int>()
         readableDatabase.rawQuery("SELECT conversation, COUNT(*) FROM messages WHERE lu = 0 AND de <> ? GROUP BY conversation", arrayOf(moi)).use { c ->
             while (c.moveToNext()) nonLus[c.getString(0)] = c.getInt(1)
@@ -159,6 +208,44 @@ class Base(contexte: Context, compte: String) : SQLiteOpenHelper(contexte, "unic
     fun groupe(id: String) = lireObjet("groupes", id)
     fun ecrireGroupe(g: JsonObject) = ecrireObjet("groupes", g.texte("id"), g)
     fun conversation(id: String) = lireObjet("conversations", id)
+
+    /**
+     * Un réglage de discussion, reçu de mes autres appareils ou décidé ici
+     * (appliquerPreference du web) : effacement des messages jusqu'à une
+     * date, retrait de la liste, sourdine, épingle, archive, « non lu ».
+     */
+    fun appliquerPreference(conversation: String, p: JsonObject) {
+        val db = writableDatabase
+        p.entier("effaceAvant")?.let { avant ->
+            // Un message pas encore parti n'a pas d'heure définitive : on le garde.
+            val ids = db.rawQuery("SELECT id, contenu FROM messages WHERE conversation = ? AND le <= ?", arrayOf(conversation, avant.toString())).use { c ->
+                buildList {
+                    while (c.moveToNext()) {
+                        if (Json.parseToJsonElement(c.getString(1)).jsonObject.texteOuNul("etat") != "attente") add(c.getString(0))
+                    }
+                }
+            }
+            ids.forEach { db.delete("messages", "id = ?", arrayOf(it)) }
+        }
+        if (p.vrai("supprimee")) {
+            db.delete("conversations", "id = ?", arrayOf(conversation))
+            return
+        }
+        val existante = conversation(conversation) ?: buildJsonObject { put("id", conversation) }
+        var reglages = existante.objet("reglages") ?: JsonObject(emptyMap())
+        for (cle in listOf("muetJusqua", "favori", "archive", "epingle", "nonLu")) {
+            if (cle in p) reglages = reglages.avec(cle, p[cle])
+        }
+        var c = existante.avec("reglages", reglages)
+        p.entier("effaceAvant")?.let { c = c.avec("videeLe", it) }
+        ecrireConversation(c)
+    }
+
+    /** Heure du dernier message d'une discussion, 0 si elle n'en a pas. */
+    fun dernierLe(conversation: String): Long =
+        readableDatabase.rawQuery("SELECT MAX(le) FROM messages WHERE conversation = ?", arrayOf(conversation)).use { c ->
+            if (c.moveToFirst() && !c.isNull(0)) c.getLong(0) else 0L
+        }
     fun ecrireConversation(c: JsonObject) = ecrireObjet("conversations", c.texte("id"), c)
 
     fun reglage(cle: String): String? =
