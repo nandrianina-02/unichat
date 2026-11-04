@@ -125,10 +125,8 @@ fun CarteTelephone(conteneur: Conteneur, moi: Moi, onMoi: (Moi) -> Unit, modifie
             .padding(16.dp),
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
-            Box(Modifier.size(40.dp).clip(CircleShape).background(p.primaireDoux), contentAlignment = Alignment.Center) {
-                Icon(painterResource(R.drawable.lucide_phone), contentDescription = null, tint = p.primaireTexte, modifier = Modifier.size(20.dp))
-            }
-            Spacer(Modifier.width(12.dp))
+            Icon(painterResource(R.drawable.lucide_phone), contentDescription = null, tint = p.texte2, modifier = Modifier.size(22.dp))
+            Spacer(Modifier.width(16.dp))
             Column(Modifier.weight(1f)) {
                 Text("Numéro de téléphone", color = p.texte, fontSize = 15.sp, fontWeight = FontWeight.Medium)
                 Text(
