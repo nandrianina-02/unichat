@@ -50,12 +50,12 @@ export async function limiter(c: Context<AppEnv>, cle: string, maximum: number, 
 
 /**
  * Action lourde (supprimer un compte, refaire ses clés) : réservée à une
- * connexion Google de moins de 24 heures, pour qu'une session dérobée ne
- * suffise pas.
+ * connexion de moins de 24 heures (Google ou code SMS), pour qu'une session
+ * dérobée ne suffise pas.
  */
 export function exigerConnexionRecente(c: Context<AppEnv>): void {
   if (c.get("deps").maintenant() - c.get("session").cree_le > CONNEXION_RECENTE) {
-    throw new Refus(403, "reconnexion_requise", "Par sécurité, reconnectez-vous avec Google avant cette action : elle demande une connexion de moins de 24 heures.");
+    throw new Refus(403, "reconnexion_requise", "Par sécurité, reconnectez-vous (Google ou code SMS) avant cette action : elle demande une connexion de moins de 24 heures.");
   }
 }
 

@@ -29,6 +29,16 @@ class Session(private val reseau: Reseau, private val stockage: StockageJeton) {
         _etat.value = EtatSession.Connecte
     }
 
+    /** Par numéro : le code reçu par SMS contre une session (le compte se crée s'il n'existe pas). */
+    suspend fun demanderCodeConnexion(numero: String): DemandeConnexionTelephone =
+        appel { reseau.api.demanderConnexionTelephone(DemandeTelephone(numero)) }.getOrThrow()
+
+    suspend fun connecterParTelephone(demande: String, code: String) {
+        val session = appel { reseau.api.connexionTelephone(ConnexionTelephone(demande, code, nomAppareil())) }.getOrThrow()
+        stockage.ecrire(session.jeton)
+        _etat.value = EtatSession.Connecte
+    }
+
     /** Ferme la session sur le serveur ; sans réseau, l'appareil l'oublie quand même. */
     suspend fun deconnecter() {
         appel { reseau.api.deconnexion() }

@@ -44,6 +44,33 @@ export async function trouverOuCreerCompte(
   return existant.id;
 }
 
+/**
+ * Compte ouvert par un numéro vérifié : celui qui porte ce numéro, sinon un
+ * nouveau, sans Google ni adresse e-mail (nom et nom d'utilisateur se
+ * choisissent ensuite, comme après une première connexion Google).
+ */
+export async function trouverOuCreerCompteTelephone(db: D1Database, numero: string, maintenant: number): Promise<string> {
+  const existant = await db.prepare("SELECT id FROM utilisateurs WHERE telephone = ?1").bind(numero).first<{ id: string }>();
+  if (existant) return existant.id;
+  const id = crypto.randomUUID();
+  try {
+    await db
+      .prepare(
+        `INSERT INTO utilisateurs (id, google_sub, email, nom, infos, telephone, cree_le)
+         VALUES (?1, 'telephone:' || ?1, '', '', ?2, ?3, ?4)`,
+      )
+      .bind(id, INFOS_PAR_DEFAUT, numero, maintenant)
+      .run();
+    return id;
+  } catch (erreur) {
+    // Deux validations simultanées du même numéro : l'index unique garde un seul compte.
+    if (!String(erreur).includes("UNIQUE")) throw erreur;
+    const gagnant = await db.prepare("SELECT id FROM utilisateurs WHERE telephone = ?1").bind(numero).first<{ id: string }>();
+    if (!gagnant) throw erreur;
+    return gagnant.id;
+  }
+}
+
 export async function lireUtilisateur(db: D1Database, id: string): Promise<LigneUtilisateur | null> {
   return db.prepare("SELECT * FROM utilisateurs WHERE id = ?1").bind(id).first<LigneUtilisateur>();
 }

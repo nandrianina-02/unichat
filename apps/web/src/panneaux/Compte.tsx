@@ -18,7 +18,7 @@ export function Compte({ onRetour, onOuvrir }: { onRetour: () => void; onOuvrir:
           onClick={() => onOuvrir("appareils")}
         />
         <LigneReglage icone={History} titre="Activité du compte" detail="Connexions et changements récents" onClick={() => onOuvrir("activite")} />
-        <LigneReglage icone={Mail} titre="Adresse e-mail" detail={`${moi.email} · connexion avec Google`} />
+        {moi.connexion === "google" && <LigneReglage icone={Mail} titre="Adresse e-mail" detail={`${moi.email} · connexion avec Google`} />}
         <LigneReglage
           icone={Phone}
           titre="Numéro de téléphone"
@@ -26,7 +26,7 @@ export function Compte({ onRetour, onOuvrir }: { onRetour: () => void; onOuvrir:
             moi.verificationTelephone
               ? `Code envoyé au ${afficherTelephone(moi.verificationTelephone.numero)}`
               : moi.telephone
-                ? `${afficherTelephone(moi.telephone)} · vérifié`
+                ? `${afficherTelephone(moi.telephone)} · ${moi.connexion === "telephone" ? "connexion par SMS" : "vérifié"}`
                 : "Ajoutez-le pour que vos contacts vous trouvent"
           }
           onClick={() => onOuvrir("telephone")}

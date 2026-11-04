@@ -120,4 +120,88 @@ describe("numéro de téléphone", () => {
     expect(r.status).toBe(503);
     expect(((await r.json()) as { message: string }).message).toMatch(/momentanément indisponible/);
   });
+
+  it("inscrit par numéro, puis reconnecte le même compte avec le même numéro", async () => {
+    const t = await preparer();
+    const nouveau = await t.connecterParTelephone("034 55 666 77");
+    const moi = await json<Moi>(await nouveau.appel("/api/moi"));
+    expect(moi).toMatchObject({ connexion: "telephone", telephone: "+261345566677", email: "", pseudo: null, nom: "" });
+
+    // L'accueil se termine comme après Google : nom et nom d'utilisateur.
+    const accueil = await nouveau.appel("/api/moi", { method: "PATCH", json: { nom: "Rivo", pseudo: "rivo.tel" } });
+    expect(accueil.status).toBe(200);
+
+    const ailleurs = await t.connecterParTelephone("+261345566677");
+    expect((await json<Moi>(await ailleurs.appel("/api/moi"))).id).toBe(moi.id);
+  });
+
+  it("ouvre aussi le compte Google qui porte ce numéro vérifié", async () => {
+    const t = await preparer();
+    const ana = await personne(t, "ana");
+    await verifier(t, ana, "0349998877");
+    const idAna = (await json<Moi>(await ana.appel("/api/moi"))).id;
+    const parNumero = await t.connecterParTelephone("0349998877");
+    expect((await json<Moi>(await parNumero.appel("/api/moi"))).id).toBe(idAna);
+  });
+
+  it("répond de la même façon que le numéro soit inscrit ou non", async () => {
+    const t = await preparer();
+    await t.connecterParTelephone("0331231231");
+    const demande = (numero: string) =>
+      t.requete("/api/auth/telephone", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ numero }) });
+    const inscrit = (await (await demande("0331231231")).json()) as Record<string, unknown>;
+    const inconnu = (await (await demande("0331231232")).json()) as Record<string, unknown>;
+    expect(Object.keys(inscrit).sort()).toEqual(Object.keys(inconnu).sort());
+  });
+
+  it("protège le numéro d'un compte sans Google", async () => {
+    const t = await preparer();
+    const sansGoogle = await t.connecterParTelephone("0387776655");
+    // Il ne peut pas le retirer : ce serait perdre l'accès à son compte.
+    expect((await sansGoogle.appel("/api/moi/telephone", { method: "DELETE" })).status).toBe(400);
+    // Un autre compte ne peut pas le reprendre par la vérification du profil.
+    const bob = await personne(t, "bob");
+    const r = await bob.appel("/api/moi/telephone", { method: "POST", json: { numero: "0387776655" } });
+    expect(r.status).toBe(409);
+    expect(t.mess.sms.filter((s) => s.numero === "+261387776655")).toHaveLength(1);
+  });
+
+  it("refuse une connexion web venue d'une autre page, et un code faux", async () => {
+    const t = await preparer();
+    const r = await t.requete("/api/auth/telephone", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ numero: "0324445566" }),
+    });
+    const { demande } = (await r.json()) as { demande: string };
+    const tiers = await t.requete("/api/auth/telephone/verifier", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Origin: "https://pirate.exemple" },
+      body: JSON.stringify({ demande, code: t.mess.codeRecu("+261324445566") }),
+    });
+    expect(tiers.status).toBe(403);
+    const faux = await t.requete("/api/auth/telephone/verifier", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Origin: "http://localhost" },
+      body: JSON.stringify({ demande, code: "000000" }),
+    });
+    expect(faux.status).toBe(400);
+  });
+
+  it("donne un jeton de session à l'application native", async () => {
+    const t = await preparer();
+    const r = await t.requete("/api/auth/telephone", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ numero: "0371112222" }),
+    });
+    const { demande } = (await r.json()) as { demande: string };
+    const session = await t.requete("/api/auth/telephone/verifier", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ demande, code: t.mess.codeRecu("+261371112222"), appareil: "Samsung SM-A155F" }),
+    });
+    expect(session.status).toBe(200);
+    expect(((await session.json()) as { jeton: string }).jeton.length).toBeGreaterThan(20);
+  });
 });

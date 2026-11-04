@@ -24,7 +24,7 @@
 
     <main class="page-texte mx-auto max-w-3xl px-5 py-10">
       <h1 class="text-3xl font-light text-texte">Règles de confidentialité</h1>
-      <p>Dernière mise à jour : 19 octobre 2026.</p>
+      <p>Dernière mise à jour : 4 novembre 2026.</p>
       <p>
         UniChat est une messagerie gratuite, sur le web, Android et ordinateur. Cette page explique quelles données nous
         recevons, pourquoi, combien de temps nous les gardons, et comment les effacer. Contact :
@@ -33,7 +33,7 @@
 
       <h2>1. Ce que nous recevons de Google</h2>
       <p>
-        La connexion se fait uniquement avec un compte Google. Avec votre accord sur la page de Google, nous recevons :
+        Si vous vous connectez avec un compte Google, avec votre accord sur la page de Google, nous recevons :
         l'identifiant de votre compte Google, votre nom, votre adresse e-mail (vérifiée par Google) et votre photo de profil.
       </p>
       <p>
@@ -49,6 +49,10 @@
 
       <h2>2. Ce que vous nous confiez</h2>
       <ul>
+        <li>
+          votre numéro de téléphone, si vous vous connectez avec lui ou l'ajoutez à votre profil. Il est vérifié par un code
+          envoyé par SMS : le service Mess envoie ce code et le vérifie, et UniChat ne voit jamais le code ;
+        </li>
         <li>votre nom affiché, votre nom d'utilisateur, vos « infos » et votre photo de profil ;</li>
         <li>vos réglages de confidentialité ;</li>
         <li>pour les groupes que vous administrez : leur nom, leur description, leur photo et leur lien d'invitation ;</li>
@@ -170,6 +174,10 @@
           Votre adresse e-mail n'est jamais affichée aux autres. Elle permet de vous trouver par une recherche exacte, ce que
           vous pouvez désactiver dans Paramètres, Confidentialité.
         </li>
+        <li>
+          Votre numéro de téléphone n'est jamais affiché aux autres non plus. Il permet de vous trouver par une recherche du
+          numéro complet, ce que vous pouvez aussi désactiver dans Paramètres, Confidentialité.
+        </li>
       </ul>
 
       <h2>6. Partage</h2>
@@ -177,7 +185,8 @@
         Nous ne vendons aucune donnée, n'affichons aucune publicité et ne partageons rien avec des tiers à des fins
         commerciales. Nos prestataires techniques traitent les données pour notre compte, uniquement pour faire fonctionner le
         service : <strong>Cloudflare</strong> (hébergement, base de données, transmission des messages),
-        <strong>Google</strong> (connexion), le service de notification de votre navigateur (acheminement des notifications
+        <strong>Google</strong> (connexion), <strong>Mess</strong> (envoi des codes par SMS, depuis un appareil relié au réseau
+        mobile malgache ; le service garde le numéro et l'état du SMS trente jours, le texte du code étant masqué dès l'envoi), le service de notification de votre navigateur (acheminement des notifications
         chiffrées) et <strong>Karaks Storage</strong> (stockage temporaire des fichiers envoyés,
         hébergé chez Vercel, les fichiers étant conservés dans un espace Google Drive réservé à ce service et jamais rendus
         publics). Nous pouvons être tenus de communiquer des informations si la loi l'exige.

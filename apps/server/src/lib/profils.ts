@@ -22,6 +22,9 @@ export interface LigneUtilisateur {
   motif_suspension: string | null;
 }
 
+/** Compte créé par numéro : pas d'identité Google (migrations/0012_connexion_telephone.sql). */
+export const compteTelephone = (googleSub: string) => googleSub.startsWith("telephone:");
+
 export function versMoi(
   u: LigneUtilisateur,
   sessionId: string,
@@ -41,6 +44,7 @@ export function versMoi(
     telephone: u.telephone,
     trouvableParTelephone: u.trouvable_telephone === 1,
     verificationTelephone: verification,
+    connexion: compteTelephone(u.google_sub) ? "telephone" : "google",
     visibiliteVu: u.visibilite_vu,
     enLigne: u.en_ligne,
     confirmationsLecture: u.confirmations_lecture === 1,

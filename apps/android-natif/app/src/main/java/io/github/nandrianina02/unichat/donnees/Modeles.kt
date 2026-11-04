@@ -30,7 +30,15 @@ data class Moi(
     val trouvableParTelephone: Boolean = true,
     /** Numéro qui attend le code reçu par SMS. */
     val verificationTelephone: VerificationTelephone? = null,
+    /** « google », ou « telephone » pour un compte ouvert par son seul numéro. */
+    val connexion: String = "google",
 )
+
+@Serializable
+data class DemandeConnexionTelephone(val demande: String, val numero: String, val expireLe: Long)
+
+@Serializable
+data class ConnexionTelephone(val demande: String, val code: String, val appareil: String)
 
 @Serializable
 data class VerificationTelephone(val numero: String, val expireLe: Long)

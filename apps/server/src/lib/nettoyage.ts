@@ -29,6 +29,7 @@ export async function nettoyer(env: Bindings, maintenant: number, recuperer: typ
     db.prepare("DELETE FROM actions_admin WHERE cree_le < ?1").bind(maintenant - 365 * JOUR),
     // Vérifications de téléphone abandonnées : le code chez Mess a expiré avec elles.
     db.prepare("DELETE FROM verifications_telephone WHERE expire_le < ?1").bind(maintenant),
+    db.prepare("DELETE FROM connexions_telephone WHERE expire_le < ?1").bind(maintenant),
     // Appareil muet depuis 90 jours : on cesse de chiffrer pour lui.
     db.prepare("DELETE FROM appareils_cles WHERE vu_le < ?1").bind(maintenant - APPAREIL_INACTIF),
   ]);

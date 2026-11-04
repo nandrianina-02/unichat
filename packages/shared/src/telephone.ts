@@ -30,15 +30,31 @@ export function afficherTelephone(numero: string): string {
 
 export const MESSAGE_TELEPHONE = "Un mobile malgache : 032, 033, 034, 037, 038 ou 039.";
 
-export const schemaAjoutTelephone = z
+const schemaNumero = z.string().max(30).transform((v, ctx) => {
+  const n = normaliserTelephone(v);
+  if (!n) ctx.addIssue({ code: "custom", message: MESSAGE_TELEPHONE });
+  return n ?? "";
+});
+
+export const schemaAjoutTelephone = z.object({ numero: schemaNumero }).strict();
+
+/** Inscription ou connexion par numéro : même demande, que le numéro ait un compte ou non. */
+export const schemaDemandeConnexionTelephone = z.object({ numero: schemaNumero }).strict();
+
+export const schemaConnexionTelephone = z
   .object({
-    numero: z.string().max(30).transform((v, ctx) => {
-      const n = normaliserTelephone(v);
-      if (!n) ctx.addIssue({ code: "custom", message: MESSAGE_TELEPHONE });
-      return n ?? "";
-    }),
+    demande: z.string().uuid("Demande invalide."),
+    code: z.string().regex(/^\d{4,8}$/, "Le code reçu par SMS compte 6 chiffres."),
+    /** Application native : nom de l'appareil, et la session revient en jeton. Absent sur le web (cookie). */
+    appareil: z.string().trim().min(1).max(80).optional(),
   })
   .strict();
+
+export interface DemandeConnexionTelephone {
+  demande: string;
+  numero: string;
+  expireLe: number;
+}
 
 export const schemaCodeTelephone = z.object({ code: z.string().regex(/^\d{4,8}$/, "Le code reçu par SMS compte 6 chiffres.") }).strict();
 

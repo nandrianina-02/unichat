@@ -162,7 +162,10 @@ fun CarteTelephone(conteneur: Conteneur, moi: Moi, onMoi: (Moi) -> Unit, modifie
                                 numero = ""
                                 saisie = true
                             }
-                            Lien("Retirer", p.danger) { executer({ conteneur.reseau.api.retirerTelephone() }) { saisie = true } }
+                            // Un compte ouvert par numéro n'a que lui pour se connecter : remplaçable, pas retirable.
+                            if (moi.connexion != "telephone") {
+                                Lien("Retirer", p.danger) { executer({ conteneur.reseau.api.retirerTelephone() }) { saisie = true } }
+                            }
                         }
                     }
                     EtapeTelephone.SAISIE -> {

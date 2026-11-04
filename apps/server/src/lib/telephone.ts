@@ -1,5 +1,6 @@
 import { afficherTelephone } from "@unichat/shared";
 import type { Bindings } from "../types";
+import { compteTelephone } from "./profils";
 import { Refus, refus } from "./erreurs";
 import { demanderCode, ErreurMess, verifierCode, type ConfigMess } from "./mess";
 
@@ -55,6 +56,7 @@ export async function demanderVerification(
   const config = configurationMess(env);
   const actuel = await env.DB.prepare("SELECT telephone FROM utilisateurs WHERE id = ?1").bind(utilisateurId).first<{ telephone: string | null }>();
   if (actuel?.telephone === numero) throw refus.requete(`Le ${afficherTelephone(numero)} est déjà votre numéro.`);
+  await exigerNumeroLibre(env.DB, numero, utilisateurId);
   const demande = await demanderCode(versMess(env, recuperer), config, numero).catch(traduire);
   await env.DB.prepare(
     `INSERT INTO verifications_telephone (utilisateur_id, numero, demande_mess, expire_le) VALUES (?1, ?2, ?3, ?4)
@@ -97,6 +99,7 @@ export async function confirmerVerification(
     throw refus.requete(RAISONS[r.raison]);
   }
 
+  await exigerNumeroLibre(env.DB, v.numero, utilisateurId);
   await env.DB.batch([
     env.DB.prepare("UPDATE utilisateurs SET telephone = NULL WHERE telephone = ?1 AND id <> ?2").bind(v.numero, utilisateurId),
     env.DB.prepare("UPDATE utilisateurs SET telephone = ?1 WHERE id = ?2").bind(v.numero, utilisateurId),
@@ -105,7 +108,69 @@ export async function confirmerVerification(
   return v.numero;
 }
 
+/**
+ * Un numéro qui ouvre un compte sans Google en est la seule clé : le lui
+ * prendre fermerait ce compte pour toujours. Qui détient ce numéro se
+ * connecte plutôt avec lui.
+ */
+async function exigerNumeroLibre(db: D1Database, numero: string, utilisateurId: string): Promise<void> {
+  const titulaire = await db
+    .prepare("SELECT google_sub FROM utilisateurs WHERE telephone = ?1 AND id <> ?2")
+    .bind(numero, utilisateurId)
+    .first<{ google_sub: string }>();
+  if (titulaire && compteTelephone(titulaire.google_sub)) {
+    throw refus.conflit("Ce numéro sert déjà à se connecter à un autre compte UniChat. Connectez-vous avec lui.");
+  }
+}
+
+// --- Inscription et connexion par numéro -------------------------------------------------
+
+/** Durée d'une demande de connexion : celle du code chez Mess. */
+const DUREE_CONNEXION = 10 * 60_000;
+
+/** Même réponse que le numéro ait un compte ou non : la page ne dit pas qui est inscrit. */
+export async function demanderConnexion(
+  env: Bindings,
+  recuperer: typeof fetch,
+  numero: string,
+  maintenant: number,
+): Promise<{ demande: string; expireLe: number }> {
+  const config = configurationMess(env);
+  const reponse = await demanderCode(versMess(env, recuperer), config, numero).catch(traduire);
+  const id = crypto.randomUUID();
+  const expireLe = Math.min(reponse.expireLe, maintenant + DUREE_CONNEXION);
+  await env.DB.prepare("INSERT INTO connexions_telephone (id, numero, demande_mess, expire_le) VALUES (?1, ?2, ?3, ?4)")
+    .bind(id, numero, reponse.id, expireLe)
+    .run();
+  return { demande: id, expireLe };
+}
+
+/** Le code juste, le numéro est prouvé : il reste à ouvrir (ou créer) son compte. Rend le numéro. */
+export async function confirmerConnexion(env: Bindings, recuperer: typeof fetch, demande: string, code: string, maintenant: number): Promise<string> {
+  const config = configurationMess(env);
+  const d = await env.DB.prepare("SELECT numero, demande_mess FROM connexions_telephone WHERE id = ?1 AND expire_le > ?2")
+    .bind(demande, maintenant)
+    .first<{ numero: string; demande_mess: string }>();
+  if (!d) throw refus.requete("Cette demande a expiré. Demandez un nouveau code.");
+  const r = await verifierCode(versMess(env, recuperer), config, d.demande_mess, code).catch(traduire);
+  if (!r.valide) {
+    if (r.raison === "incorrect") {
+      const reste = r.essaisRestants ?? 0;
+      throw refus.requete(`Code incorrect. ${reste > 0 ? `Encore ${reste} essai${reste > 1 ? "s" : ""}.` : "Demandez un nouveau code."}`);
+    }
+    await env.DB.prepare("DELETE FROM connexions_telephone WHERE id = ?1").bind(demande).run();
+    throw refus.requete(RAISONS[r.raison]);
+  }
+  // Usage unique : la demande disparaît avec la connexion.
+  await env.DB.prepare("DELETE FROM connexions_telephone WHERE id = ?1").bind(demande).run();
+  return d.numero;
+}
+
 export async function retirerTelephone(db: D1Database, utilisateurId: string): Promise<boolean> {
+  const u = await db.prepare("SELECT google_sub FROM utilisateurs WHERE id = ?1").bind(utilisateurId).first<{ google_sub: string }>();
+  if (u && compteTelephone(u.google_sub)) {
+    throw refus.requete("Ce numéro sert à vous connecter : il ne peut pas être retiré. Vous pouvez le remplacer par un autre.");
+  }
   const [retrait] = await db.batch([
     db.prepare("UPDATE utilisateurs SET telephone = NULL WHERE id = ?1 AND telephone IS NOT NULL").bind(utilisateurId),
     db.prepare("DELETE FROM verifications_telephone WHERE utilisateur_id = ?1").bind(utilisateurId),

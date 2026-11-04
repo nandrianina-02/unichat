@@ -122,7 +122,10 @@ describe("Web Push", () => {
     await wsAna2.attendre((m): m is Extract<MessageServeur, { t: "entree" }> => m.t === "entree" && m.entree.type === "preference");
     wsBob.envoyer(await trameChiffree(bob.appareil, bob.id, { a: ana.id, comptes: [ana.id] }));
     expect(await attendre(async () => (await compter()) === 0)).toBe(true);
-  });
+    // Prouver qu'aucune notification ne part en sourdine demande d'attendre
+    // deux secondes entières : le délai par défaut (5 s) ne laisse pas de marge
+    // quand toute la suite tourne en même temps.
+  }, 15_000);
 });
 
 describe("notification d'un message chiffré", () => {

@@ -18,6 +18,8 @@ export interface Moi {
   /** Numéro vérifié par SMS (+261…), visible de soi seul ; il sert à être trouvé. */
   telephone: string | null;
   trouvableParTelephone: boolean;
+  /** Comment ce compte s'ouvre : par Google, ou par son seul numéro de téléphone. */
+  connexion: "google" | "telephone";
   /** Numéro en attente du code reçu par SMS. */
   verificationTelephone: { numero: string; expireLe: number } | null;
   /** Qui voit ma dernière connexion ; « personne » m'empêche aussi de voir celle des autres. */

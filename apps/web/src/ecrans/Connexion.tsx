@@ -1,6 +1,7 @@
-import { CircleAlert, KeyRound, MonitorSmartphone, ShieldCheck, Smartphone } from "lucide-react";
-import { useMemo } from "react";
+import { CircleAlert, KeyRound, MonitorSmartphone, Phone, ShieldCheck, Smartphone } from "lucide-react";
+import { useMemo, useState } from "react";
 import { BoutonGoogle } from "../composants/BoutonGoogle";
+import { ConnexionTelephone } from "../composants/ConnexionTelephone";
 import { Cadre } from "../composants/Cadre";
 import { estAndroid, estApplication, useInstallation } from "../lib/installation";
 import { invitationEnAttente } from "../lib/invitation";
@@ -11,7 +12,7 @@ const MESSAGES: Record<string, string> = {
   google: "Google n'a pas pu confirmer votre identité. Réessayez.",
   email_non_verifie: "L'adresse de ce compte Google n'est pas vérifiée. Vérifiez-la chez Google, puis réessayez.",
   trop_de_demandes: "Trop de tentatives de connexion. Patientez quelques minutes avant de réessayer.",
-  configuration: "La connexion Google n'est pas encore configurée sur ce serveur.",
+  configuration: "La connexion Google n'est pas encore configurée sur ce serveur. La connexion par numéro reste possible.",
   session_compromise:
     "Votre session a été fermée par sécurité : une ancienne clé de connexion a été réutilisée depuis un autre endroit. Reconnectez-vous ; vos autres appareils restent connectés.",
   session_fermee: "Votre session a été fermée depuis un autre appareil, ou a expiré. Reconnectez-vous.",
@@ -21,14 +22,14 @@ const MESSAGES: Record<string, string> = {
 };
 
 const ETAPES = [
-  "Cliquez sur « Continuer avec Google ».",
-  "Choisissez votre compte Google, ou connectez-vous.",
+  "Choisissez Google (votre adresse e-mail) ou votre numéro de téléphone.",
+  "Confirmez : compte Google, ou code reçu par SMS.",
   "Vos discussions s'ouvrent ici, sur cet appareil.",
 ];
 
 const GARANTIES = [
-  { icone: KeyRound, texte: "Aucun mot de passe UniChat à retenir : Google confirme votre identité." },
-  { icone: ShieldCheck, texte: "UniChat ne reçoit que votre nom, votre adresse e-mail et votre photo. Aucun accès à vos données Google." },
+  { icone: KeyRound, texte: "Aucun mot de passe UniChat à retenir : Google ou un code SMS confirme votre identité." },
+  { icone: ShieldCheck, texte: "Avec Google, UniChat ne reçoit que votre nom, votre adresse e-mail et votre photo. Votre numéro n'est jamais affiché aux autres." },
   { icone: MonitorSmartphone, texte: "Chaque appareil connecté est visible dans vos paramètres, et se déconnecte à distance." },
 ];
 
@@ -40,6 +41,7 @@ export function Connexion({ motif }: { motif: string | null }) {
     return code ? (MESSAGES[code] ?? MESSAGES.google!) : null;
   }, [motif]);
   const invitation = invitationEnAttente();
+  const [parNumero, setParNumero] = useState(false);
 
   return (
     <Cadre>
@@ -70,10 +72,28 @@ export function Connexion({ motif }: { motif: string | null }) {
             </ol>
           </div>
           <div className="flex flex-col items-center justify-center gap-4 md:w-72 md:border-l md:border-bordure md:pl-12">
-            <BoutonGoogle href="/api/auth/google" />
-            <p className="max-w-xs text-center text-xs leading-relaxed text-texte-3">
-              Une fenêtre Google s'ouvre ; vous revenez ensuite automatiquement ici.
-            </p>
+            {parNumero ? (
+              <ConnexionTelephone onRetour={() => setParNumero(false)} />
+            ) : (
+              <>
+                <BoutonGoogle href="/api/auth/google" />
+                <div className="flex w-full max-w-xs items-center gap-3 text-xs text-texte-3">
+                  <span className="h-px flex-1 bg-bordure" />
+                  ou
+                  <span className="h-px flex-1 bg-bordure" />
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setParNumero(true)}
+                  className="inline-flex h-11 w-full max-w-xs items-center justify-center gap-3 rounded-full border border-bordure px-4 text-[15px] font-medium text-texte transition-colors hover:bg-survol"
+                >
+                  <Phone size={18} /> Continuer avec un numéro
+                </button>
+                <p className="max-w-xs text-center text-xs leading-relaxed text-texte-3">
+                  Inscription ou connexion : la même démarche, avec Google ou avec un code reçu par SMS.
+                </p>
+              </>
+            )}
           </div>
         </div>
         <ul className="grid gap-5 border-t border-bordure bg-entete/50 px-8 py-6 sm:px-12 md:grid-cols-3">

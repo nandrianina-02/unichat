@@ -1,7 +1,14 @@
 import { Hono } from "hono";
-import { schemaConnexionNatif, type NonceNatif, type SessionNatif } from "@unichat/shared";
+import {
+  schemaConnexionNatif,
+  schemaConnexionTelephone,
+  schemaDemandeConnexionTelephone,
+  type DemandeConnexionTelephone,
+  type NonceNatif,
+  type SessionNatif,
+} from "@unichat/shared";
 import { getCookie } from "hono/cookie";
-import { trouverOuCreerCompte } from "../lib/comptes";
+import { trouverOuCreerCompte, trouverOuCreerCompteTelephone } from "../lib/comptes";
 import { fermerConnexions } from "../lib/connexions";
 import { aleatoire, defiPkce, empreinte } from "../lib/crypto";
 import { autoriser } from "../lib/limites";
@@ -15,6 +22,7 @@ import {
 } from "../lib/google";
 import { Refus, refus } from "../lib/erreurs";
 import { creerSession, revoquer } from "../lib/sessions";
+import { confirmerConnexion, demanderConnexion } from "../lib/telephone";
 import type { AppEnv } from "../types";
 import { exigerSession } from "./garde";
 import { COOKIE_ETAT, COOKIE_SESSION, MINUTE, corpsJson, effacerCookie, ip, lieu, limiter, poserCookie, poserCookieSession } from "./outils";
@@ -174,6 +182,48 @@ auth.post("/natif", async (c) => {
     maintenant,
   );
   return c.json<SessionNatif>({ jeton });
+});
+
+// --- Numéro de téléphone (web et application native) ------------------------------------
+// Inscription et connexion ne font qu'un : le numéro prouvé par le code SMS
+// ouvre son compte, ou en crée un. Rien ne dit avant le code si le numéro
+// est déjà inscrit.
+
+auth.post("/telephone", async (c) => {
+  const { numero } = await corpsJson(c, schemaDemandeConnexionTelephone);
+  // Chaque code coûte un SMS : limites par adresse et par numéro visé.
+  await limiter(c, `connexion-tel:${ip(c)}`, 10, 10 * MINUTE);
+  await limiter(c, `connexion-tel-numero:${numero}`, 5, 60 * MINUTE);
+  const { demande, expireLe } = await demanderConnexion(c.env, c.get("deps").recuperer, numero, c.get("deps").maintenant());
+  return c.json<DemandeConnexionTelephone>({ demande, numero, expireLe });
+});
+
+auth.post("/telephone/verifier", async (c) => {
+  const { demande, code, appareil } = await corpsJson(c, schemaConnexionTelephone);
+  // Sur le web, la session part en cookie : la demande doit venir d'UniChat
+  // lui-même, pas d'une page tierce qui ouvrirait sa propre session ici.
+  if (!appareil && c.req.header("Origin") !== new URL(c.req.url).origin) throw refus.interdit("Origine refusée.");
+  await limiter(c, `connexion-tel-code:${ip(c)}`, 30, 10 * MINUTE);
+  const { recuperer, maintenant: horloge } = c.get("deps");
+  const maintenant = horloge();
+  const numero = await confirmerConnexion(c.env, recuperer, demande, code, maintenant);
+
+  const utilisateurId = await trouverOuCreerCompteTelephone(c.env.DB, numero, maintenant);
+  const suspension = await c.env.DB.prepare("SELECT suspendu_le FROM utilisateurs WHERE id = ?1").bind(utilisateurId).first<{ suspendu_le: number | null }>();
+  if (suspension?.suspendu_le) throw new Refus(403, "compte_suspendu", "Ce compte est suspendu.");
+  const { jeton } = await creerSession(
+    c.env.DB,
+    {
+      utilisateurId,
+      plateforme: appareil ? "android" : "web",
+      appareil: appareil ?? nomAppareil(c.req.header("User-Agent")),
+      ...lieu(c),
+    },
+    maintenant,
+  );
+  if (appareil) return c.json<SessionNatif>({ jeton });
+  poserCookieSession(c, jeton);
+  return c.body(null, 204);
 });
 
 auth.post("/deconnexion", exigerSession, async (c) => {

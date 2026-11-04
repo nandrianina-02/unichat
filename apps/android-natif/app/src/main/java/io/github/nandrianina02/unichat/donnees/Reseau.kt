@@ -53,6 +53,13 @@ interface UniChatApi {
     @POST("api/auth/natif")
     suspend fun connexion(@Body demande: ConnexionNatif): SessionNatif
 
+    /** Inscription ou connexion par numéro : un code part par SMS, puis il ouvre la session. */
+    @POST("api/auth/telephone")
+    suspend fun demanderConnexionTelephone(@Body demande: DemandeTelephone): DemandeConnexionTelephone
+
+    @POST("api/auth/telephone/verifier")
+    suspend fun connexionTelephone(@Body connexion: ConnexionTelephone): SessionNatif
+
     @POST("api/auth/deconnexion")
     suspend fun deconnexion()
 

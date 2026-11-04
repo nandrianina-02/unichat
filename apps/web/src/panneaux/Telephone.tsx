@@ -1,5 +1,15 @@
-import { afficherTelephone, normaliserTelephone, MESSAGE_TELEPHONE } from "@unichat/shared";
-import { LoaderCircle, MessageSquareText, Phone, PhoneOff, RotateCw } from "lucide-react";
+import {
+  afficherTelephone,
+  normaliserTelephone,
+  MESSAGE_TELEPHONE,
+} from "@unichat/shared";
+import {
+  LoaderCircle,
+  MessageSquareText,
+  Phone,
+  PhoneOff,
+  RotateCw,
+} from "lucide-react";
 import { useEffect, useState, type FormEvent, type ReactNode } from "react";
 import { EnTetePanneau } from "../composants/Panneau";
 import { ErreurApi, api } from "../lib/api";
@@ -19,7 +29,9 @@ export function Telephone({ onRetour }: { onRetour: () => void }) {
   const [saisie, setSaisie] = useState(!moi.telephone && !attente);
   const [numero, setNumero] = useState("");
   const [code, setCode] = useState("");
-  const [enCours, setEnCours] = useState<"demande" | "code" | "retrait" | null>(null);
+  const [enCours, setEnCours] = useState<"demande" | "code" | "retrait" | null>(
+    null,
+  );
   const [erreur, setErreur] = useState<string | null>(null);
   const [renvoi, setRenvoi] = useState(0);
 
@@ -29,13 +41,19 @@ export function Telephone({ onRetour }: { onRetour: () => void }) {
     return () => clearTimeout(t);
   }, [renvoi]);
 
-  async function executer(etape: NonNullable<typeof enCours>, action: () => Promise<void>) {
+  async function executer(
+    etape: NonNullable<typeof enCours>,
+    action: () => Promise<void>,
+  ) {
     setEnCours(etape);
     setErreur(null);
     try {
       await action();
     } catch (e) {
-      if (!sessionPerdue(e)) setErreur(e instanceof ErreurApi ? e.message : "L'action a échoué. Réessayez.");
+      if (!sessionPerdue(e))
+        setErreur(
+          e instanceof ErreurApi ? e.message : "L'action a échoué. Réessayez.",
+        );
     } finally {
       setEnCours(null);
     }
@@ -56,7 +74,9 @@ export function Telephone({ onRetour }: { onRetour: () => void }) {
 
   function verifier(e: FormEvent) {
     e.preventDefault();
-    void executer("code", async () => remplacer(await api.verifierTelephone(code)));
+    void executer("code", async () =>
+      remplacer(await api.verifierTelephone(code)),
+    );
   }
 
   const numeroValide = normaliserTelephone(numero) !== null;
@@ -74,9 +94,15 @@ export function Telephone({ onRetour }: { onRetour: () => void }) {
         {attente ? (
           <form key="code" onSubmit={verifier} className="animate-rise">
             <p className="text-center text-[15px] leading-relaxed text-texte">
-              Un code a été envoyé par SMS au <span className="font-medium whitespace-nowrap">{afficherTelephone(attente.numero)}</span>.
+              Un code a été envoyé par SMS au{" "}
+              <span className="font-medium whitespace-nowrap">
+                {afficherTelephone(attente.numero)}
+              </span>
+              .
             </p>
-            <p className="mt-1 text-center text-sm text-texte-2">Il est valable 10 minutes.</p>
+            <p className="mt-1 text-center text-sm text-texte-2">
+              Il est valable 10 minutes.
+            </p>
             <label className="mt-7 block">
               <span className="text-sm text-texte">Code reçu</span>
               <input
@@ -92,8 +118,13 @@ export function Telephone({ onRetour }: { onRetour: () => void }) {
                 className="mt-3 w-full border-b-2 border-bordure bg-transparent py-2 text-center font-mono text-2xl tracking-[0.4em] text-texte outline-none focus:border-primaire"
               />
             </label>
-            {erreur && <p className="animate-fade mt-3 text-sm text-danger">{erreur}</p>}
-            <BoutonPrincipal enCours={enCours === "code"} desactive={code.length < 4}>
+            {erreur && (
+              <p className="animate-fade mt-3 text-sm text-danger">{erreur}</p>
+            )}
+            <BoutonPrincipal
+              enCours={enCours === "code"}
+              desactive={code.length < 4}
+            >
               Vérifier
             </BoutonPrincipal>
             <div className="mt-6 flex flex-wrap justify-center gap-x-6 gap-y-2 text-sm">
@@ -103,7 +134,10 @@ export function Telephone({ onRetour }: { onRetour: () => void }) {
                 onClick={() => void demander(attente.numero)}
                 className="inline-flex items-center gap-1.5 font-medium text-primaire-texte disabled:text-texte-3"
               >
-                <RotateCw size={15} /> {renvoi > 0 ? `Renvoyer le code (${renvoi} s)` : "Renvoyer le code"}
+                <RotateCw size={15} />{" "}
+                {renvoi > 0
+                  ? `Renvoyer le code (${renvoi} s)`
+                  : "Renvoyer le code"}
               </button>
               <button
                 type="button"
@@ -123,7 +157,8 @@ export function Telephone({ onRetour }: { onRetour: () => void }) {
         ) : saisie ? (
           <form key="numero" onSubmit={envoyerNumero} className="animate-rise">
             <p className="text-center text-[15px] leading-relaxed text-texte-2">
-              Vos contacts pourront vous trouver avec ce numéro. Il n'est jamais affiché sur votre profil.
+              Vos contacts pourront vous trouver avec ce numéro. Il n'est jamais
+              affiché sur votre profil.
             </p>
             <label className="mt-7 block">
               <span className="text-sm text-texte">Numéro de mobile</span>
@@ -140,15 +175,26 @@ export function Telephone({ onRetour }: { onRetour: () => void }) {
                 className="mt-3 w-full border-b-2 border-bordure bg-transparent py-2 text-[17px] text-texte outline-none focus:border-primaire"
               />
               <span className="mt-2 block text-[13px] text-texte-2">
-                {numero && !numeroValide ? MESSAGE_TELEPHONE : "Un code de vérification vous sera envoyé par SMS."}
+                {numero && !numeroValide
+                  ? MESSAGE_TELEPHONE
+                  : "Un code de vérification vous sera envoyé par SMS."}
               </span>
             </label>
-            {erreur && <p className="animate-fade mt-3 text-sm text-danger">{erreur}</p>}
-            <BoutonPrincipal enCours={enCours === "demande"} desactive={!numeroValide}>
+            {erreur && (
+              <p className="animate-fade mt-3 text-sm text-danger">{erreur}</p>
+            )}
+            <BoutonPrincipal
+              enCours={enCours === "demande"}
+              desactive={!numeroValide}
+            >
               <MessageSquareText size={17} /> Recevoir le code
             </BoutonPrincipal>
             {moi.telephone && (
-              <button type="button" onClick={() => setSaisie(false)} className="mt-5 block w-full text-center text-sm font-medium text-texte-2 hover:text-texte">
+              <button
+                type="button"
+                onClick={() => setSaisie(false)}
+                className="mt-5 block w-full text-center text-sm font-medium text-texte-2 hover:text-texte"
+              >
                 Garder le {afficherTelephone(moi.telephone)}
               </button>
             )}
@@ -156,11 +202,20 @@ export function Telephone({ onRetour }: { onRetour: () => void }) {
         ) : (
           moi.telephone && (
             <div key="verifie" className="animate-rise">
-              <p className="text-center font-mono text-2xl text-texte">{afficherTelephone(moi.telephone)}</p>
-              <p className="mt-2 text-center text-sm text-texte-2">
-                Numéro vérifié. {moi.trouvableParTelephone ? "Vos contacts peuvent vous trouver avec lui." : "La recherche par numéro est désactivée dans Confidentialité."}
+              <p className="text-center font-mono text-2xl text-texte">
+                {afficherTelephone(moi.telephone)}
               </p>
-              {erreur && <p className="animate-fade mt-3 text-center text-sm text-danger">{erreur}</p>}
+              <p className="mt-2 text-center text-sm text-texte-2">
+                Numéro vérifié.{" "}
+                {moi.trouvableParTelephone
+                  ? "Vos contacts peuvent vous trouver avec lui."
+                  : "La recherche par numéro est désactivée dans Confidentialité."}
+              </p>
+              {erreur && (
+                <p className="animate-fade mt-3 text-center text-sm text-danger">
+                  {erreur}
+                </p>
+              )}
               <div className="mt-8 flex flex-col items-center gap-3">
                 <button
                   type="button"
@@ -172,15 +227,30 @@ export function Telephone({ onRetour }: { onRetour: () => void }) {
                 >
                   Changer de numéro
                 </button>
-                <button
-                  type="button"
-                  disabled={enCours !== null}
-                  onClick={() => void executer("retrait", async () => remplacer(await api.retirerTelephone()))}
-                  className="inline-flex items-center gap-2 rounded-full px-5 py-2.5 text-sm font-medium text-danger transition-colors hover:bg-danger-doux disabled:opacity-60"
-                >
-                  {enCours === "retrait" ? <LoaderCircle size={16} className="animate-spin" /> : <PhoneOff size={16} />}
-                  Retirer le numéro
-                </button>
+                {moi.connexion === "telephone" ? (
+                  <p className="max-w-xs text-center text-[13px] leading-relaxed text-texte-3">
+                    Ce numéro sert à vous connecter : il peut être remplacé, pas
+                    retiré.
+                  </p>
+                ) : (
+                  <button
+                    type="button"
+                    disabled={enCours !== null}
+                    onClick={() =>
+                      void executer("retrait", async () =>
+                        remplacer(await api.retirerTelephone()),
+                      )
+                    }
+                    className="inline-flex items-center gap-2 rounded-full px-5 py-2.5 text-sm font-medium text-danger transition-colors hover:bg-danger-doux disabled:opacity-60"
+                  >
+                    {enCours === "retrait" ? (
+                      <LoaderCircle size={16} className="animate-spin" />
+                    ) : (
+                      <PhoneOff size={16} />
+                    )}
+                    Retirer le numéro
+                  </button>
+                )}
               </div>
             </div>
           )
@@ -190,7 +260,15 @@ export function Telephone({ onRetour }: { onRetour: () => void }) {
   );
 }
 
-function BoutonPrincipal({ children, enCours, desactive }: { children: ReactNode; enCours: boolean; desactive: boolean }) {
+function BoutonPrincipal({
+  children,
+  enCours,
+  desactive,
+}: {
+  children: ReactNode;
+  enCours: boolean;
+  desactive: boolean;
+}) {
   return (
     <button
       type="submit"

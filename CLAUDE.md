@@ -10,7 +10,10 @@ raisons sont dans `docs/ARCHITECTURE.md`.
   Durable Objects, GitHub Actions…). Toute dépendance payante est signalée
   avant d'être ajoutée.
 - **Plateformes** : web, Android, desktop (Tauri). Pas d'application iOS.
-- **Connexion** : Google uniquement.
+- **Connexion** : Google, ou numéro de mobile malgache avec un code SMS
+  envoyé par Mess (service de la même équipe). Un compte ouvert par numéro
+  n'a ni Google ni adresse e-mail : ce numéro est sa seule clé, il ne peut
+  être ni retiré ni repris par un autre compte.
 - **Identité propre** : jamais le nom, le logo, le vert ni les illustrations de
   WhatsApp. Le fonctionnement et l'ergonomie s'en inspirent, pas la marque.
 

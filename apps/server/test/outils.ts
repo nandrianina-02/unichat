@@ -344,6 +344,22 @@ export async function preparer(options: { stockage?: boolean; sms?: boolean } = 
     return new Appareil(jeton);
   }
 
+  /** Inscription ou connexion par numéro, depuis le web : code reçu sur le « téléphone », puis saisi. */
+  async function connecterParTelephone(numero: string) {
+    const json = (corps: unknown) => ({
+      method: "POST",
+      headers: { "Content-Type": "application/json", Origin: ORIGINE },
+      body: JSON.stringify(corps),
+    });
+    const r = await requete("/api/auth/telephone", json({ numero }));
+    if (r.status !== 200) throw new Error(`demande refusée : ${r.status} ${await r.text()}`);
+    const { demande, numero: normalise } = (await r.json()) as { demande: string; numero: string };
+    const verif = await requete("/api/auth/telephone/verifier", json({ demande, code: mess.codeRecu(normalise) }));
+    const jeton = cookies(verif).get("__Host-uc_session");
+    if (!jeton) throw new Error(`connexion par numéro échouée : ${verif.status} ${await verif.text()}`);
+    return new Appareil(jeton);
+  }
+
   return {
     app,
     google,
@@ -353,6 +369,7 @@ export async function preparer(options: { stockage?: boolean; sms?: boolean } = 
     environnement,
     requete,
     connecter,
+    connecterParTelephone,
     avancer: (ms: number) => (maintenant += ms),
     maintenant: () => maintenant,
   };

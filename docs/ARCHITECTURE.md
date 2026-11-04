@@ -8,7 +8,7 @@ chaque étape.
 - Budget nul, développeur seul : uniquement des offres gratuites, sans mise
   en veille et sans carte bancaire.
 - Web, Android et desktop. Pas d'application iOS.
-- Connexion par Google uniquement.
+- Connexion par Google, ou par numéro de mobile avec un code SMS (service Mess).
 
 ## Vue d'ensemble
 
